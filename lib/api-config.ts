@@ -60,11 +60,18 @@ export async function analyzeText(text: string): Promise<{
   processing_time?: number;
 }> {
   try {
+    // AI 分析可能需要较长时间，设置 3 分钟超时
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 分钟
+
     const response = await fetch(`${API_BASE_URL}/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -76,6 +83,12 @@ export async function analyzeText(text: string): Promise<{
 
     return await response.json();
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        success: false,
+        error: '分析超时，请稍后重试',
+      };
+    }
     return {
       success: false,
       error: error instanceof Error ? error.message : '网络错误',
