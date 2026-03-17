@@ -13,8 +13,8 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     API_PREFIX: str = ""  # 路由前缀在 main.py 中设置
 
-    # CORS
-    CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")
+    # CORS - 允许所有来源（开发/生产环境）
+    CORS_ORIGINS: list = ["*"]
 
     # Supabase
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
