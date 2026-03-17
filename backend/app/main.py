@@ -81,14 +81,20 @@ app.include_router(api_router, prefix=settings.API_PREFIX)
 
 
 # 健康检查
-@app.get("/api/health", response_model=HealthResponse)
+@app.get("/api/health")
 async def health_check():
     """健康检查端点"""
-    return HealthResponse(
-        status="healthy",
-        service=settings.APP_NAME,
-        version=settings.APP_VERSION
-    )
+    return {
+        "status": "healthy",
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION
+    }
+
+
+@app.get("/health")
+async def health_check_simple():
+    """简单健康检查（Render 兼容）"""
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
