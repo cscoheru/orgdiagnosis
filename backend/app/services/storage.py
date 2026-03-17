@@ -70,7 +70,6 @@ class SupabaseStorage:
                         "data_compensation": data.get("compensation"),
                         "data_talent": data.get("talent"),
                         "overall_score": data.get("overall_score", 0),
-                        "summary": data.get("summary", ""),
                         "created_at": datetime.utcnow().isoformat()
                     }
                 )
@@ -200,7 +199,6 @@ class SupabaseStorage:
             "data_compensation": data.get("compensation"),
             "data_talent": data.get("talent"),
             "overall_score": data.get("overall_score", 0),
-            "summary": data.get("summary", ""),
             "created_at": datetime.utcnow().isoformat()
         }
         self._mock_db[session_id] = record
