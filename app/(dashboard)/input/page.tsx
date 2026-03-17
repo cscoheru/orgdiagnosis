@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { parseFile, getAcceptString, isFileTypeSupported, ParseResult } from '@/lib/file-parser';
+import { parseFile, getAcceptString, isFileTypeSupported, ParseResult, OCRProgressCallback } from '@/lib/file-parser';
 import { AudioRecorder, isSpeechRecognitionSupported, RecordingStatus } from '@/lib/audio-transcriber';
 
 export default function InputPage() {
@@ -11,6 +11,7 @@ export default function InputPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parseInfo, setParseInfo] = useState<ParseResult['metadata'] | null>(null);
+  const [ocrProgress, setOcrProgress] = useState<{ progress: number; status: string } | null>(null);
 
   // 录音相关状态
   const [isRecording, setIsRecording] = useState(false);
@@ -76,6 +77,7 @@ export default function InputPage() {
 
     setError(null);
     setParseInfo(null);
+    setOcrProgress(null);
 
     // 检查文件类型
     if (!isFileTypeSupported(file.name)) {
@@ -90,7 +92,15 @@ export default function InputPage() {
     }
 
     try {
-      const result = await parseFile(file);
+      // OCR 进度回调
+      const onOCRProgress: OCRProgressCallback = (progress, status) => {
+        setOcrProgress({ progress, status });
+      };
+
+      const result = await parseFile(file, onOCRProgress);
+
+      // 清除进度显示
+      setOcrProgress(null);
 
       if (!result.success) {
         setError(result.error || '文件解析失败');
@@ -100,6 +110,7 @@ export default function InputPage() {
       setRawText(result.text);
       setParseInfo(result.metadata);
     } catch (err) {
+      setOcrProgress(null);
       setError('文件处理失败，请重试');
     }
   };
@@ -262,6 +273,23 @@ export default function InputPage() {
             📄 {parseInfo.fileName} ({(parseInfo.fileSize / 1024).toFixed(1)} KB)
             {parseInfo.pageCount && ` · ${parseInfo.pageCount} 页`}
             {parseInfo.sheetCount && ` · ${parseInfo.sheetCount} 个工作表`}
+            {parseInfo.isOCR && ` · OCR 识别`}
+          </div>
+        )}
+
+        {/* OCR 进度显示 */}
+        {ocrProgress && (
+          <div className="mb-3 p-3 bg-purple-50 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-purple-600">{ocrProgress.status}</span>
+              <span className="text-sm text-purple-600">{ocrProgress.progress}%</span>
+            </div>
+            <div className="w-full bg-purple-200 rounded-full h-2">
+              <div
+                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${ocrProgress.progress}%` }}
+              ></div>
+            </div>
           </div>
         )}
 
@@ -314,7 +342,7 @@ export default function InputPage() {
       {/* Supported Formats */}
       <div className="mt-8 p-4 bg-gray-50 rounded-xl">
         <h3 className="font-medium text-gray-900 mb-3">📁 支持的文件格式</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
           <div className="flex items-center gap-2 text-gray-600">
             <span className="w-8 h-8 flex items-center justify-center bg-blue-100 rounded">📄</span>
             <div>
@@ -337,7 +365,14 @@ export default function InputPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 text-gray-600">
-            <span className="w-8 h-8 flex items-center justify-center bg-purple-100 rounded">🎤</span>
+            <span className="w-8 h-8 flex items-center justify-center bg-purple-100 rounded">🖼️</span>
+            <div>
+              <div className="font-medium">图片 OCR</div>
+              <div className="text-xs text-gray-400">.png, .jpg</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-gray-600">
+            <span className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded">🎤</span>
             <div>
               <div className="font-medium">语音输入</div>
               <div className="text-xs text-gray-400">实时识别</div>
@@ -345,7 +380,7 @@ export default function InputPage() {
           </div>
         </div>
         <p className="mt-3 text-xs text-gray-500">
-          同时支持: .txt, .md, .csv, .json 等纯文本格式
+          同时支持: .txt, .md, .csv, .json 等纯文本格式 · 图片和扫描件使用 OCR 自动识别
         </p>
       </div>
 

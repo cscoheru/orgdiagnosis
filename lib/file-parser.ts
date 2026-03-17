@@ -1,11 +1,13 @@
 /**
  * 文件解析工具
  * 支持: txt, md, docx, pdf, xlsx, xls, csv, json
+ * 图片 OCR: png, jpg, jpeg
  */
 
 import mammoth from 'mammoth';
 import * as pdfParse from 'pdf-parse';
 import * as XLSX from 'xlsx';
+import Tesseract from 'tesseract.js';
 
 export interface ParseResult {
   success: boolean;
@@ -17,13 +19,20 @@ export interface ParseResult {
     fileType: string;
     pageCount?: number;
     sheetCount?: number;
+    isOCR?: boolean;
   };
 }
+
+// OCR 进度回调
+export type OCRProgressCallback = (progress: number, status: string) => void;
 
 /**
  * 解析文件内容
  */
-export async function parseFile(file: File): Promise<ParseResult> {
+export async function parseFile(
+  file: File,
+  onOCRProgress?: OCRProgressCallback
+): Promise<ParseResult> {
   const fileName = file.name;
   const fileSize = file.size;
   const extension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -53,10 +62,10 @@ export async function parseFile(file: File): Promise<ParseResult> {
         };
 
       case 'pdf':
-        const pdfResult = await parsePdf(file);
+        const pdfResult = await parsePdf(file, onOCRProgress);
         return {
           ...pdfResult,
-          metadata: { ...metadata, pageCount: pdfResult.pageCount },
+          metadata: { ...metadata, pageCount: pdfResult.pageCount, isOCR: pdfResult.isOCR },
         };
 
       case 'xlsx':
@@ -65,6 +74,15 @@ export async function parseFile(file: File): Promise<ParseResult> {
         return {
           ...excelResult,
           metadata: { ...metadata, sheetCount: excelResult.sheetCount },
+        };
+
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+        const imageResult = await parseImage(file, onOCRProgress);
+        return {
+          ...imageResult,
+          metadata: { ...metadata, isOCR: true },
         };
 
       default:
@@ -126,22 +144,87 @@ async function parseDocx(file: File): Promise<{ success: boolean; text: string; 
 /**
  * 解析 PDF 文件
  */
-async function parsePdf(file: File): Promise<{ success: boolean; text: string; pageCount?: number; error?: string }> {
+async function parsePdf(
+  file: File,
+  onOCRProgress?: OCRProgressCallback
+): Promise<{ success: boolean; text: string; pageCount?: number; isOCR?: boolean; error?: string }> {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const data = await (pdfParse as any).default(buffer);
 
+    // 如果提取到的文字太少，可能是扫描版 PDF，尝试 OCR
+    if (data.text.trim().length < 50) {
+      onOCRProgress?.(0, '检测到扫描版 PDF，正在启动 OCR...');
+
+      // 将 PDF 转为图片再 OCR（这里简化处理，直接提示用户）
+      return {
+        success: false,
+        text: '',
+        pageCount: data.numpages,
+        error: '此 PDF 文字内容过少，可能是扫描版。建议：1) 使用图片格式上传；2) 或手动复制文字内容',
+      };
+    }
+
     return {
       success: true,
       text: data.text,
       pageCount: data.numpages,
+      isOCR: false,
     };
   } catch (error) {
     return {
       success: false,
       text: '',
-      error: 'PDF 解析失败，可能是扫描版 PDF 或加密文件',
+      error: 'PDF 解析失败，可能是加密文件或格式损坏',
+    };
+  }
+}
+
+/**
+ * 解析图片文件 (OCR)
+ */
+async function parseImage(
+  file: File,
+  onOCRProgress?: OCRProgressCallback
+): Promise<{ success: boolean; text: string; error?: string }> {
+  try {
+    onOCRProgress?.(0, '正在初始化 OCR 引擎...');
+
+    const result = await Tesseract.recognize(file, 'chi_sim+eng', {
+      logger: (m) => {
+        if (m.status === 'recognizing text') {
+          const progress = Math.round(m.progress * 100);
+          onOCRProgress?.(progress, `正在识别文字... ${progress}%`);
+        } else if (m.status === 'loading language traineddata') {
+          onOCRProgress?.(10, '正在加载中文语言包...');
+        } else if (m.status === 'initializing api') {
+          onOCRProgress?.(5, '正在初始化...');
+        }
+      },
+    });
+
+    const text = result.data.text.trim();
+
+    if (!text) {
+      return {
+        success: false,
+        text: '',
+        error: '未能从图片中识别出文字，请确保图片清晰',
+      };
+    }
+
+    onOCRProgress?.(100, '识别完成');
+
+    return {
+      success: true,
+      text,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      text: '',
+      error: '图片 OCR 失败，请重试或手动输入文字',
     };
   }
 }
@@ -195,6 +278,11 @@ export const SUPPORTED_FILE_TYPES = {
   // 表格类
   xlsx: { name: 'Excel 表格', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
   xls: { name: 'Excel 表格 (旧版)', mime: 'application/vnd.ms-excel' },
+
+  // 图片类 (OCR)
+  png: { name: 'PNG 图片', mime: 'image/png' },
+  jpg: { name: 'JPG 图片', mime: 'image/jpeg' },
+  jpeg: { name: 'JPEG 图片', mime: 'image/jpeg' },
 };
 
 /**
