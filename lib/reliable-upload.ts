@@ -111,9 +111,11 @@ export async function reliableFileUpload(
           onProgress?.(0, `上传失败，正在重试 (${retryCount}/${maxRetries})...`);
           await sleep(retryDelay * (attempt + 1)); // 指数退避
         }
+        // 继续下一次循环进行重试
+        continue;
       }
 
-      // 不支持的格式
+      // 不支持的格式 (只有当既不是客户端类型也不是服务端类型时才返回)
       return {
         success: false,
         text: '',
@@ -312,11 +314,71 @@ async function tryClientFallback(
   extension: string,
   onProgress?: (progress: number, status: string) => void
 ): Promise<UploadResult> {
-  // PDF/DOCX/XLSX 无法在客户端处理
-  // 但可以提示用户转换格式
+  onProgress?.(60, '服务器超时，尝试备用方案...');
 
+  // 对于 PDF，尝试使用 pdf.js 读取
+  if (extension === 'pdf') {
+    try {
+      // 动态导入 pdf.js
+      const pdfjsLib = await import('pdfjs-dist');
+
+      // 设置 worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+      onProgress?.(70, '正在本地解析 PDF...');
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      let text = '';
+      const numPages = pdf.numPages;
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items
+          .map((item: any) => item.str)
+          .join(' ');
+        text += pageText + '\n';
+
+        const progress = 70 + Math.round((i / numPages) * 25);
+        onProgress?.(progress, `正在解析 PDF... (${i}/${numPages}页)`);
+      }
+
+      text = text.trim();
+
+      if (text.length < 50) {
+        return {
+          success: false,
+          text: '',
+          error: '此 PDF 文字内容过少，可能是扫描版。建议：1) 复制文字直接粘贴；2) 或截图后以图片格式上传',
+        };
+      }
+
+      onProgress?.(100, '解析完成');
+
+      return {
+        success: true,
+        text,
+        metadata: {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: extension,
+          processingTime: 0,
+          isOCR: false,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        text: '',
+        error: 'PDF 解析失败。建议：1) 复制文字直接粘贴；2) 或截图后以图片格式上传',
+      };
+    }
+  }
+
+  // DOCX/XLSX 无法在客户端处理
   const suggestions: Record<string, string> = {
-    pdf: '建议：1) 复制 PDF 中的文字直接粘贴；2) 或截图后以图片格式上传',
     docx: '建议：1) 复制 Word 文档中的文字直接粘贴；2) 或另存为 .txt 格式',
     xlsx: '建议：1) 复制 Excel 表格内容直接粘贴；2) 或另存为 .csv 格式',
     xls: '建议：1) 复制 Excel 表格内容直接粘贴；2) 或另存为 .csv 格式',
