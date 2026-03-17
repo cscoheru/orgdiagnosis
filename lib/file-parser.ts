@@ -1,12 +1,9 @@
 /**
  * 文件解析工具
- * 支持: txt, md, docx, pdf, xlsx, xls, csv, json
- * 图片 OCR: png, jpg, jpeg
+ * 前端处理: txt, md, csv, json, 图片 OCR
+ * API 处理: pdf, docx, xlsx, xls (需要 Node.js 环境)
  */
 
-import mammoth from 'mammoth';
-import * as pdfParse from 'pdf-parse';
-import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
 
 export interface ParseResult {
@@ -44,6 +41,12 @@ export async function parseFile(
   };
 
   try {
+    // 需要后端处理的文件类型
+    if (['pdf', 'docx', 'xlsx', 'xls'].includes(extension)) {
+      return await parseViaAPI(file, metadata);
+    }
+
+    // 前端处理的文件类型
     let text = '';
 
     switch (extension) {
@@ -51,30 +54,8 @@ export async function parseFile(
       case 'md':
       case 'csv':
       case 'json':
-        text = await parseTextFile(file);
+        text = await file.text();
         break;
-
-      case 'docx':
-        const docxResult = await parseDocx(file);
-        return {
-          ...docxResult,
-          metadata: { ...metadata, pageCount: docxResult.pageCount },
-        };
-
-      case 'pdf':
-        const pdfResult = await parsePdf(file, onOCRProgress);
-        return {
-          ...pdfResult,
-          metadata: { ...metadata, pageCount: pdfResult.pageCount, isOCR: pdfResult.isOCR },
-        };
-
-      case 'xlsx':
-      case 'xls':
-        const excelResult = await parseExcel(file);
-        return {
-          ...excelResult,
-          metadata: { ...metadata, sheetCount: excelResult.sheetCount },
-        };
 
       case 'png':
       case 'jpg':
@@ -110,73 +91,30 @@ export async function parseFile(
 }
 
 /**
- * 解析纯文本文件
+ * 通过 API 解析文件 (PDF, DOCX, XLSX)
  */
-async function parseTextFile(file: File): Promise<string> {
-  return await file.text();
-}
-
-/**
- * 解析 Word 文档 (.docx)
- */
-async function parseDocx(file: File): Promise<{ success: boolean; text: string; pageCount?: number; error?: string }> {
+async function parseViaAPI(file: File, metadata: any): Promise<ParseResult> {
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
+    const formData = new FormData();
+    formData.append('file', file);
 
-    // 估算页数（每页约 500 字）
-    const pageCount = Math.ceil(result.value.length / 500);
+    const response = await fetch('/api/parse-file', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const result = await response.json();
 
     return {
-      success: true,
-      text: result.value,
-      pageCount,
+      ...result,
+      metadata: { ...metadata, ...result.metadata },
     };
   } catch (error) {
     return {
       success: false,
       text: '',
-      error: 'Word 文档解析失败，请确保文件格式正确',
-    };
-  }
-}
-
-/**
- * 解析 PDF 文件
- */
-async function parsePdf(
-  file: File,
-  onOCRProgress?: OCRProgressCallback
-): Promise<{ success: boolean; text: string; pageCount?: number; isOCR?: boolean; error?: string }> {
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const data = await (pdfParse as any).default(buffer);
-
-    // 如果提取到的文字太少，可能是扫描版 PDF，尝试 OCR
-    if (data.text.trim().length < 50) {
-      onOCRProgress?.(0, '检测到扫描版 PDF，正在启动 OCR...');
-
-      // 将 PDF 转为图片再 OCR（这里简化处理，直接提示用户）
-      return {
-        success: false,
-        text: '',
-        pageCount: data.numpages,
-        error: '此 PDF 文字内容过少，可能是扫描版。建议：1) 使用图片格式上传；2) 或手动复制文字内容',
-      };
-    }
-
-    return {
-      success: true,
-      text: data.text,
-      pageCount: data.numpages,
-      isOCR: false,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      text: '',
-      error: 'PDF 解析失败，可能是加密文件或格式损坏',
+      error: '文件上传失败，请检查网络连接',
+      metadata,
     };
   }
 }
@@ -230,56 +168,24 @@ async function parseImage(
 }
 
 /**
- * 解析 Excel 文件
- */
-async function parseExcel(file: File): Promise<{ success: boolean; text: string; sheetCount?: number; error?: string }> {
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
-    const texts: string[] = [];
-    const sheetCount = workbook.SheetNames.length;
-
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      const csv = XLSX.utils.sheet_to_csv(sheet);
-
-      texts.push(`\n【工作表: ${sheetName}】\n${csv}`);
-    }
-
-    return {
-      success: true,
-      text: texts.join('\n\n'),
-      sheetCount,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      text: '',
-      error: 'Excel 文件解析失败',
-    };
-  }
-}
-
-/**
  * 支持的文件类型
  */
 export const SUPPORTED_FILE_TYPES = {
-  // 文本类
+  // 文本类 (前端处理)
   txt: { name: '纯文本', mime: 'text/plain' },
   md: { name: 'Markdown', mime: 'text/markdown' },
   csv: { name: 'CSV 表格', mime: 'text/csv' },
   json: { name: 'JSON 数据', mime: 'application/json' },
 
-  // 文档类
+  // 文档类 (API 处理)
   docx: { name: 'Word 文档', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
   pdf: { name: 'PDF 文档', mime: 'application/pdf' },
 
-  // 表格类
+  // 表格类 (API 处理)
   xlsx: { name: 'Excel 表格', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
   xls: { name: 'Excel 表格 (旧版)', mime: 'application/vnd.ms-excel' },
 
-  // 图片类 (OCR)
+  // 图片类 (前端 OCR)
   png: { name: 'PNG 图片', mime: 'image/png' },
   jpg: { name: 'JPG 图片', mime: 'image/jpeg' },
   jpeg: { name: 'JPEG 图片', mime: 'image/jpeg' },
