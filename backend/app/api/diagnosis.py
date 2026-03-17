@@ -26,13 +26,13 @@ async def create_diagnosis(request: DiagnosisCreate):
         创建的诊断记录（包含 id）
     """
     try:
-        # 准备数据
+        # 准备数据 - 使用 model_dump() 转换 Pydantic 模型为字典
         data = {
-            "strategy": request.data.strategy,
-            "structure": request.data.structure,
-            "performance": request.data.performance,
-            "compensation": request.data.compensation,
-            "talent": request.data.talent,
+            "strategy": request.data.strategy.model_dump(),
+            "structure": request.data.structure.model_dump(),
+            "performance": request.data.performance.model_dump(),
+            "compensation": request.data.compensation.model_dump(),
+            "talent": request.data.talent.model_dump(),
             "overall_score": request.data.overall_score,
             "summary": request.data.summary or "",
         }
