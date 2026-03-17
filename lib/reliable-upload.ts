@@ -49,11 +49,11 @@ export async function reliableFileUpload(
   let lastError = '';
   let retryCount = 0;
 
-  // 客户端可直接处理的文件类型
-  const clientSideTypes = ['txt', 'md', 'csv', 'json', 'png', 'jpg', 'jpeg'];
+  // 客户端可直接处理的文件类型 (包括 PDF，使用 pdfjs-dist)
+  const clientSideTypes = ['txt', 'md', 'csv', 'json', 'png', 'jpg', 'jpeg', 'pdf'];
 
-  // 需要服务端处理的文件类型
-  const serverSideTypes = ['pdf', 'docx', 'xlsx', 'xls'];
+  // 需要服务端处理的文件类型 (仅 DOCX/XLSX，服务端经常超时)
+  const serverSideTypes = ['docx', 'xlsx', 'xls'];
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -173,6 +173,83 @@ async function processClientSide(
           processingTime: 0,
         },
       };
+    }
+
+    // PDF 文件 - 使用 pdfjs-dist 客户端解析
+    if (extension === 'pdf') {
+      onProgress?.(10, '正在初始化 PDF 解析器...');
+
+      try {
+        // 动态导入 pdf.js
+        const pdfjsLib = await import('pdfjs-dist');
+
+        // 设置 worker (使用 CDN)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+        onProgress?.(20, '正在读取 PDF...');
+
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        onProgress?.(30, `正在解析 PDF (${pdf.numPages} 页)...`);
+
+        let text = '';
+        const numPages = pdf.numPages;
+
+        for (let i = 1; i <= numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items
+            .map((item: any) => item.str)
+            .join(' ');
+          text += pageText + '\n';
+
+          const progress = 30 + Math.round((i / numPages) * 60);
+          onProgress?.(progress, `正在解析 PDF... (${i}/${numPages} 页)`);
+        }
+
+        text = text.trim();
+
+        if (text.length < 50) {
+          return {
+            success: false,
+            text: '',
+            error: '此 PDF 文字内容过少，可能是扫描版。建议：1) 复制文字直接粘贴；2) 或截图后以图片格式上传',
+            metadata: {
+              fileName: file.name,
+              fileSize: file.size,
+              fileType: extension,
+              processingTime: 0,
+            },
+          };
+        }
+
+        onProgress?.(100, 'PDF 解析完成');
+
+        return {
+          success: true,
+          text,
+          metadata: {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: extension,
+            processingTime: 0,
+            isOCR: false,
+          },
+        };
+      } catch (pdfError) {
+        return {
+          success: false,
+          text: '',
+          error: 'PDF 解析失败。建议：1) 复制文字直接粘贴；2) 或截图后以图片格式上传',
+          metadata: {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: extension,
+            processingTime: 0,
+          },
+        };
+      }
     }
 
     // 图片 OCR
