@@ -150,12 +150,28 @@ export async function reliableFileUpload(
 
 /**
  * 客户端处理文件
+ * 注意：此函数只能在浏览器环境中运行
  */
 async function processClientSide(
   file: File,
   extension: string,
   onProgress?: (progress: number, status: string) => void
 ): Promise<UploadResult> {
+  // SSR 检查 - 确保只在浏览器环境运行
+  if (typeof window === 'undefined') {
+    return {
+      success: false,
+      text: '',
+      error: '此功能需要浏览器环境',
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: extension,
+        processingTime: 0,
+      },
+    };
+  }
+
   try {
     // 纯文本文件
     if (['txt', 'md', 'csv', 'json'].includes(extension)) {
@@ -180,7 +196,7 @@ async function processClientSide(
       onProgress?.(10, '正在初始化 PDF 解析器...');
 
       try {
-        // 动态导入 pdf.js
+        // 动态导入 pdf.js (仅在浏览器环境)
         const pdfjsLib = await import('pdfjs-dist');
 
         // 设置 worker (使用 CDN)
@@ -256,7 +272,7 @@ async function processClientSide(
     if (['png', 'jpg', 'jpeg'].includes(extension)) {
       onProgress?.(20, '正在初始化 OCR...');
 
-      // 动态导入 Tesseract
+      // 动态导入 Tesseract (仅在浏览器环境)
       const Tesseract = (await import('tesseract.js')).default;
 
       onProgress?.(30, '正在识别文字...');
@@ -385,18 +401,28 @@ async function uploadToServer(
 
 /**
  * 客户端备用方案（当服务器超时时）
+ * 注意：此函数只能在浏览器环境中运行
  */
 async function tryClientFallback(
   file: File,
   extension: string,
   onProgress?: (progress: number, status: string) => void
 ): Promise<UploadResult> {
+  // SSR 检查 - 确保只在浏览器环境运行
+  if (typeof window === 'undefined') {
+    return {
+      success: false,
+      text: '',
+      error: '此功能需要浏览器环境',
+    };
+  }
+
   onProgress?.(60, '服务器超时，尝试备用方案...');
 
   // 对于 PDF，尝试使用 pdf.js 读取
   if (extension === 'pdf') {
     try {
-      // 动态导入 pdf.js
+      // 动态导入 pdf.js (仅在浏览器环境)
       const pdfjsLib = await import('pdfjs-dist');
 
       // 设置 worker
