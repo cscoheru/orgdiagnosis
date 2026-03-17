@@ -21,6 +21,27 @@ const PRIMARY_MODEL = 'deepseek-chat';
 // Mock 模式
 const USE_MOCK = !PRIMARY_API_KEY;
 
+// 超时控制
+const API_TIMEOUT = 55000; // 55秒超时（留5秒给Vercel）
+
+/**
+ * 带超时的 fetch
+ */
+async function fetchWithTimeout(url: string, options: RequestInit, timeout: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * 从原始文本中抽取五维诊断数据
  */
@@ -40,22 +61,31 @@ export async function extractDiagnosisData(rawText: string): Promise<ExtractionR
   }
 
   try {
-    const response = await fetch(PRIMARY_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${PRIMARY_API_KEY}`,
+    // 对于超长文本，先截取关键部分
+    const truncatedText = rawText.length > 20000
+      ? rawText.substring(0, 20000) + '\n...[文本已截断，保留前20000字符]'
+      : rawText;
+
+    const response = await fetchWithTimeout(
+      PRIMARY_API_URL,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${PRIMARY_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: PRIMARY_MODEL,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: generateUserPrompt(truncatedText) }
+          ],
+          temperature: 0.3,
+          max_tokens: 4096
+        }),
       },
-      body: JSON.stringify({
-        model: PRIMARY_MODEL,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: generateUserPrompt(rawText) }
-        ],
-        temperature: 0.3,
-        max_tokens: 4096
-      }),
-    });
+      API_TIMEOUT
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -124,6 +154,16 @@ export async function extractDiagnosisData(rawText: string): Promise<ExtractionR
     }
   } catch (error) {
     console.error('API error:', error);
+
+    // 超时错误特殊处理
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        success: false,
+        error: 'AI 处理超时，请尝试缩短文本或稍后重试',
+        processing_time: Date.now() - startTime
+      };
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
