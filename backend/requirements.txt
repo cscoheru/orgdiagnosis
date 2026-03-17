@@ -10,8 +10,6 @@ pdfplumber==0.10.3
 mammoth==1.6.0
 openpyxl==3.1.2
 xlrd==2.0.1
-python-docx==1.1.0
-pytesseract==0.3.10
 Pillow==10.2.0
 
 # PDF 生成
@@ -26,5 +24,3 @@ httpx==0.26.0
 
 # 工具
 python-dotenv==1.0.1
-loguru==0.7.2
-tenacity==8.2.3
