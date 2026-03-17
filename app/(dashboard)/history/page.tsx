@@ -3,49 +3,31 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import type { DiagnosisSession } from '@/types/diagnosis';
-
-// 模拟数据
-const mockSessions: DiagnosisSession[] = [
-  {
-    id: '1',
-    client_id: 'client-1',
-    created_by: 'user-1',
-    raw_input: '客户访谈记录...',
-    data: {} as any,
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: '2',
-    client_id: 'client-2',
-    created_by: 'user-1',
-    raw_input: '战略会议记录...',
-    data: {} as any,
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-    updated_at: new Date(Date.now() - 172800000).toISOString(),
-  },
-];
+import { getDiagnosisHistory } from '@/lib/api-config';
 
 export default function HistoryPage() {
   const [sessions, setSessions] = useState<DiagnosisSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // TODO: 从 API 获取数据
-    // fetch('/api/diagnosis')
-    //   .then(res => res.json())
-    //   .then(result => {
-    //     if (result.success) {
-    //       setSessions(result.data);
-    //     }
-    //     setIsLoading(false);
-    //   });
+    // 从 Render 后端 API 获取历史记录
+    const fetchHistory = async () => {
+      setIsLoading(true);
+      setError(null);
 
-    // 使用模拟数据
-    setTimeout(() => {
-      setSessions(mockSessions);
+      const result = await getDiagnosisHistory(20, 0);
+
+      if (Array.isArray(result)) {
+        setSessions(result);
+      } else {
+        setError('加载失败');
+      }
+
       setIsLoading(false);
-    }, 500);
+    };
+
+    fetchHistory();
   }, []);
 
   return (
@@ -59,6 +41,13 @@ export default function HistoryPage() {
           </p>
         </div>
       </div>
+
+      {/* Error State */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-lg">
+          ⚠️ {error}
+        </div>
+      )}
 
       {/* Sessions List */}
       {isLoading ? (
@@ -100,7 +89,7 @@ export default function HistoryPage() {
                         诊断 #{session.id.slice(0, 8)}
                       </h3>
                       <p className="text-sm text-gray-500 mt-0.5">
-                        {session.raw_input.slice(0, 50)}...
+                        {session.raw_input?.slice(0, 50) || '无描述'}...
                       </p>
                     </div>
                   </div>
@@ -111,7 +100,7 @@ export default function HistoryPage() {
                       {session.data?.overall_score || '--'} 分
                     </p>
                     <p className="text-xs text-gray-500">
-                      {new Date(session.created_at).toLocaleDateString('zh-CN')}
+                      {session.created_at ? new Date(session.created_at).toLocaleDateString('zh-CN') : '--'}
                     </p>
                   </div>
                   <span className="text-gray-400">→</span>

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { reliableFileUpload, isFileSupported, getSupportedFileTypes, type UploadResult } from '@/lib/reliable-upload';
 import { AudioRecorder, isSpeechRecognitionSupported, RecordingStatus } from '@/lib/audio-transcriber';
+import { analyzeText, createDiagnosis } from '@/lib/api-config';
 
 export default function InputPage() {
   const router = useRouter();
@@ -32,13 +33,8 @@ export default function InputPage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: fullText }),
-      });
-
-      const result = await response.json();
+      // 调用 Render 后端 API
+      const result = await analyzeText(fullText);
 
       if (!result.success) {
         setError(result.error || '分析失败，请重试');
@@ -47,18 +43,9 @@ export default function InputPage() {
       }
 
       // 保存诊断结果
-      const saveResponse = await fetch('/api/diagnosis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raw_input: fullText,
-          data: result.data,
-        }),
-      });
+      const savedSession = await createDiagnosis(fullText, result.data);
 
-      const savedSession = await saveResponse.json();
-
-      if (savedSession.success) {
+      if (savedSession.success && savedSession.data?.id) {
         router.push(`/result/${savedSession.data.id}`);
       } else {
         setError('保存失败，请重试');
