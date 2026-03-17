@@ -1,14 +1,6 @@
 'use client';
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  ResponsiveContainer,
-  Cell,
-  LabelList,
-} from 'recharts';
+import { useState, useEffect } from 'react';
 import type { L2Category, L3Item } from '@/types/diagnosis';
 import { getScoreColor } from '@/types/diagnosis';
 
@@ -98,6 +90,12 @@ const L3_LABELS: Record<string, string> = {
 };
 
 export function L3BarChart({ data }: L3BarChartProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // 准备柱状图数据
   const chartData = Object.entries(data.L3_items)
     .filter(([_, item]) => item.score !== null && item.score !== undefined)
@@ -121,40 +119,60 @@ export function L3BarChart({ data }: L3BarChartProps) {
   return (
     <div>
       {/* 柱状图 */}
-      <div className="h-[chartData.length * 28 + 50]px" style={{ height: Math.max(150, chartData.length * 32 + 50) }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            layout="vertical"
-            margin={{ top: 5, right: 60, left: 5, bottom: 5 }}
-          >
-            <XAxis
-              type="number"
-              domain={[0, 100]}
-              tick={{ fill: '#6b7280', fontSize: 11 }}
-              axisLine={{ stroke: '#e5e7eb' }}
-            />
-            <YAxis
-              type="category"
-              dataKey="name"
-              width={80}
-              tick={{ fill: '#374151', fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={18}>
-              {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={getScoreColor(entry.score)} />
-              ))}
-              <LabelList
-                dataKey="score"
-                position="right"
-                formatter={(value: any) => `${value}`}
-                style={{ fill: '#6b7280', fontSize: 11, fontWeight: 500 }}
-              />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <div style={{ height: Math.max(150, chartData.length * 32 + 50) }}>
+        {mounted ? (
+          (() => {
+            const {
+              BarChart,
+              Bar,
+              XAxis,
+              YAxis,
+              ResponsiveContainer,
+              Cell,
+              LabelList,
+            } = require('recharts');
+
+            return (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData}
+                  layout="vertical"
+                  margin={{ top: 5, right: 60, left: 5, bottom: 5 }}
+                >
+                  <XAxis
+                    type="number"
+                    domain={[0, 100]}
+                    tick={{ fill: '#6b7280', fontSize: 11 }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={80}
+                    tick={{ fill: '#374151', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={18}>
+                    {chartData.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={getScoreColor(entry.score)} />
+                    ))}
+                    <LabelList
+                      dataKey="score"
+                      position="right"
+                      formatter={(value: number) => `${value}`}
+                      style={{ fill: '#6b7280', fontSize: 11, fontWeight: 500 }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            );
+          })()
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-gray-400 text-sm">加载图表...</div>
+          </div>
+        )}
       </div>
 
       {/* L3 详情列表 */}

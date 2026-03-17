@@ -1,15 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  ResponsiveContainer,
-  Tooltip,
-} from 'recharts';
+import { useState, useEffect } from 'react';
 import type { DimensionData, L2Category } from '@/types/diagnosis';
 import { getScoreColor } from '@/types/diagnosis';
 import { L3BarChart } from './l3-bar-chart';
@@ -21,6 +12,11 @@ interface DimensionDetailChartProps {
 
 export function DimensionDetailChart({ dimensionKey, data }: DimensionDetailChartProps) {
   const [selectedL2, setSelectedL2] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // L2 雷达图数据
   const radarData = Object.entries(data.L2_categories).map(([key, category]) => ({
@@ -54,39 +50,59 @@ export function DimensionDetailChart({ dimensionKey, data }: DimensionDetailChar
 
       {/* L2 雷达图 */}
       <div className="mb-4">
-        <ResponsiveContainer width="100%" height={220}>
-          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-            <PolarGrid stroke="#e5e7eb" />
-            <PolarAngleAxis
-              dataKey="name"
-              tick={{ fill: '#374151', fontSize: 11, fontWeight: 500 }}
-            />
-            <PolarRadiusAxis
-              angle={90}
-              domain={[0, 100]}
-              tick={{ fill: '#6b7280', fontSize: 10 }}
-            />
-            <Radar
-              name={data.label}
-              dataKey="score"
-              stroke="#6366f1"
-              fill="#6366f1"
-              fillOpacity={0.3}
-              strokeWidth={2}
-              className="cursor-pointer"
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#1f2937',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#fff',
-              }}
-              formatter={(value) => [`${value} 分`, '评分']}
-              labelFormatter={(label) => `子维度: ${label}`}
-            />
-          </RadarChart>
-        </ResponsiveContainer>
+        {mounted ? (
+          (() => {
+            const {
+              RadarChart,
+              PolarGrid,
+              PolarAngleAxis,
+              PolarRadiusAxis,
+              Radar,
+              ResponsiveContainer,
+              Tooltip,
+            } = require('recharts');
+
+            return (
+              <ResponsiveContainer width="100%" height={220}>
+                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                  <PolarGrid stroke="#e5e7eb" />
+                  <PolarAngleAxis
+                    dataKey="name"
+                    tick={{ fill: '#374151', fontSize: 11, fontWeight: 500 }}
+                  />
+                  <PolarRadiusAxis
+                    angle={90}
+                    domain={[0, 100]}
+                    tick={{ fill: '#6b7280', fontSize: 10 }}
+                  />
+                  <Radar
+                    name={data.label}
+                    dataKey="score"
+                    stroke="#6366f1"
+                    fill="#6366f1"
+                    fillOpacity={0.3}
+                    strokeWidth={2}
+                    className="cursor-pointer"
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1f2937',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#fff',
+                    }}
+                    formatter={(value: number) => [`${value} 分`, '评分']}
+                    labelFormatter={(label: string) => `子维度: ${label}`}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            );
+          })()
+        ) : (
+          <div className="h-[220px] flex items-center justify-center">
+            <div className="text-gray-400 text-sm">加载图表...</div>
+          </div>
+        )}
       </div>
 
       {/* 点击提示 */}
