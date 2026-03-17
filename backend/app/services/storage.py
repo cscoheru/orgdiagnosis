@@ -74,13 +74,25 @@ class SupabaseStorage:
                     }
                 )
 
+                # 检查响应状态和内容
+                response_text = response.text
                 if response.status_code not in [200, 201]:
                     # Supabase 失败时，fallback 到 mock 模式
-                    logger.warning(f"Supabase 创建失败，使用 mock 模式: {response.text}")
+                    logger.warning(f"Supabase 创建失败 (status {response.status_code})，使用 mock 模式: {response_text}")
                     return self._create_mock_diagnosis(raw_input, data)
 
-                result = response.json()
-                return result[0] if isinstance(result, list) else result
+                # 检查响应内容是否包含错误
+                try:
+                    result = response.json()
+                    if isinstance(result, dict) and result.get("code"):
+                        # Supabase 返回了错误
+                        logger.warning(f"Supabase 返回错误，使用 mock 模式: {result}")
+                        return self._create_mock_diagnosis(raw_input, data)
+                    return result[0] if isinstance(result, list) else result
+                except:
+                    # JSON 解析失败，使用 mock 模式
+                    logger.warning(f"Supabase 响应解析失败，使用 mock 模式: {response_text}")
+                    return self._create_mock_diagnosis(raw_input, data)
 
         except Exception as e:
             # 网络错误时，fallback 到 mock 模式
