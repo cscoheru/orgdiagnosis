@@ -1,0 +1,359 @@
+{
+  "strategy": {
+    "label": "战略",
+    "description": "做正确的事",
+    "L2_categories": {
+      "business_status": {
+        "label": "业务现状",
+        "L3_items": {
+          "performance_gap": {
+            "label": "业绩差距",
+            "description": "实际财务指标与预期目标的差距"
+          },
+          "opportunity_gap": {
+            "label": "机会差距",
+            "description": "错失的新市场、新产品或新客户机会"
+          }
+        }
+      },
+      "strategic_planning": {
+        "label": "战略规划",
+        "L3_items": {
+          "market_insight": {
+            "label": "市场洞察",
+            "description": "宏观环境、竞争对手与客户需求分析"
+          },
+          "strategic_intent": {
+            "label": "战略意图",
+            "description": "企业愿景、使命与中长期战略目标"
+          },
+          "innovation_focus": {
+            "label": "创新焦点",
+            "description": "未来的业务增长引擎与核心技术布局"
+          },
+          "business_design": {
+            "label": "业务设计",
+            "description": "商业模式、价值主张与盈利逻辑"
+          }
+        }
+      },
+      "strategy_execution": {
+        "label": "战略执行",
+        "L3_items": {
+          "critical_tasks": {
+            "label": "关键任务",
+            "description": "支撑业务设计的必赢之战 (Must-win battles)"
+          },
+          "organizational_support": {
+            "label": "组织支撑",
+            "description": "组织阵型是否匹配关键任务"
+          },
+          "talent_readiness": {
+            "label": "人才准备",
+            "description": "核心岗位的人才数量与能力是否达标"
+          },
+          "corporate_culture": {
+            "label": "企业文化",
+            "description": "团队氛围与价值观是否支持战略落地"
+          }
+        }
+      },
+      "strategy_evaluation": {
+        "label": "战略评估",
+        "L3_items": {
+          "business_analysis": {
+            "label": "经营分析",
+            "description": "战略解码后的财务与运营指标监控"
+          },
+          "execution_evaluation": {
+            "label": "执行评价",
+            "description": "关键任务的里程碑与进度复盘"
+          },
+          "strategy_iteration": {
+            "label": "战略迭代",
+            "description": "面对市场变化的战略纠偏与调整机制"
+          }
+        }
+      }
+    }
+  },
+  "structure": {
+    "label": "组织",
+    "description": "提升系统运转效率",
+    "L2_categories": {
+      "organizational_structure": {
+        "label": "组织架构",
+        "L3_items": {
+          "structure_type": {
+            "label": "架构形态",
+            "description": "职能制、事业部制、矩阵制或敏捷团队的适配度"
+          },
+          "layers_and_span": {
+            "label": "管理层级与跨度",
+            "description": "管理扁平化程度与管理幅度是否合理"
+          },
+          "departmental_boundaries": {
+            "label": "部门职责边界",
+            "description": "是否存在职能重叠或灰色地带"
+          }
+        }
+      },
+      "authority_and_responsibility": {
+        "label": "权责分配",
+        "L3_items": {
+          "decision_mechanism": {
+            "label": "决策机制",
+            "description": "集权与分权的平衡，决策链路长短"
+          },
+          "delegation_system": {
+            "label": "授权体系",
+            "description": "人权、财权、事权的下放程度"
+          },
+          "role_definitions": {
+            "label": "岗位指引",
+            "description": "关键岗位的责权利定义是否清晰"
+          }
+        }
+      },
+      "collaboration_and_processes": {
+        "label": "协同流程",
+        "L3_items": {
+          "core_processes": {
+            "label": "核心业务流程",
+            "description": "端到端价值链的运转效率"
+          },
+          "cross_functional_collaboration": {
+            "label": "跨部门协同",
+            "description": "部门墙厚度与沟通摩擦力"
+          },
+          "process_digitalization": {
+            "label": "流程数字化",
+            "description": "IT系统与工具对流程的支撑度"
+          }
+        }
+      },
+      "organizational_effectiveness": {
+        "label": "组织效能",
+        "L3_items": {
+          "per_capita_efficiency": {
+            "label": "人效指标",
+            "description": "人均产值、人均利润等核心效能"
+          },
+          "agility": {
+            "label": "响应速度",
+            "description": "组织对市场需求和危机的响应与处理速度"
+          }
+        }
+      }
+    }
+  },
+  "performance": {
+    "label": "绩效",
+    "description": "明确指挥棒",
+    "L2_categories": {
+      "system_design": {
+        "label": "绩效体系设计",
+        "L3_items": {
+          "goal_setting_tools": {
+            "label": "目标设定工具",
+            "description": "KPI、OKR或BSC的选择与适配性"
+          },
+          "metric_cascading": {
+            "label": "指标分解机制",
+            "description": "公司目标向部门、个人的纵向承接"
+          },
+          "weights_and_standards": {
+            "label": "权重与标准",
+            "description": "考核指标的权重分配与挑战性(SMART原则)"
+          }
+        }
+      },
+      "process_management": {
+        "label": "过程管理",
+        "L3_items": {
+          "goal_tracking": {
+            "label": "目标跟进",
+            "description": "定期review机制（周报、月会）"
+          },
+          "performance_coaching": {
+            "label": "绩效辅导",
+            "description": "主管对下属的过程纠偏与资源赋能"
+          },
+          "data_collection": {
+            "label": "数据收集",
+            "description": "绩效考核数据的准确性与获取成本"
+          }
+        }
+      },
+      "appraisal_and_feedback": {
+        "label": "考核与反馈",
+        "L3_items": {
+          "appraisal_fairness": {
+            "label": "考核公平性",
+            "description": "绩效打分的客观性与强制分布机制"
+          },
+          "feedback_quality": {
+            "label": "面谈质量",
+            "description": "建设性反馈与改进计划的达成"
+          },
+          "grievance_mechanism": {
+            "label": "申诉机制",
+            "description": "员工对绩效结果的异议处理通道"
+          }
+        }
+      },
+      "result_application": {
+        "label": "结果应用",
+        "L3_items": {
+          "link_to_rewards": {
+            "label": "物质激励挂钩",
+            "description": "与奖金、调薪的强关联度"
+          },
+          "promotion_and_elimination": {
+            "label": "晋升与淘汰",
+            "description": "人才密度的维持（如末位淘汰/胜任力晋升）"
+          },
+          "link_to_learning_and_development": {
+            "label": "培训与发展",
+            "description": "针对绩效短板的针对性能力提升"
+          }
+        }
+      }
+    }
+  },
+  "compensation": {
+    "label": "薪酬",
+    "description": "提供核心动力",
+    "L2_categories": {
+      "compensation_strategy": {
+        "label": "薪酬策略",
+        "L3_items": {
+          "market_positioning": {
+            "label": "市场定位",
+            "description": "领先、跟随还是滞后策略（如P75分位水平）"
+          },
+          "fixed_vs_variable_mix": {
+            "label": "固浮比设计",
+            "description": "固定工资与浮动奖金的杠杆比例"
+          },
+          "internal_equity": {
+            "label": "内部公平性",
+            "description": "岗位价值评估体系与职级体系的科学性"
+          }
+        }
+      },
+      "compensation_structure": {
+        "label": "薪酬结构",
+        "L3_items": {
+          "base_pay": {
+            "label": "基本工资体系",
+            "description": "宽带薪酬设计与薪级薪档"
+          },
+          "short_term_incentives": {
+            "label": "短期激励",
+            "description": "提成、项目奖、年终奖机制"
+          },
+          "long_term_incentives": {
+            "label": "中长期激励",
+            "description": "股权、期权、利润分享或合伙人机制"
+          },
+          "benefits_and_allowances": {
+            "label": "弹性福利",
+            "description": "法定福利之外的关怀与津贴"
+          }
+        }
+      },
+      "management_and_budgeting": {
+        "label": "管理与预算",
+        "L3_items": {
+          "payroll_management": {
+            "label": "总额管控",
+            "description": "薪酬包（人力成本）占营收/利润的比例健康度"
+          },
+          "salary_adjustment": {
+            "label": "调薪机制",
+            "description": "基于绩效、通胀或晋升的动态调薪矩阵"
+          },
+          "pay_transparency": {
+            "label": "薪酬沟通",
+            "description": "薪酬制度的宣贯与保密/透明机制的管理"
+          }
+        }
+      }
+    }
+  },
+  "talent": {
+    "label": "人才",
+    "description": "打造核心资产",
+    "L2_categories": {
+      "planning_and_review": {
+        "label": "规划与盘点",
+        "L3_items": {
+          "competency_models": {
+            "label": "胜任力模型",
+            "description": "核心价值观、领导力与专业能力画像"
+          },
+          "talent_review": {
+            "label": "人才盘点机制",
+            "description": "九宫格落位，识别高潜人才(HiPo)与负资产"
+          },
+          "pipeline_health": {
+            "label": "梯队健康度",
+            "description": "关键岗位的继任者计划 (Succession Planning)"
+          }
+        }
+      },
+      "acquisition_and_allocation": {
+        "label": "获取与配置",
+        "L3_items": {
+          "employer_branding": {
+            "label": "雇主品牌",
+            "description": "对外吸引优秀人才的企业声誉"
+          },
+          "recruitment_precision": {
+            "label": "招聘精准度",
+            "description": "人岗匹配度与招聘渠道ROI"
+          },
+          "internal_mobility": {
+            "label": "内部流动",
+            "description": "活水机制与跨部门人才调动效率"
+          }
+        }
+      },
+      "training_and_development": {
+        "label": "培养与发展",
+        "L3_items": {
+          "onboarding": {
+            "label": "融入体系",
+            "description": "新员工/空降高管的着陆与文化融入"
+          },
+          "leadership_development": {
+            "label": "骨干培养",
+            "description": "管理干部与核心专家的训战结合体系"
+          },
+          "career_pathways": {
+            "label": "职业通道",
+            "description": "管理(M)与专业(P)双通道设计及晋升标准"
+          }
+        }
+      },
+      "retention_and_engagement": {
+        "label": "保留与激励",
+        "L3_items": {
+          "key_talent_turnover": {
+            "label": "核心流失率",
+            "description": "关键人才的离职率及真实离职原因管理"
+          },
+          "employee_engagement": {
+            "label": "员工敬业度",
+            "description": "团队士气、认同感与工作内驱力"
+          },
+          "non_financial_incentives": {
+            "label": "非物质激励",
+            "description": "荣誉、授权、成长空间等精神激励"
+          }
+        }
+      }
+    }
+  }
+}
