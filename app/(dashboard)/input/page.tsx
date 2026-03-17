@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { parseFile, getAcceptString, isFileTypeSupported, ParseResult, OCRProgressCallback } from '@/lib/file-parser';
+import { reliableFileUpload, isFileSupported, getSupportedFileTypes, type UploadResult } from '@/lib/reliable-upload';
 import { AudioRecorder, isSpeechRecognitionSupported, RecordingStatus } from '@/lib/audio-transcriber';
 
 export default function InputPage() {
@@ -10,8 +10,7 @@ export default function InputPage() {
   const [rawText, setRawText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [parseInfo, setParseInfo] = useState<ParseResult['metadata'] | null>(null);
-  const [ocrProgress, setOcrProgress] = useState<{ progress: number; status: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ progress: number; status: string } | null>(null);
 
   // 录音相关状态
   const [isRecording, setIsRecording] = useState(false);
@@ -71,47 +70,59 @@ export default function InputPage() {
     }
   };
 
+  // 可靠文件上传处理
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setError(null);
-    setParseInfo(null);
-    setOcrProgress(null);
+    setUploadProgress(null);
 
     // 检查文件类型
-    if (!isFileTypeSupported(file.name)) {
-      setError(`不支持的文件格式: ${file.name}`);
+    if (!isFileSupported(file.name)) {
+      setError(`不支持的文件格式: ${file.name}\n支持的格式: ${getSupportedFileTypes()}`);
       return;
     }
 
-    // 检查文件大小 (最大 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setError('文件大小超过 10MB 限制');
+    // 检查文件大小 (最大 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      setError('文件大小超过 20MB 限制');
       return;
     }
+
+    setIsLoading(true);
 
     try {
-      // OCR 进度回调
-      const onOCRProgress: OCRProgressCallback = (progress, status) => {
-        setOcrProgress({ progress, status });
-      };
+      const result = await reliableFileUpload(file, {
+        maxRetries: 3,
+        retryDelay: 1500,
+        onProgress: (progress, status) => {
+          setUploadProgress({ progress, status });
+        },
+        onRetry: (attempt, error) => {
+          console.log(`[Retry ${attempt}] ${error}`);
+        },
+      });
 
-      const result = await parseFile(file, onOCRProgress);
-
-      // 清除进度显示
-      setOcrProgress(null);
+      setUploadProgress(null);
 
       if (!result.success) {
-        setError(result.error || '文件解析失败');
+        setError(result.error || '文件处理失败');
         return;
       }
 
       setRawText(result.text);
-      setParseInfo(result.metadata);
+
+      // 显示处理信息
+      if (result.metadata) {
+        const info = `📄 ${result.metadata.fileName} (${(result.metadata.fileSize / 1024).toFixed(1)} KB)${result.metadata.isOCR ? ' · OCR 识别' : ''}`;
+        console.log(info);
+      }
     } catch (err) {
-      setOcrProgress(null);
+      setUploadProgress(null);
       setError('文件处理失败，请重试');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -173,7 +184,6 @@ export default function InputPage() {
 4. 薪酬层面：薪酬水平在行业中属于中游，但核心员工流失率较高。
 5. 人才层面：老员工混日子的情况比较严重，新员工留不住，去年入职的10个新人走了6个。`;
 
-  const displayText = rawText || interimText || recordedText;
   const fullTextLength = (recordedText + '\n' + rawText).trim().length;
 
   return (
@@ -232,9 +242,10 @@ export default function InputPage() {
               📎 上传文件
               <input
                 type="file"
-                accept={getAcceptString()}
+                accept={getSupportedFileTypes()}
                 onChange={handleFileUpload}
                 className="hidden"
+                disabled={isLoading}
               />
             </label>
           </div>
@@ -267,27 +278,17 @@ export default function InputPage() {
           </div>
         )}
 
-        {/* 文件解析信息 */}
-        {parseInfo && (
-          <div className="mb-3 p-2 bg-gray-50 rounded-lg text-sm text-gray-600">
-            📄 {parseInfo.fileName} ({(parseInfo.fileSize / 1024).toFixed(1)} KB)
-            {parseInfo.pageCount && ` · ${parseInfo.pageCount} 页`}
-            {parseInfo.sheetCount && ` · ${parseInfo.sheetCount} 个工作表`}
-            {parseInfo.isOCR && ` · OCR 识别`}
-          </div>
-        )}
-
-        {/* OCR 进度显示 */}
-        {ocrProgress && (
-          <div className="mb-3 p-3 bg-purple-50 rounded-lg">
+        {/* 上传进度 */}
+        {uploadProgress && (
+          <div className="mb-3 p-3 bg-indigo-50 rounded-lg">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-purple-600">{ocrProgress.status}</span>
-              <span className="text-sm text-purple-600">{ocrProgress.progress}%</span>
+              <span className="text-sm text-indigo-600">{uploadProgress.status}</span>
+              <span className="text-sm text-indigo-600">{uploadProgress.progress}%</span>
             </div>
-            <div className="w-full bg-purple-200 rounded-full h-2">
+            <div className="w-full bg-indigo-200 rounded-full h-2">
               <div
-                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${ocrProgress.progress}%` }}
+                className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress.progress}%` }}
               ></div>
             </div>
           </div>
@@ -298,10 +299,11 @@ export default function InputPage() {
           onChange={(e) => setRawText(e.target.value)}
           placeholder="粘贴会议记录、访谈文字或语音转写..."
           className="w-full h-80 p-4 border border-gray-200 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-700 placeholder:text-gray-400"
+          disabled={isLoading}
         />
 
         {error && (
-          <div className="mt-3 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+          <div className="mt-3 p-3 bg-red-50 text-red-600 rounded-lg text-sm whitespace-pre-line">
             ⚠️ {error}
           </div>
         )}
@@ -312,6 +314,7 @@ export default function InputPage() {
         <button
           onClick={() => setRawText(exampleText)}
           className="text-sm text-gray-500 hover:text-gray-700 underline"
+          disabled={isLoading}
         >
           使用示例文本
         </button>
@@ -331,7 +334,7 @@ export default function InputPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
-              AI 分析中...
+              {uploadProgress ? '处理中...' : 'AI 分析中...'}
             </span>
           ) : (
             '🚀 开始分析'
@@ -380,7 +383,7 @@ export default function InputPage() {
           </div>
         </div>
         <p className="mt-3 text-xs text-gray-500">
-          同时支持: .txt, .md, .csv, .json 等纯文本格式 · 图片和扫描件使用 OCR 自动识别
+          同时支持: .txt, .md, .csv, .json · 最大文件 20MB · 自动重试 3 次
         </p>
       </div>
 
@@ -392,6 +395,7 @@ export default function InputPage() {
           <li>• 多角度描述问题，包括战略、组织、绩效、薪酬、人才等方面</li>
           <li>• 可以包含多个会议或访谈的内容，AI 会自动识别和归类</li>
           <li>• 语音输入建议使用 Chrome 浏览器，识别效果最佳</li>
+          <li>• 如果上传失败，可以尝试复制文字直接粘贴</li>
         </ul>
       </div>
     </div>

@@ -26,6 +26,8 @@ export interface ParseResult {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -58,11 +60,13 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // 读取文件
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
     let result: ParseResult;
 
+    // 根据文件类型处理
     switch (extension) {
       case 'pdf':
         result = await parsePdf(buffer, metadata);
@@ -86,13 +90,28 @@ export async function POST(request: NextRequest) {
         };
     }
 
+    console.log(`[Parse File] ${fileName} processed in ${Date.now() - startTime}ms`);
+
     return NextResponse.json(result);
   } catch (error) {
     console.error('File parse error:', error);
+
+    // 区分错误类型
+    let errorMessage = '文件解析失败';
+    if (error instanceof Error) {
+      if (error.message.includes('timeout') || error.name === 'AbortError') {
+        errorMessage = '服务器处理超时，请尝试较小的文件';
+      } else if (error.message.includes('memory')) {
+        errorMessage = '文件过大，内存不足';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+
     return NextResponse.json<ParseResult>({
       success: false,
       text: '',
-      error: error instanceof Error ? error.message : '文件解析失败',
+      error: errorMessage,
     }, { status: 500 });
   }
 }
@@ -102,19 +121,18 @@ export async function POST(request: NextRequest) {
  */
 async function parsePdf(buffer: Buffer, metadata: any): Promise<ParseResult> {
   try {
-    // pdf-parse 的正确用法
     const data = await (pdfParse as any)(buffer, {
       ignoreEncryption: true,
+      max: 0, // 无限制
     });
 
     const text = data.text.trim();
 
-    // 如果文字太少，可能是扫描版
     if (text.length < 50) {
       return {
         success: false,
         text: '',
-        error: '此 PDF 文字内容过少，可能是扫描版。建议：1) 截图后以图片格式上传；2) 或手动复制文字内容',
+        error: '此 PDF 文字内容过少，可能是扫描版。建议截图后以图片格式上传',
         metadata: { ...metadata, pageCount: data.numpages },
       };
     }
@@ -125,16 +143,12 @@ async function parsePdf(buffer: Buffer, metadata: any): Promise<ParseResult> {
       metadata: { ...metadata, pageCount: data.numpages },
     };
   } catch (error: any) {
-    console.error('PDF parse error:', error);
-
-    // 更详细的错误信息
     let errorMessage = 'PDF 解析失败';
+
     if (error.message?.includes('password')) {
       errorMessage = '此 PDF 已加密，请先解除密码保护';
     } else if (error.message?.includes('Invalid PDF')) {
       errorMessage = '无效的 PDF 文件，请检查文件是否损坏';
-    } else if (error.message?.includes('cross stream')) {
-      errorMessage = 'PDF 格式不标准，建议用其他工具重新保存';
     }
 
     return {
@@ -163,7 +177,6 @@ async function parseDocx(buffer: Buffer, metadata: any): Promise<ParseResult> {
       };
     }
 
-    // 估算页数
     const pageCount = Math.ceil(text.length / 500);
 
     return {
@@ -175,7 +188,7 @@ async function parseDocx(buffer: Buffer, metadata: any): Promise<ParseResult> {
     return {
       success: false,
       text: '',
-      error: 'Word 文档解析失败，请确保是 .docx 格式（不支持旧版 .doc）',
+      error: 'Word 文档解析失败，请确保是 .docx 格式',
       metadata,
     };
   }
