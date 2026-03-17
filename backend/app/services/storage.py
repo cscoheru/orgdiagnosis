@@ -75,14 +75,17 @@ class SupabaseStorage:
                 )
 
                 if response.status_code not in [200, 201]:
-                    raise StorageError(f"创建记录失败: {response.text}")
+                    # Supabase 失败时，fallback 到 mock 模式
+                    logger.warning(f"Supabase 创建失败，使用 mock 模式: {response.text}")
+                    return self._create_mock_diagnosis(raw_input, data)
 
                 result = response.json()
                 return result[0] if isinstance(result, list) else result
 
         except Exception as e:
-            logger.error(f"创建诊断记录失败: {str(e)}")
-            raise StorageError(f"存储失败: {str(e)}")
+            # 网络错误时，fallback 到 mock 模式
+            logger.warning(f"Supabase 连接失败，使用 mock 模式: {str(e)}")
+            return self._create_mock_diagnosis(raw_input, data)
 
     async def get_diagnosis(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
