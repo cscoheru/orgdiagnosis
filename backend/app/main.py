@@ -77,7 +77,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # 注册路由
-app.include_router(api_router, prefix=settings.API_PREFIX)
+app.include_router(api_router, prefix="/api")
 
 
 # 健康检查

@@ -16,3 +16,14 @@ supabase
 python-dotenv==1.0.1
 tenacity==8.2.3
 loguru==0.7.2
+
+# LangChain 生态 (架构升级 2026-03-18)
+langchain==0.3.14
+langchain-openai==0.2.14
+langchain-community==0.3.14
+langgraph==0.2.59
+langchain-text-splitters==0.3.5
+chromadb==0.5.23
+pymupdf==1.25.3
+unstructured==0.16.12
+langgraph-checkpoint-sqlite==2.0.11

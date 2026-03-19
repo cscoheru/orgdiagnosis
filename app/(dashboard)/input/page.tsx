@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { reliableFileUpload, isFileSupported, getSupportedFileTypes, type UploadResult } from '@/lib/reliable-upload';
 import { AudioRecorder, isSpeechRecognitionSupported, RecordingStatus } from '@/lib/audio-transcriber';
-import { analyzeText, createDiagnosis } from '@/lib/api-config';
+import { submitAnalysis, submitFileAnalysis, pollUntilComplete, type TaskStatus } from '@/lib/langgraph-client';
 
 export default function InputPage() {
   const router = useRouter();
@@ -31,33 +31,38 @@ export default function InputPage() {
 
     setIsLoading(true);
     setError(null);
+    setUploadProgress({ progress: 0, status: '提交分析任务...' });
 
     try {
-      // 调用 Render 后端 API
-      const result = await analyzeText(fullText);
+      // 调用 LangGraph API
+      const { task_id } = await submitAnalysis(fullText);
+      setUploadProgress({ progress: 10, status: '任务已创建，开始分析...' });
 
-      if (!result.success) {
-        setError(result.error || '分析失败，请重试');
-        setIsLoading(false);
-        return;
-      }
+      // 轮询等待完成
+      const report = await pollUntilComplete(
+        task_id,
+        (status: TaskStatus) => {
+          const progress = Math.min(status.progress_percentage, 95);
+          const dimLabel = status.current_dimension || '准备中';
+          setUploadProgress({ progress, status: `正在分析: ${dimLabel} (${Math.round(progress)}%)` });
+        },
+        2000, // 2秒轮询
+        300000 // 5分钟超时
+      );
 
-      // 保存诊断结果
-      const savedSession = await createDiagnosis(fullText, result.data);
+      setUploadProgress({ progress: 100, status: '分析完成！' });
 
-      if (savedSession.success && savedSession.data?.id) {
-        router.push(`/result/${savedSession.data.id}`);
-      } else {
-        setError('保存失败，请重试');
-      }
+      // 跳转到结果页面 (使用 task_id 作为路由参数)
+      router.push(`/result/${task_id}`);
     } catch (err) {
-      setError('网络错误，请检查连接');
+      setError(err instanceof Error ? err.message : '分析失败，请重试');
+      setUploadProgress(null);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 可靠文件上传处理
+  // 可靠文件上传处理 - 直接上传文件到 LangGraph API
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -78,36 +83,32 @@ export default function InputPage() {
     }
 
     setIsLoading(true);
+    setUploadProgress({ progress: 5, status: '上传文件中...' });
 
     try {
-      const result = await reliableFileUpload(file, {
-        maxRetries: 3,
-        retryDelay: 1500,
-        onProgress: (progress, status) => {
-          setUploadProgress({ progress, status });
+      // 直接提交文件到 LangGraph API
+      const { task_id } = await submitFileAnalysis(file);
+      setUploadProgress({ progress: 15, status: '文件已上传，开始分析...' });
+
+      // 轮询等待完成
+      const report = await pollUntilComplete(
+        task_id,
+        (status: TaskStatus) => {
+          const progress = Math.min(status.progress_percentage, 95);
+          const dimLabel = status.current_dimension || '准备中';
+          setUploadProgress({ progress, status: `正在分析: ${dimLabel} (${Math.round(progress)}%)` });
         },
-        onRetry: (attempt, error) => {
-          console.log(`[Retry ${attempt}] ${error}`);
-        },
-      });
+        2000,
+        300000
+      );
 
-      setUploadProgress(null);
+      setUploadProgress({ progress: 100, status: '分析完成！' });
 
-      if (!result.success) {
-        setError(result.error || '文件处理失败');
-        return;
-      }
-
-      setRawText(result.text);
-
-      // 显示处理信息
-      if (result.metadata) {
-        const info = `📄 ${result.metadata.fileName} (${(result.metadata.fileSize / 1024).toFixed(1)} KB)${result.metadata.isOCR ? ' · OCR 识别' : ''}`;
-        console.log(info);
-      }
+      // 跳转到结果页面
+      router.push(`/result/${task_id}`);
     } catch (err) {
       setUploadProgress(null);
-      setError('文件处理失败，请重试');
+      setError(err instanceof Error ? err.message : '文件处理失败，请重试');
     } finally {
       setIsLoading(false);
     }
