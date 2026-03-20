@@ -115,8 +115,12 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
 
   // Auto-save to localStorage with debounce
   useEffect(() => {
-    // Don't save if form is empty
-    const hasData = formData.client_name || formData.industry_background || formData.company_intro;
+    // Don't save if form is empty (check more fields)
+    const hasData = formData.client_name ||
+                    formData.industry_background ||
+                    formData.company_intro ||
+                    formData.core_pain_points?.some(p => p.trim()) ||
+                    formData.project_goals?.some(g => g.trim());
     if (!hasData) return;
 
     // Clear previous timeout
@@ -127,13 +131,15 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
     // Set new timeout for debounced save
     saveTimeoutRef.current = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        const saveData = {
           data: formData,
           timestamp: Date.now(),
-        }));
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
         setLastSaved(new Date());
+        console.log('[AutoSave] Form data saved:', saveData.data.client_name || 'unnamed');
       } catch (e) {
-        console.warn('Failed to save form data:', e);
+        console.error('[AutoSave] Failed to save form data:', e);
       }
     }, AUTOSAVE_DELAY);
 
@@ -200,6 +206,9 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
           main_tasks: result.extracted_data.main_tasks?.length > 0
             ? result.extracted_data.main_tasks
             : prev.main_tasks,
+          success_criteria: result.extracted_data.success_criteria?.length > 0
+            ? result.extracted_data.success_criteria
+            : prev.success_criteria,
         }));
         setShowExtractModal(false);
         setExtractText('');
