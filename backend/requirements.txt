@@ -29,7 +29,7 @@ unstructured==0.16.12
 langgraph-checkpoint-sqlite==2.0.11
 
 # LlamaIndex 生态 (Phase 1 - 2026-03-20)
-llama-index==0.10.67
+llama-index==0.10.68
 llama-index-readers-file==0.1.33
 llama-index-vector-stores-chroma==0.1.21
 llama-index-embeddings-dashscope==0.1.3
