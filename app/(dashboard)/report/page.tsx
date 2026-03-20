@@ -35,17 +35,18 @@ export default function ReportPage() {
           setProgress(Math.min(30 + taskStatus.progress_percentage * 0.3, 60));
           if (taskStatus.status === 'generating_outline') {
             setStatus('正在生成大纲...');
-          } else if (taskStatus.status === 'outline_ready') {
-            setStatus('大纲生成完成，跳转到编辑页面...');
-            setProgress(70);
+          } else if (taskStatus.status === 'outline_ready' || taskStatus.status === 'completed') {
+            setStatus('生成完成，跳转到编辑页面...');
+            setProgress(90);
           }
         },
         2000,
         300000 // 5 minutes timeout
       );
 
-      if (result.status === 'outline_ready') {
+      if (result.status === 'outline_ready' || result.status === 'completed') {
         setProgress(100);
+        setStatus('生成完成，跳转到编辑页面...');
         // Navigate to workspace for outline review
         router.push(`/report/workspace?task_id=${task_id}`);
       } else if (result.status === 'failed') {
