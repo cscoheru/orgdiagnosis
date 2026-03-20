@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ClientRequirement } from '@/lib/report-api';
 
 interface PhaseItem {
@@ -16,6 +16,10 @@ interface RequirementFormProps {
   isLoading?: boolean;
   initialData?: Partial<ClientRequirement>;
 }
+
+const STORAGE_KEY = 'requirement_form_draft';
+const AUTOSAVE_DELAY = 1000; // 1 second debounce
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const INDUSTRY_OPTIONS = [
   '制造业',
@@ -35,32 +39,177 @@ const PAIN_SEVERITY_OPTIONS = [
   { value: 'low', label: '低 - 优化建议' },
 ];
 
+const DEFAULT_FORM_DATA: ClientRequirement = {
+  client_name: '',
+  industry: '',
+  industry_background: '',
+  company_intro: '',
+  company_scale: '',
+  core_pain_points: [''],
+  pain_severity: 'medium',
+  project_goals: [''],
+  success_criteria: [''],
+  phase_planning: [{
+    phase_id: 'phase_1',
+    phase_name: '诊断阶段',
+    duration_weeks: 4,
+    key_activities: [''],
+    deliverables: [''],
+  }],
+  main_tasks: [''],
+  deliverables: [''],
+  gantt_chart_data: [],
+  five_d_diagnosis: undefined,
+};
+
 export default function RequirementForm({ onSubmit, isLoading, initialData }: RequirementFormProps) {
   const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState<ClientRequirement>({
-    client_name: initialData?.client_name || '',
-    industry: initialData?.industry || '',
-    industry_background: initialData?.industry_background || '',
-    company_intro: initialData?.company_intro || '',
-    company_scale: initialData?.company_scale || '',
-    core_pain_points: initialData?.core_pain_points || [''],
-    pain_severity: initialData?.pain_severity || 'medium',
-    project_goals: initialData?.project_goals || [''],
-    success_criteria: initialData?.success_criteria || [''],
-    phase_planning: initialData?.phase_planning || [{
-      phase_id: 'phase_1',
-      phase_name: '诊断阶段',
-      duration_weeks: 4,
-      key_activities: [''],
-      deliverables: [''],
-    }],
-    main_tasks: initialData?.main_tasks || [''],
-    deliverables: initialData?.deliverables || [''],
-    gantt_chart_data: initialData?.gantt_chart_data || [],
-    five_d_diagnosis: initialData?.five_d_diagnosis,
+  const [formData, setFormData] = useState<ClientRequirement>(() => {
+    // Try to load from localStorage first
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Check if saved data is recent (within 24 hours)
+          if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+            return { ...DEFAULT_FORM_DATA, ...parsed.data };
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load saved form data:', e);
+      }
+    }
+    return { ...DEFAULT_FORM_DATA, ...initialData };
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showRestoreNotice, setShowRestoreNotice] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Smart extraction state
+  const [showExtractModal, setShowExtractModal] = useState(false);
+  const [extractText, setExtractText] = useState('');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+          // Check if there's meaningful data
+          const hasData = parsed.data.client_name || parsed.data.industry_background;
+          if (hasData) {
+            setShowRestoreNotice(true);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to check saved data:', e);
+    }
+  }, []);
+
+  // Auto-save to localStorage with debounce
+  useEffect(() => {
+    // Don't save if form is empty
+    const hasData = formData.client_name || formData.industry_background || formData.company_intro;
+    if (!hasData) return;
+
+    // Clear previous timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced save
+    saveTimeoutRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          data: formData,
+          timestamp: Date.now(),
+        }));
+        setLastSaved(new Date());
+      } catch (e) {
+        console.warn('Failed to save form data:', e);
+      }
+    }, AUTOSAVE_DELAY);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [formData]);
+
+  // Clear saved data
+  const clearSavedData = useCallback(() => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      setFormData(DEFAULT_FORM_DATA);
+      setStep(1);
+      setShowRestoreNotice(false);
+      setLastSaved(null);
+    } catch (e) {
+      console.warn('Failed to clear saved data:', e);
+    }
+  }, []);
+
+  // Dismiss restore notice
+  const dismissRestoreNotice = useCallback(() => {
+    setShowRestoreNotice(false);
+  }, []);
+
+  // Smart extract from text
+  const handleSmartExtract = useCallback(async () => {
+    if (!extractText.trim()) {
+      setExtractError('请输入需求描述文本');
+      return;
+    }
+
+    setIsExtracting(true);
+    setExtractError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/requirement/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: extractText }),
+      });
+
+      if (!response.ok) {
+        throw new Error('提取失败，请稍后重试');
+      }
+
+      const result = await response.json();
+
+      if (result.extracted_data) {
+        // Merge extracted data with existing form data
+        setFormData(prev => ({
+          ...prev,
+          ...result.extracted_data,
+          // Preserve arrays if extracted data is empty
+          core_pain_points: result.extracted_data.core_pain_points?.length > 0
+            ? result.extracted_data.core_pain_points
+            : prev.core_pain_points,
+          project_goals: result.extracted_data.project_goals?.length > 0
+            ? result.extracted_data.project_goals
+            : prev.project_goals,
+          main_tasks: result.extracted_data.main_tasks?.length > 0
+            ? result.extracted_data.main_tasks
+            : prev.main_tasks,
+        }));
+        setShowExtractModal(false);
+        setExtractText('');
+      }
+    } catch (err) {
+      setExtractError(err instanceof Error ? err.message : '提取失败');
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [extractText]);
 
   // Update text field
   const updateField = (field: keyof ClientRequirement, value: string) => {
@@ -183,6 +332,14 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
           deliverables: phase.deliverables.filter(d => d.trim()),
         })),
       };
+
+      // Clear saved draft after successful submission
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        console.warn('Failed to clear saved draft:', e);
+      }
+
       onSubmit(cleanedData);
     }
   };
@@ -678,11 +835,73 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
   );
 
   return (
+  <>
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Restore notice */}
+      {showRestoreNotice && (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-blue-700">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>已恢复上次未完成的表单数据</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={clearSavedData}
+              className="text-sm text-red-600 hover:text-red-700 font-medium"
+            >
+              清除并重新开始
+            </button>
+            <button
+              type="button"
+              onClick={dismissRestoreNotice}
+              className="text-sm text-blue-600 hover:text-blue-700"
+            >
+              继续
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Autosave indicator */}
+      {lastSaved && !showRestoreNotice && (
+        <div className="bg-gray-50 border-b border-gray-200 px-6 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            <span>已自动保存</span>
+          </div>
+          <button
+            type="button"
+            onClick={clearSavedData}
+            className="text-xs text-gray-400 hover:text-red-500"
+          >
+            清除缓存
+          </button>
+        </div>
+      )}
+
       {/* Progress indicator */}
       <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">步骤 {step} / 4</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">步骤 {step} / 4</span>
+            {step === 1 && (
+              <button
+                type="button"
+                onClick={() => setShowExtractModal(true)}
+                className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                智能提取
+              </button>
+            )}
+          </div>
           <span className="text-sm text-gray-500">{Math.round((step / 4) * 100)}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
@@ -739,5 +958,72 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         )}
       </div>
     </div>
+
+    {/* Smart Extract Modal */}
+    {showExtractModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">智能提取需求信息</h3>
+            <button
+              type="button"
+              onClick={() => setShowExtractModal(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <p className="text-sm text-gray-600 mb-4">
+            粘贴您的需求描述文本，AI将自动识别并提取关键信息填充到表单中。
+          </p>
+
+          <textarea
+            value={extractText}
+            onChange={(e) => setExtractText(e.target.value)}
+            rows={10}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            placeholder={`示例：
+客户是一家成立于2018年的科技公司，目前有200多名员工。
+主要问题：
+1. 战略层面：公司去年营收增长8%，远低于预期的15%。
+2. 组织层面：公司采用职能制架构，但部门墙很厚，跨部门协作经常出问题。
+3. 绩效层面：使用KPI考核，但指标分解不够科学，员工普遍反映考核不公平。
+项目目标：
+1. 明确公司未来3年的战略方向
+2. 优化组织架构，提升跨部门协作效率
+3. 建立科学的绩效管理体系`}
+          />
+
+          {extractError && (
+            <p className="mt-2 text-sm text-red-500">{extractError}</p>
+          )}
+
+          <div className="flex justify-end gap-3 mt-4">
+            <button
+              type="button"
+              onClick={() => setShowExtractModal(false)}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleSmartExtract}
+              disabled={isExtracting || !extractText.trim()}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isExtracting && (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              )}
+              {isExtracting ? '提取中...' : '开始提取'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }
