@@ -11,6 +11,7 @@ interface DashboardLayoutProps {
 const navigation = [
   { name: '新建诊断', href: '/input', icon: '📝' },
   { name: '诊断结果', href: '/result', icon: '📊' },
+  { name: '报告生成', href: '/report', icon: '📑' },
   { name: '历史记录', href: '/history', icon: '📁' },
 ];
 

@@ -1,0 +1,92 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e7]: ◈
+          - generic [ref=e8]:
+            - heading "五维诊断" [level=1] [ref=e9]
+            - paragraph [ref=e10]: 企业组织健康度评估
+        - navigation [ref=e11]:
+          - link "📝 新建诊断" [ref=e12] [cursor=pointer]:
+            - /url: /input
+            - generic [ref=e13]: 📝
+            - generic [ref=e14]: 新建诊断
+          - link "📊 诊断结果" [ref=e15] [cursor=pointer]:
+            - /url: /result
+            - generic [ref=e16]: 📊
+            - generic [ref=e17]: 诊断结果
+          - link "📑 报告生成" [ref=e18] [cursor=pointer]:
+            - /url: /report
+            - generic [ref=e19]: 📑
+            - generic [ref=e20]: 报告生成
+          - link "📁 历史记录" [ref=e21] [cursor=pointer]:
+            - /url: /history
+            - generic [ref=e22]: 📁
+            - generic [ref=e23]: 历史记录
+        - paragraph [ref=e25]: Powered by 智谱 GLM-4
+    - main [ref=e26]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - heading "项目建议书生成" [level=1] [ref=e30]
+          - paragraph [ref=e31]: 填写客户需求信息，AI 将自动生成专业的项目建议书
+        - generic [ref=e32]:
+          - generic [ref=e34]:
+            - generic [ref=e35]: 步骤 1 / 4
+            - generic [ref=e36]: 25%
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - heading "基本信息" [level=3] [ref=e42]
+              - paragraph [ref=e43]: 填写客户的基本信息和背景
+            - generic [ref=e44]:
+              - generic [ref=e45]:
+                - generic [ref=e46]: 客户名称 *
+                - textbox "例如：某某科技有限公司" [ref=e47]
+              - generic [ref=e48]:
+                - generic [ref=e49]: 行业类型 *
+                - combobox [ref=e50]:
+                  - option "请选择行业" [selected]
+                  - option "制造业"
+                  - option "零售"
+                  - option "金融"
+                  - option "科技"
+                  - option "医疗"
+                  - option "教育"
+                  - option "房地产"
+                  - option "其他"
+              - generic [ref=e51]:
+                - generic [ref=e52]: 公司规模
+                - textbox "例如：500-1000人" [ref=e53]
+              - generic [ref=e54]:
+                - generic [ref=e55]: 行业背景 *
+                - textbox "描述客户所在行业的发展趋势、竞争格局、市场机遇等..." [ref=e56]
+                - paragraph [ref=e58]: 0字
+              - generic [ref=e59]:
+                - generic [ref=e60]: 公司介绍 *
+                - textbox "客户公司的基本情况、主营业务、发展历程、组织架构等..." [ref=e61]
+                - paragraph [ref=e63]: 0字
+          - generic [ref=e64]:
+            - button "上一步" [disabled] [ref=e65]
+            - button "下一步" [ref=e66]
+        - generic [ref=e67]:
+          - heading "填写提示" [level=3] [ref=e68]
+          - list [ref=e69]:
+            - listitem [ref=e70]:
+              - generic [ref=e71]: •
+              - generic [ref=e72]: 行业背景和公司介绍越详细，生成的大纲越精准
+            - listitem [ref=e73]:
+              - generic [ref=e74]: •
+              - generic [ref=e75]: 核心痛点建议每个20-100字，清晰描述具体问题
+            - listitem [ref=e76]:
+              - generic [ref=e77]: •
+              - generic [ref=e78]: 项目目标建议使用 SMART 原则：具体、可衡量、可实现、相关性、时限性
+            - listitem [ref=e79]:
+              - generic [ref=e80]: •
+              - generic [ref=e81]: 生成大纲后可以编辑修改，然后再生成详细内容
+  - button "Open Next.js Dev Tools" [ref=e87] [cursor=pointer]:
+    - img [ref=e88]
+  - alert [ref=e91]
+```

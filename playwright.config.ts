@@ -7,6 +7,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
+  timeout: 60000, // 60 seconds default timeout
   use: {
     baseURL: process.env.FRONTEND_URL || 'http://localhost:3000',
     trace: 'on-first-retry',
@@ -14,7 +15,12 @@ export default defineConfig({
   projects: [
     {
       name: 'API Tests',
-      testMatch: /.*api\.spec\.ts/,
+      testMatch: /.*-api\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'UI Tests',
+      testMatch: /.*-ui\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
   ],
