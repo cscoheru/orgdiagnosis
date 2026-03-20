@@ -38,12 +38,16 @@ class ReportWorkflowManager:
         """初始化工作流管理器"""
         self.workflow = self._create_workflow()
         self.memory_saver = MemorySaver()
-        self.app = self.workflow.compile(checkpointer=self.memory_saver)
+        # 使用 interrupt_before 在确认节点前暂停
+        self.app = self.workflow.compile(
+            checkpointer=self.memory_saver,
+            interrupt_before=["confirm_outline", "confirm_slides"]  # ⭐ 关键：在这些节点前中断
+        )
 
         # 任务状态存储 (生产环境应使用数据库)
         self._tasks: Dict[str, ReportState] = {}
 
-        logger.info("ReportWorkflowManager initialized")
+        logger.info("ReportWorkflowManager initialized with interrupt points")
 
     def _create_workflow(self) -> StateGraph:
         """创建工作流图"""
@@ -59,7 +63,7 @@ class ReportWorkflowManager:
         # 定义入口
         workflow.set_entry_point("generate_outline")
 
-        # 定义边
+        # 定义边 - 线性流程
         workflow.add_edge("generate_outline", "confirm_outline")
         workflow.add_edge("confirm_outline", "generate_slides")
         workflow.add_edge("generate_slides", "confirm_slides")
@@ -76,12 +80,7 @@ class ReportWorkflowManager:
         """
         启动新的报告生成任务
 
-        Args:
-            requirement: ClientRequirement 数据
-            five_d_diagnosis: 可选的五维诊断数据
-
-        Returns:
-            task_id: 任务ID
+        工作流会在 confirm_outline 节点前暂停（因为 interrupt_before=["confirm_outline"]）
         """
         task_id = str(uuid.uuid4())
 
@@ -95,7 +94,7 @@ class ReportWorkflowManager:
         # 存储任务状态
         self._tasks[task_id] = initial_state
 
-        # 运行到第一个中断点
+        # 运行工作流 - 会在 confirm_outline 前暂停
         result = self.app.invoke(
             initial_state,
             config={"configurable": {"thread_id": task_id}}
@@ -127,19 +126,14 @@ class ReportWorkflowManager:
         """
         确认大纲并继续生成内容
 
-        Args:
-            task_id: 任务ID
-            modified_outline: 修改后的大纲 (可选)
-
-        Returns:
-            是否成功
+        从中断点恢复，执行 confirm_outline -> generate_slides -> 在 confirm_slides 前暂停
         """
         task = self._tasks.get(task_id)
         if not task:
             logger.error(f"Task {task_id} not found")
             return False
 
-        if task["status"] != WorkflowStatus.OUTLINE_READY:
+        if task["status"] != WorkflowStatus.OUTLINE_READY.value:
             logger.error(f"Task {task_id} not in OUTLINE_READY status: {task['status']}")
             return False
 
@@ -147,7 +141,7 @@ class ReportWorkflowManager:
         if modified_outline:
             task = update_state(task, outline=modified_outline)
 
-        # 继续工作流
+        # 继续工作流 - 从 confirm_outline 执行到 generate_slides，然后在 confirm_slides 前暂停
         result = self.app.invoke(
             task,
             config={"configurable": {"thread_id": task_id}}
@@ -174,19 +168,14 @@ class ReportWorkflowManager:
         """
         确认内容并导出 PPTX
 
-        Args:
-            task_id: 任务ID
-            modified_slides: 修改后的内容 (可选)
-
-        Returns:
-            是否成功
+        从中断点恢复，执行 confirm_slides -> export_pptx -> END
         """
         task = self._tasks.get(task_id)
         if not task:
             logger.error(f"Task {task_id} not found")
             return False
 
-        if task["status"] != WorkflowStatus.SLIDES_READY:
+        if task["status"] != WorkflowStatus.SLIDES_READY.value:
             logger.error(f"Task {task_id} not in SLIDES_READY status: {task['status']}")
             return False
 
@@ -194,7 +183,7 @@ class ReportWorkflowManager:
         if modified_slides:
             task = update_state(task, slides=modified_slides)
 
-        # 继续工作流
+        # 继续工作流 - 执行到结束
         result = self.app.invoke(
             task,
             config={"configurable": {"thread_id": task_id}}

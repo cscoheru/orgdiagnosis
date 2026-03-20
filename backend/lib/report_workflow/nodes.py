@@ -159,7 +159,7 @@ def confirm_outline_node(state: ReportState) -> ReportState:
 
     用户确认或修改大纲后，进入内容生成阶段。
     """
-    logger.info(f"[{state['task_id']}] Outline confirmed")
+    logger.info(f"[{state['task_id']}] Outline confirmed by user")
 
     from datetime import datetime
     return update_state(
@@ -167,7 +167,7 @@ def confirm_outline_node(state: ReportState) -> ReportState:
         status=WorkflowStatus.GENERATING_SLIDES,
         outline_confirmed=True,
         outline_confirmed_at=datetime.now().isoformat(),
-        progress_percentage=30.0,
+        progress_percentage=35.0,  # 开始生成内容
     )
 
 
