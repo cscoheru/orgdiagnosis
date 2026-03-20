@@ -52,13 +52,21 @@ async def extract_requirement(request: ExtractRequirementRequest):
     - 项目目标
     - 等结构化信息
     """
-    from openai import OpenAI
-
     try:
-        client = OpenAI(
-            api_key=os.getenv("ANTHROPIC_API_KEY"),
-            base_url=os.getenv("ANTHROPIC_BASE_URL"),
-        )
+        # Use DashScope API directly
+        import dashscope
+        from dashscope import Generation
+
+        dashscope_api_key = os.getenv("DASHSCOPE_API_KEY")
+
+        if not dashscope_api_key:
+            logger.warning("DASHSCOPE_API_KEY not configured")
+            return ExtractRequirementResponse(
+                success=False,
+                error="AI服务未配置，请联系管理员"
+            )
+
+        dashscope.api_key = dashscope_api_key
 
         system_prompt = """你是一个专业的需求分析助手。请从用户提供的文本中提取以下信息，并以JSON格式返回：
 
@@ -80,17 +88,38 @@ async def extract_requirement(request: ExtractRequirementRequest):
 - 如果信息不够完整，根据上下文合理推断
 - 返回纯JSON，不要有其他说明文字"""
 
-        response = client.chat.completions.create(
-            model=os.getenv("ANTHROPIC_MODEL", "qwen3.5-plus"),
+        user_message = f"请从以下文本中提取需求信息：\n\n{request.text}"
+
+        response = Generation.call(
+            model='qwen-plus',
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"请从以下文本中提取需求信息：\n\n{request.text}"}
+                {"role": "user", "content": user_message}
             ],
             temperature=0.3,
             max_tokens=2000,
+            result_format='message',
         )
 
-        content = response.choices[0].message.content.strip()
+        logger.debug(f"DashScope Response: {response}")
+
+        if response.status_code != 200:
+            logger.error(f"DashScope API error: {response.code} - {response.message}")
+            return ExtractRequirementResponse(
+                success=False,
+                error=f"AI服务错误: {response.message}"
+            )
+
+        content = response.output.choices[0].message.content
+
+        if not content:
+            logger.error("DashScope returned empty content")
+            return ExtractRequirementResponse(
+                success=False,
+                error="AI服务返回空内容"
+            )
+
+        content = content.strip()
 
         # Try to parse JSON from the response
         # Handle potential markdown code blocks
@@ -114,8 +143,22 @@ async def extract_requirement(request: ExtractRequirementRequest):
             success=False,
             error="解析失败，请重试或手动填写"
         )
+    except ImportError:
+        logger.error("DashScope library not installed")
+        return ExtractRequirementResponse(
+            success=False,
+            error="AI服务库未安装"
+        )
     except Exception as e:
         logger.error(f"Requirement extraction failed: {e}")
+        return ExtractRequirementResponse(
+            success=False,
+            error=f"提取失败: {str(e)}"
+        )
+        return ExtractRequirementResponse(
+            success=False,
+            error=f"提取失败: {str(e)}"
+        )
         return ExtractRequirementResponse(
             success=False,
             error=str(e)
