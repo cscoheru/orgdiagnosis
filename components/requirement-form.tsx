@@ -18,6 +18,7 @@ interface RequirementFormProps {
 }
 
 const STORAGE_KEY = 'requirement_form_draft';
+const EXTRACT_TEXT_KEY = 'requirement_extract_text'; // 缓存提取文本
 const AUTOSAVE_DELAY = 1000; // 1 second debounce
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -90,9 +91,20 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
 
   // Smart extraction state
   const [showExtractModal, setShowExtractModal] = useState(false);
-  const [extractText, setExtractText] = useState('');
+  const [extractText, setExtractText] = useState(() => {
+    // Load cached extraction text
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem(EXTRACT_TEXT_KEY) || '';
+      } catch (e) {
+        return '';
+      }
+    }
+    return '';
+  });
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -137,6 +149,7 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
         setLastSaved(new Date());
+        setSaveStatus('saved');
         console.log('[AutoSave] Form data saved:', saveData.data.client_name || 'unnamed');
       } catch (e) {
         console.error('[AutoSave] Failed to save form data:', e);
@@ -148,6 +161,35 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         clearTimeout(saveTimeoutRef.current);
       }
     };
+  }, [formData]);
+
+  // Cache extraction text
+  useEffect(() => {
+    if (extractText) {
+      try {
+        localStorage.setItem(EXTRACT_TEXT_KEY, extractText);
+      } catch (e) {
+        console.warn('Failed to cache extraction text:', e);
+      }
+    }
+  }, [extractText]);
+
+  // Manual save function
+  const handleManualSave = useCallback(() => {
+    setSaveStatus('saving');
+    try {
+      const saveData = {
+        data: formData,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
+      setLastSaved(new Date());
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Manual save failed:', e);
+      setSaveStatus('idle');
+    }
   }, [formData]);
 
   // Clear saved data
@@ -211,7 +253,7 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
             : prev.success_criteria,
         }));
         setShowExtractModal(false);
-        setExtractText('');
+        // Keep the extraction text cached for future use (don't clear)
       }
     } catch (err) {
       setExtractError(err instanceof Error ? err.message : '提取失败');
@@ -930,7 +972,7 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
       </div>
 
       {/* Navigation */}
-      <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between">
+      <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
         <button
           type="button"
           onClick={handleBack}
@@ -943,6 +985,31 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         >
           上一步
         </button>
+
+        {/* Save status indicator */}
+        <div className="flex items-center gap-3">
+          {saveStatus === 'saving' && (
+            <span className="text-xs text-blue-500">保存中...</span>
+          )}
+          {saveStatus === 'saved' && (
+            <span className="text-xs text-green-500 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              已保存
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleManualSave}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
+            保存草稿
+          </button>
+        </div>
 
         {step < 4 ? (
           <button
@@ -974,19 +1041,34 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         <div className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">智能提取需求信息</h3>
-            <button
-              type="button"
-              onClick={() => setShowExtractModal(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              {extractText && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExtractText('');
+                    localStorage.removeItem(EXTRACT_TEXT_KEY);
+                  }}
+                  className="text-sm text-gray-400 hover:text-red-500"
+                >
+                  清除
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowExtractModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <p className="text-sm text-gray-600 mb-4">
             粘贴您的需求描述文本，AI将自动识别并提取关键信息填充到表单中。
+            {extractText && <span className="text-blue-500 ml-1">(已自动恢复上次输入)</span>}
           </p>
 
           <textarea
