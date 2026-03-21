@@ -14,7 +14,6 @@ import {
   useEdgesState,
   BackgroundVariant,
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
 
 import ShapeNode from './nodes/shape-node';
 import TextNode from './nodes/text-node';
