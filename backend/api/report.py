@@ -99,6 +99,19 @@ class ConfirmPageTitlesRequest(BaseModel):
     modified_page_titles: Optional[List[Dict[str, Any]]] = None
 
 
+class ExportPptxRequest(BaseModel):
+    """导出 PPTX 请求"""
+    template_id: str
+    slide_layouts: List[Dict[str, str]]  # [{slide_id, layout_id}, ...]
+
+
+class ExportPptxResponse(BaseModel):
+    """导出 PPTX 响应"""
+    success: bool
+    download_url: str
+    message: str
+
+
 # === API Endpoints ===
 
 @router.post("/start", response_model=StartReportResponse)
@@ -307,6 +320,91 @@ async def export_pptx(task_id: str):
         filename=f"consulting_report_{task_id}.pptx",
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
+
+
+@router.post("/export/{task_id}", response_model=ExportPptxResponse)
+async def export_pptx_with_options(task_id: str, request: ExportPptxRequest):
+    """
+    导出 PPTX 文件 (带模板和布局选项)
+
+    接受模板ID和幻灯片布局配置，生成 PPTX 并返回下载链接。
+    支持在 slides_ready 或 completed 状态调用。
+    """
+    from lib.report_workflow import get_workflow_manager, WorkflowStatus
+    from lib.storage.task_store import get_task_store
+    from services.pptx_renderer import create_presentation
+    from datetime import datetime
+    from pathlib import Path
+
+    manager = get_workflow_manager()
+    task = manager.get_task_status(task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    # Accept both slides_ready and completed status
+    valid_statuses = [
+        WorkflowStatus.SLIDES_READY.value,
+        WorkflowStatus.COMPLETED.value,
+    ]
+    if task["status"] not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"内容尚未就绪，当前状态: {task['status']}"
+        )
+
+    try:
+        # Get slides from task
+        slides = task.get("slides", [])
+        if not slides:
+            raise HTTPException(status_code=400, detail="没有可导出的幻灯片内容")
+
+        # Apply layout assignments to slides
+        layout_map = {item["slide_id"]: item["layout_id"] for item in request.slide_layouts}
+        for slide in slides:
+            if slide.get("slide_id") in layout_map:
+                slide["layout"] = layout_map[slide["slide_id"]]
+
+        # Get requirement for client name
+        requirement = task.get("requirement", {})
+        client_name = requirement.get("client_name", "客户")
+
+        # Create output directory
+        backend_dir = Path(__file__).parent.parent
+        output_dir = backend_dir / "output" / "pptx"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate PPTX
+        pptx_path = create_presentation(
+            slides=slides,
+            report_id=task_id,
+            client_name=client_name,
+            output_dir=str(output_dir),
+            template_id=request.template_id,
+        )
+
+        # Update task state with pptx_path using task store
+        task_store = get_task_store()
+        task_data = task_store.get_task(task_id)
+        if task_data:
+            state = task_data.get("state", task)
+            state["pptx_path"] = pptx_path
+            state["status"] = WorkflowStatus.COMPLETED.value
+            state["exported_at"] = datetime.now().isoformat()
+            task_store.update_task(task_id, state)
+
+        # Build download URL
+        download_url = f"/api/report/export/{task_id}"
+
+        return ExportPptxResponse(
+            success=True,
+            download_url=download_url,
+            message="PPTX 导出成功"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to export PPTX: {e}")
+        raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
 
 
 @router.get("/tasks")

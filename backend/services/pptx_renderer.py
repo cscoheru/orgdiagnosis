@@ -359,7 +359,8 @@ def create_presentation(
     slides: List[Dict[str, Any]],
     report_id: str,
     client_name: str,
-    output_dir: str = "./output/pptx"
+    output_dir: str = "./output/pptx",
+    template_id: Optional[str] = None,
 ) -> str:
     """
     创建演示文稿的便捷函数
@@ -369,9 +370,11 @@ def create_presentation(
         report_id: 报告ID
         client_name: 客户名称
         output_dir: 输出目录
+        template_id: 模板ID (用于未来模板支持)
 
     Returns:
         生成的 PPTX 文件路径
     """
+    logger.info(f"Creating presentation with template_id: {template_id}")
     renderer = PPTXRenderer(output_dir=output_dir)
     return renderer.render_report(slides, report_id, client_name)
