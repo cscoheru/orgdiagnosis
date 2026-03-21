@@ -64,6 +64,41 @@ class ConfirmSlidesRequest(BaseModel):
     modified_slides: Optional[List[Dict[str, Any]]] = None
 
 
+# === Multi-Level Expansion Models ===
+
+class ModulesResponse(BaseModel):
+    """模块列表响应"""
+    task_id: str
+    modules: List[Dict[str, Any]]
+    total_modules: int
+
+
+class ConfirmModulesRequest(BaseModel):
+    """确认模块请求"""
+    task_id: str
+    modified_modules: Optional[List[Dict[str, Any]]] = None
+
+
+class PageTitlesResponse(BaseModel):
+    """页面标题列表响应"""
+    task_id: str
+    page_titles: List[Dict[str, Any]]
+    total_pages: int
+
+
+class ModulesResponse(BaseModel):
+    """模块列表响应"""
+    task_id: str
+    modules: List[Dict[str, Any]]
+    total_modules: int
+
+
+class ConfirmPageTitlesRequest(BaseModel):
+    """确认页面标题请求"""
+    task_id: str
+    modified_page_titles: Optional[List[Dict[str, Any]]] = None
+
+
 # === API Endpoints ===
 
 @router.post("/start", response_model=StartReportResponse)
@@ -78,7 +113,7 @@ async def start_report(request: StartReportRequest):
 
     try:
         manager = get_workflow_manager()
-        task_id = manager.start_task(
+        task_id = await manager.start_task(
             requirement=request.requirement,
             five_d_diagnosis=request.five_d_diagnosis
         )
@@ -160,7 +195,7 @@ async def confirm_outline(request: ConfirmOutlineRequest):
 
     manager = get_workflow_manager()
 
-    success = manager.confirm_outline(
+    success = await manager.confirm_outline(
         task_id=request.task_id,
         modified_outline=request.modified_outline
     )
@@ -193,7 +228,12 @@ async def get_slides(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    if task["status"] != WorkflowStatus.SLIDES_READY.value:
+    # Accept both SLIDES_READY and COMPLETED status
+    valid_statuses = [
+        WorkflowStatus.SLIDES_READY.value,
+        WorkflowStatus.COMPLETED.value,
+    ]
+    if task["status"] not in valid_statuses:
         raise HTTPException(
             status_code=400,
             detail=f"内容尚未就绪，当前状态: {task['status']}"
@@ -219,7 +259,7 @@ async def confirm_slides(request: ConfirmSlidesRequest):
 
     manager = get_workflow_manager()
 
-    success = manager.confirm_slides(
+    success = await manager.confirm_slides(
         task_id=request.task_id,
         modified_slides=request.modified_slides
     )
@@ -306,4 +346,151 @@ async def cancel_task(task_id: str):
         "success": True,
         "task_id": task_id,
         "message": "任务已取消"
+    }
+
+
+# === Multi-Level Expansion Endpoints ===
+
+@router.get("/modules/{task_id}", response_model=ModulesResponse)
+async def get_modules(task_id: str):
+    """
+    获取生成的模块列表 (Multi-Level Expansion Step 1)
+
+    返回已生成的模块列表，只要模块已生成即可获取（不限于 MODULES_READY 状态）。
+    """
+    from lib.report_workflow import get_workflow_manager, WorkflowStatus
+
+    manager = get_workflow_manager()
+    task = manager.get_task_status(task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    # Allow fetching modules at any stage after they've been generated
+    # (not just MODULES_READY status)
+    modules = task.get("modules", [])
+
+    if not modules:
+        # Only error if modules haven't been generated yet
+        valid_statuses = [
+            WorkflowStatus.MODULES_READY.value,
+            WorkflowStatus.GENERATING_PAGE_TITLES.value,
+            WorkflowStatus.PAGE_TITLES_READY.value,
+            WorkflowStatus.GENERATING_SLIDES.value,
+            WorkflowStatus.SLIDES_READY.value,
+            WorkflowStatus.COMPLETED.value,
+        ]
+        if task["status"] not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"模块尚未生成，当前状态: {task['status']}"
+            )
+
+    return ModulesResponse(
+        task_id=task_id,
+        modules=modules,
+        total_modules=len(modules),
+    )
+
+
+@router.post("/confirm-modules")
+async def confirm_modules(request: ConfirmModulesRequest):
+    """
+    确认模块 (Multi-Level Expansion Step 1)
+
+    用户确认或修改模块后，继续生成页面标题。
+    """
+    from lib.report_workflow import get_workflow_manager
+
+    manager = get_workflow_manager()
+
+    success = await manager.confirm_modules(
+        task_id=request.task_id,
+        modified_modules=request.modified_modules
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="无法确认模块，请检查任务状态"
+        )
+
+    return {
+        "success": True,
+        "task_id": request.task_id,
+        "message": "模块已确认，页面标题生成中..."
+    }
+
+
+@router.get("/page-titles/{task_id}", response_model=PageTitlesResponse)
+async def get_page_titles(task_id: str):
+    """
+    获取生成的页面标题列表 (Multi-Level Expansion Step 2)
+
+    返回已生成的页面标题列表，只要页面标题已生成即可获取（不限于 PAGE_TITLES_READY 状态）。
+    """
+    from lib.report_workflow import get_workflow_manager, WorkflowStatus
+
+    manager = get_workflow_manager()
+    task = manager.get_task_status(task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    # Allow fetching page titles at any stage after they've been generated
+    page_titles = task.get("page_titles", [])
+
+    if not page_titles:
+        # Only error if page titles haven't been generated yet
+        valid_statuses = [
+            WorkflowStatus.PAGE_TITLES_READY.value,
+            WorkflowStatus.GENERATING_SLIDES.value,
+            WorkflowStatus.SLIDES_READY.value,
+            WorkflowStatus.COMPLETED.value,
+        ]
+        if task["status"] not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"页面标题尚未生成，当前状态: {task['status']}"
+            )
+
+    return PageTitlesResponse(
+        task_id=task_id,
+        page_titles=page_titles,
+        total_pages=len(page_titles),
+    )
+
+    return PageTitlesResponse(
+        task_id=task_id,
+        page_titles=page_titles,
+        total_pages=len(page_titles),
+    )
+
+
+@router.post("/confirm-page-titles")
+async def confirm_page_titles(request: ConfirmPageTitlesRequest):
+    """
+    确认页面标题 (Multi-Level Expansion Step 2)
+
+    用户确认或修改页面标题后，继续生成幻灯片内容。
+    """
+    from lib.report_workflow import get_workflow_manager
+
+    manager = get_workflow_manager()
+
+    success = await manager.confirm_page_titles(
+        task_id=request.task_id,
+        modified_page_titles=request.modified_page_titles
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="无法确认页面标题，请检查任务状态"
+        )
+
+    return {
+        "success": True,
+        "task_id": request.task_id,
+        "message": "页面标题已确认，内容生成中..."
     }

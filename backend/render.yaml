@@ -16,7 +16,7 @@ services:
       - key: DEEPSEEK_API_KEY
         sync: false
       - key: CORS_ORIGINS
-        value: "https://org-diagnosis.vercel.app,http://localhost:3000"
-    healthCheckPath: /api/health
+        value: "*"
+    healthCheckPath: /health
     # 免费层启动时间较长
     numReplicas: 1
