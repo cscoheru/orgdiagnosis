@@ -13,7 +13,7 @@ import {
   useNodesState,
   useEdgesState,
   BackgroundVariant,
-} from '@xyflow/react';
+} from 'reactflow';
 
 import './reactflow.css';
 

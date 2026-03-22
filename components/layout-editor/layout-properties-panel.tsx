@@ -1,6 +1,6 @@
 'use client';
 
-import { Node } from '@xyflow/react';
+import { Node } from 'reactflow';
 
 interface PropertiesPanelProps {
   selectedNode: Node | null;

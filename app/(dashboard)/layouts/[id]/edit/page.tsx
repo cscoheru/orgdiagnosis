@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Node, Edge, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange } from '@xyflow/react';
+import { Node, Edge, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange } from 'reactflow';
 import LayoutCanvas from '@/components/layout-editor/layout-canvas';
 import LayoutToolbar from '@/components/layout-editor/layout-toolbar';
 import PropertiesPanel from '@/components/layout-editor/layout-properties-panel';
