@@ -15,6 +15,8 @@ interface RequirementFormProps {
   onSubmit: (requirement: ClientRequirement) => void;
   isLoading?: boolean;
   initialData?: Partial<ClientRequirement>;
+  /** Project-based auto-save callback (saves to database instead of localStorage) */
+  onAutoSave?: (data: ClientRequirement, step: number) => Promise<void>;
 }
 
 const STORAGE_KEY = 'requirement_form_draft';
@@ -63,30 +65,48 @@ const DEFAULT_FORM_DATA: ClientRequirement = {
   five_d_diagnosis: undefined,
 };
 
-export default function RequirementForm({ onSubmit, isLoading, initialData }: RequirementFormProps) {
+export default function RequirementForm({ onSubmit, isLoading, initialData, onAutoSave }: RequirementFormProps) {
   const [step, setStep] = useState(1);
+
+  // Track if draft was auto-restored
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Initialize with default + initialData (no localStorage access during SSR)
   const [formData, setFormData] = useState<ClientRequirement>(() => {
-    // Try to load from localStorage first
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          // Check if saved data is recent (within 24 hours)
-          if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-            return { ...DEFAULT_FORM_DATA, ...parsed.data };
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to load saved form data:', e);
-      }
-    }
     return { ...DEFAULT_FORM_DATA, ...initialData };
   });
 
+  // Load draft from localStorage after mount (client-side only)
+  useEffect(() => {
+    setMounted(true);
+
+    // Skip if initialData is provided (project-based form)
+    if (initialData) return;
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Check if saved data is recent (within 72 hours for better UX)
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 72 * 60 * 60 * 1000) {
+          // Check if there's meaningful data
+          const hasData = parsed.data.client_name || parsed.data.industry_background;
+          if (hasData) {
+            setFormData({ ...DEFAULT_FORM_DATA, ...parsed.data });
+            setDraftRestored(true);
+            setLastSaved(new Date(parsed.timestamp));
+            console.log('[DraftStorage] Auto-restored draft from', new Date(parsed.timestamp).toLocaleString());
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load saved form data:', e);
+    }
+  }, [initialData]);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [showRestoreNotice, setShowRestoreNotice] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Smart extraction state
@@ -106,26 +126,7 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
   const [extractError, setExtractError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-          // Check if there's meaningful data
-          const hasData = parsed.data.client_name || parsed.data.industry_background;
-          if (hasData) {
-            setShowRestoreNotice(true);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to check saved data:', e);
-    }
-  }, []);
-
-  // Auto-save to localStorage with debounce
+  // Auto-save to localStorage with debounce (or database if onAutoSave provided)
   useEffect(() => {
     // Don't save if form is empty (check more fields)
     const hasData = formData.client_name ||
@@ -141,18 +142,28 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
     }
 
     // Set new timeout for debounced save
-    saveTimeoutRef.current = setTimeout(() => {
+    saveTimeoutRef.current = setTimeout(async () => {
       try {
-        const saveData = {
-          data: formData,
-          timestamp: Date.now(),
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
-        setLastSaved(new Date());
-        setSaveStatus('saved');
-        console.log('[AutoSave] Form data saved:', saveData.data.client_name || 'unnamed');
+        if (onAutoSave) {
+          // Save to database via project API
+          await onAutoSave(formData, step);
+          setLastSaved(new Date());
+          setSaveStatus('saved');
+          console.log('[AutoSave] Form data saved to database:', formData.client_name || 'unnamed');
+        } else {
+          // Fallback to localStorage
+          const saveData = {
+            data: formData,
+            timestamp: Date.now(),
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
+          setLastSaved(new Date());
+          setSaveStatus('saved');
+          console.log('[AutoSave] Form data saved to localStorage:', saveData.data.client_name || 'unnamed');
+        }
       } catch (e) {
         console.error('[AutoSave] Failed to save form data:', e);
+        setSaveStatus('idle');
       }
     }, AUTOSAVE_DELAY);
 
@@ -161,7 +172,7 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [formData]);
+  }, [formData, step, onAutoSave]);
 
   // Cache extraction text
   useEffect(() => {
@@ -198,16 +209,11 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
       localStorage.removeItem(STORAGE_KEY);
       setFormData(DEFAULT_FORM_DATA);
       setStep(1);
-      setShowRestoreNotice(false);
+      setDraftRestored(false);
       setLastSaved(null);
     } catch (e) {
       console.warn('Failed to clear saved data:', e);
     }
-  }, []);
-
-  // Dismiss restore notice
-  const dismissRestoreNotice = useCallback(() => {
-    setShowRestoreNotice(false);
   }, []);
 
   // Smart extract from text
@@ -368,7 +374,9 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
   };
 
   const handleSubmit = () => {
+    console.log('[Form] handleSubmit called, step:', step);
     if (validateStep()) {
+      console.log('[Form] Validation passed, cleaning data...');
       // Clean up empty items
       const cleanedData: ClientRequirement = {
         ...formData,
@@ -384,14 +392,10 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         })),
       };
 
-      // Clear saved draft after successful submission
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch (e) {
-        console.warn('Failed to clear saved draft:', e);
-      }
-
+      console.log('[Form] Calling onSubmit with cleaned data');
       onSubmit(cleanedData);
+    } else {
+      console.log('[Form] Validation failed, errors:', errors);
     }
   };
 
@@ -888,14 +892,17 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
   return (
   <>
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      {/* Restore notice */}
-      {showRestoreNotice && (
-        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-blue-700">
+      {/* Draft restored notice */}
+      {draftRestored && (
+        <div className="bg-green-50 border-b border-green-200 px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-green-700">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>已恢复上次未完成的表单数据</span>
+            <span>
+              已自动恢复草稿
+              {mounted && lastSaved && <span className="text-green-600 ml-1">({lastSaved.toLocaleString()})</span>}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -907,17 +914,17 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
             </button>
             <button
               type="button"
-              onClick={dismissRestoreNotice}
-              className="text-sm text-blue-600 hover:text-blue-700"
+              onClick={() => setDraftRestored(false)}
+              className="text-sm text-green-600 hover:text-green-700"
             >
-              继续
+              关闭
             </button>
           </div>
         </div>
       )}
 
       {/* Autosave indicator */}
-      {lastSaved && !showRestoreNotice && (
+      {lastSaved && !draftRestored && (
         <div className="bg-gray-50 border-b border-gray-200 px-6 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
@@ -1022,7 +1029,10 @@ export default function RequirementForm({ onSubmit, isLoading, initialData }: Re
         ) : (
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={() => {
+              console.log('[Form] 生成报告 button clicked, step:', step, 'isLoading:', isLoading);
+              handleSubmit();
+            }}
             disabled={isLoading}
             className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
