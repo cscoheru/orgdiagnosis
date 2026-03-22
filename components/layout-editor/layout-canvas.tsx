@@ -15,6 +15,8 @@ import {
   BackgroundVariant,
 } from '@xyflow/react';
 
+import './reactflow.css';
+
 import ShapeNode from './nodes/shape-node';
 import TextNode from './nodes/text-node';
 import SlotNode from './nodes/slot-node';
