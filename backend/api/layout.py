@@ -764,3 +764,166 @@ async def analyze_content(request: IntelligentSelectionRequest):
     except Exception as e:
         logger.error(f"Content analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# === PPTX Rendering Endpoints ===
+
+class SlideData(BaseModel):
+    """Single slide data"""
+    title: str
+    key_message: Optional[str] = None
+    bullets: List[str] = []
+    layout: Optional[str] = "auto"  # "auto" for intelligent selection
+    context: Optional[dict] = None
+    source_ref: Optional[str] = None
+
+
+class RenderRequest(BaseModel):
+    """Request for PPTX rendering"""
+    slides: List[SlideData]
+    report_id: str
+    client_name: str
+    theme_id: str = "blue_professional"
+    auto_layout: bool = True
+
+
+class RenderResponse(BaseModel):
+    """Response for PPTX rendering"""
+    success: bool
+    file_path: Optional[str] = None
+    slides_count: int
+    theme_used: str
+    layouts_used: List[dict]
+    message: str
+
+
+@router.post("/render", response_model=RenderResponse)
+async def render_presentation(request: RenderRequest):
+    """
+    Render a complete PPTX presentation with intelligent layout selection.
+
+    This endpoint uses the enhanced PPTXRendererV2 with:
+    - Automatic layout selection based on content analysis
+    - Professional theme support
+    - Visual element rendering (charts, shapes, diagrams)
+
+    Args:
+        request: Contains slides data, report info, and rendering options
+
+    Returns:
+        Path to generated PPTX file and layout information
+    """
+    try:
+        from services.pptx_renderer_v2 import PPTXRendererV2
+
+        # Convert slides to dict format
+        slides_data = [slide.dict() for slide in request.slides]
+
+        # Initialize renderer
+        renderer = PPTXRendererV2(
+            theme_id=request.theme_id,
+            auto_layout=request.auto_layout
+        )
+
+        # Render
+        output_path = renderer.render_report(
+            slides=slides_data,
+            report_id=request.report_id,
+            client_name=request.client_name,
+            use_intelligent_selection=request.auto_layout
+        )
+
+        # Collect layout info
+        layouts_used = []
+        for slide in slides_data:
+            layouts_used.append({
+                "title": slide.get("title", "")[:50],
+                "layout": slide.get("layout", "auto"),
+                "confidence": slide.get("layout_confidence"),
+                "reason": slide.get("layout_reason")
+            })
+
+        return RenderResponse(
+            success=True,
+            file_path=output_path,
+            slides_count=len(slides_data),
+            theme_used=request.theme_id,
+            layouts_used=layouts_used,
+            message=f"成功生成 {len(slides_data)} 页演示文稿"
+        )
+
+    except Exception as e:
+        logger.error(f"PPTX rendering failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/render/preview/{layout_id}")
+async def preview_layout(layout_id: str, element_count: int = 4):
+    """
+    Get a preview description of a layout.
+
+    Returns information about how a layout would render with given elements.
+
+    Args:
+        layout_id: Layout identifier
+        element_count: Number of content elements
+    """
+    try:
+        from lib.layout.template_manager import get_template_manager
+
+        manager = get_template_manager()
+        layout = manager.get_layout(layout_id)
+
+        if not layout:
+            raise HTTPException(status_code=404, detail=f"Layout not found: {layout_id}")
+
+        # Build preview description
+        preview = {
+            "layout_id": layout_id,
+            "layout_name": layout.layout_name,
+            "category": layout.category,
+            "description": layout.description,
+            "element_count_range": list(layout.element_count_range),
+            "fits_element_count": layout.element_count_range[0] <= element_count <= layout.element_count_range[1],
+            "render_hints": []
+        }
+
+        # Add render hints based on layout type
+        if layout.category == "KEY_INSIGHT":
+            preview["render_hints"] = [
+                "大字居中显示核心观点",
+                "适合强调单一重要信息",
+                "建议文字控制在50字以内"
+            ]
+        elif layout.category == "PARALLEL":
+            preview["render_hints"] = [
+                f"使用{min(element_count, 6)}个并列卡片展示",
+                "每个要点独立成块",
+                "支持图标或数字标记"
+            ]
+        elif layout.category == "PROCESS":
+            preview["render_hints"] = [
+                "流程图形式展示",
+                "箭头连接各步骤",
+                "支持水平或垂直排列"
+            ]
+        elif layout.category == "MATRIX":
+            preview["render_hints"] = [
+                "2x2或3x3矩阵布局",
+                "四象限风格展示",
+                "适合对比分析内容"
+            ]
+        elif layout.category == "TIMELINE":
+            preview["render_hints"] = [
+                "时间线形式展示",
+                "里程碑节点标记",
+                "按时间顺序排列"
+            ]
+
+        return preview
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Layout preview failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -36,6 +36,15 @@ from .intelligent_selector import (
     get_layout_selector,
 )
 
+from .visual_elements import (
+    ShapeFactory,
+    ChartBuilder,
+    LayoutRenderer,
+    ColorScheme,
+    Position,
+    get_layout_renderer,
+)
+
 __all__ = [
     # Semantic Router
     "SemanticRouter",
@@ -58,4 +67,11 @@ __all__ = [
     "LayoutRecommendation",
     "LayoutSelectionResult",
     "get_layout_selector",
+    # Visual Elements
+    "ShapeFactory",
+    "ChartBuilder",
+    "LayoutRenderer",
+    "ColorScheme",
+    "Position",
+    "get_layout_renderer",
 ]

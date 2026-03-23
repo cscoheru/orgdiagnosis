@@ -100,6 +100,35 @@ def init_unified_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id)")
 
         # ============================================================
+        # 文件表 - 存储文件元数据
+        # ============================================================
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS files (
+                id TEXT PRIMARY KEY,
+                folder_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+                filename TEXT NOT NULL,
+                file_type TEXT,
+                minio_path TEXT NOT NULL,
+                size INTEGER,
+                metadata TEXT,
+                source_type TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id)")
+
+        # FTS5 全文搜索
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS files_search USING fts5(
+                file_id,
+                filename,
+                content,
+                tokenize='unicode61'
+            )
+        """)
+
+        # ============================================================
         # 诊断会话表 - 链接到项目
         # ============================================================
         cursor.execute("""
