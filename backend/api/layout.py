@@ -450,3 +450,227 @@ async def delete_template(template_id: str):
         "success": True,
         "message": f"Template {template_id} deleted"
     }
+
+
+# === Theme Management Endpoints ===
+
+class ThemeInfo(BaseModel):
+    """Information about a theme"""
+    theme_id: str
+    theme_name: str
+    style: str
+    color: str
+    primary_color: str
+    secondary_color: str
+    accent_color: str
+    description: str
+    preview_url: Optional[str] = None
+
+
+class ThemeListResponse(BaseModel):
+    """Response with all available themes"""
+    themes: List[ThemeInfo]
+    total: int
+
+
+class LayoutMatchRequest(BaseModel):
+    """Request for intelligent layout matching"""
+    element_count: int
+    relationship: str = "parallel"  # parallel, sequential, matrix, temporal, hierarchical, contrast
+    context: Optional[dict] = None
+
+
+class LayoutMatchResponse(BaseModel):
+    """Response with matched layout"""
+    primary_layout_id: str
+    primary_layout_name: str
+    primary_layout_description: str
+    alternative_layout_ids: List[str]
+    matched_category: str
+
+
+@router.get("/themes", response_model=ThemeListResponse)
+async def list_themes():
+    """
+    List all available themes.
+
+    Returns all theme configurations with their color schemes and styles.
+    """
+    try:
+        from lib.layout.template_manager import get_template_manager
+
+        manager = get_template_manager()
+        themes = manager.get_all_themes()
+
+        theme_infos = []
+        for theme in themes:
+            theme_infos.append(ThemeInfo(
+                theme_id=theme.theme_id,
+                theme_name=theme.theme_name,
+                style=theme.style.value,
+                color=theme.color.value,
+                primary_color=theme.primary_color,
+                secondary_color=theme.secondary_color,
+                accent_color=theme.accent_color,
+                description=theme.description,
+                preview_url=theme.preview_url if hasattr(theme, 'preview_url') else None
+            ))
+
+        return ThemeListResponse(
+            themes=theme_infos,
+            total=len(theme_infos)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to list themes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/themes/{theme_id}")
+async def get_theme(theme_id: str):
+    """
+    Get a specific theme by ID.
+
+    Args:
+        theme_id: Theme identifier (e.g., "blue_professional")
+    """
+    try:
+        from lib.layout.template_manager import get_template_manager
+
+        manager = get_template_manager()
+        theme = manager.get_theme(theme_id)
+
+        if not theme:
+            raise HTTPException(status_code=404, detail=f"Theme not found: {theme_id}")
+
+        return {
+            "theme_id": theme.theme_id,
+            "theme_name": theme.theme_name,
+            "style": theme.style.value,
+            "color": theme.color.value,
+            "colors": {
+                "primary": theme.primary_color,
+                "secondary": theme.secondary_color,
+                "accent": theme.accent_color,
+                "text": theme.text_color,
+                "background": theme.background_color
+            },
+            "font_family": theme.font_family,
+            "description": theme.description
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get theme: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/match", response_model=LayoutMatchResponse)
+async def match_layout_intelligent(request: LayoutMatchRequest):
+    """
+    Intelligently match the best layout for content.
+
+    Analyzes element count and content relationship to recommend
+    the most appropriate layout.
+
+    Args:
+        element_count: Number of content elements
+        relationship: Content relationship type
+            - parallel: Side-by-side elements
+            - sequential: Step-by-step process
+            - matrix: 2D grid (SWOT, BCG)
+            - temporal: Time-based (timeline, gantt)
+            - hierarchical: Pyramid/tree structure
+            - contrast: Comparison/contrast
+
+    Returns:
+        Primary layout recommendation with alternatives
+    """
+    try:
+        from lib.layout.template_manager import get_template_manager
+
+        manager = get_template_manager()
+
+        # Get layout match
+        primary_id, alternatives = manager.match_layout(
+            element_count=request.element_count,
+            relationship=request.relationship,
+            context=request.context
+        )
+
+        # Get layout details
+        primary_layout = manager.get_layout(primary_id)
+
+        return LayoutMatchResponse(
+            primary_layout_id=primary_id,
+            primary_layout_name=primary_layout.layout_name if primary_layout else primary_id,
+            primary_layout_description=primary_layout.description if primary_layout else "",
+            alternative_layout_ids=alternatives,
+            matched_category=primary_layout.category if primary_layout else "PARALLEL"
+        )
+
+    except Exception as e:
+        logger.error(f"Layout matching failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/layouts/extended")
+async def get_extended_layouts():
+    """
+    Get all extended layouts from the template manager.
+
+    Returns layouts organized by category with full metadata.
+    """
+    try:
+        from lib.layout.template_manager import get_template_manager
+
+        manager = get_template_manager()
+        layouts = manager.get_all_layouts()
+
+        # Group by category
+        layouts_by_category: dict = {}
+        for layout in layouts:
+            category = layout.category
+            if category not in layouts_by_category:
+                layouts_by_category[category] = []
+            layouts_by_category[category].append({
+                "layout_id": layout.layout_id,
+                "layout_name": layout.layout_name,
+                "description": layout.description,
+                "element_count_range": list(layout.element_count_range),
+                "keywords": layout.keywords,
+                "params": layout.params
+            })
+
+        # Category labels
+        category_labels = {
+            "KEY_INSIGHT": "核心观点",
+            "PARALLEL": "并列布局",
+            "MATRIX": "矩阵布局",
+            "PROCESS": "流程布局",
+            "TIMELINE": "时间线",
+            "TABLE": "表格/对比",
+            "DATA_VIZ": "数据可视化",
+            "HIERARCHY": "层级结构",
+            "SECTION": "章节分隔",
+            "TITLE": "封面/标题"
+        }
+
+        result = []
+        for category, cat_layouts in layouts_by_category.items():
+            result.append({
+                "category_id": category,
+                "category_label": category_labels.get(category, category),
+                "layouts": cat_layouts,
+                "count": len(cat_layouts)
+            })
+
+        return {
+            "categories": result,
+            "total_layouts": sum(len(cat["layouts"]) for cat in result)
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get extended layouts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
