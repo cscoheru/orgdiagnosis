@@ -14,6 +14,11 @@ export default function DOCXPreview({ url, onError }: DOCXPreviewProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Check if running in browser
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     let mounted = true;
 
     async function loadDOCX() {
@@ -31,7 +36,7 @@ export default function DOCXPreview({ url, onError }: DOCXPreviewProps) {
 
         const arrayBuffer = await response.arrayBuffer();
 
-        // Dynamic import to avoid SSR issues
+        // Dynamic import to avoid SSR issues - only in browser
         const docx = await import('docx-preview');
 
         if (!containerRef.current || !mounted) return;
