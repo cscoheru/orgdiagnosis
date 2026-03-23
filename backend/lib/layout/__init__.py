@@ -4,7 +4,7 @@ Layout Module
 Provides semantic routing, layout management, and template management for slide generation.
 
 Created: 2026-03-21
-Updated: 2026-03-23 - Added TemplateManager for intelligent layout system
+Updated: 2026-03-23 - Added TemplateManager, ContentAnalyzer, IntelligentLayoutSelector
 """
 
 from .semantic_router import (
@@ -21,6 +21,21 @@ from .template_manager import (
     get_template_manager,
 )
 
+from .content_analyzer import (
+    ContentAnalyzer,
+    ContentAnalysisResult,
+    ContentRelationship,
+    TextDensity,
+    get_content_analyzer,
+)
+
+from .intelligent_selector import (
+    IntelligentLayoutSelector,
+    LayoutRecommendation,
+    LayoutSelectionResult,
+    get_layout_selector,
+)
+
 __all__ = [
     # Semantic Router
     "SemanticRouter",
@@ -32,4 +47,15 @@ __all__ = [
     "ThemeStyle",
     "ThemeColor",
     "get_template_manager",
+    # Content Analyzer
+    "ContentAnalyzer",
+    "ContentAnalysisResult",
+    "ContentRelationship",
+    "TextDensity",
+    "get_content_analyzer",
+    # Intelligent Selector
+    "IntelligentLayoutSelector",
+    "LayoutRecommendation",
+    "LayoutSelectionResult",
+    "get_layout_selector",
 ]

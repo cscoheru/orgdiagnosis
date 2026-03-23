@@ -674,3 +674,93 @@ async def get_extended_layouts():
     except Exception as e:
         logger.error(f"Failed to get extended layouts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Intelligent Selection Endpoint ===
+
+class IntelligentSelectionRequest(BaseModel):
+    """Request for intelligent layout selection"""
+    title: str
+    key_message: str
+    bullets: List[str]
+    context: Optional[dict] = None
+    preferred_category: Optional[str] = None
+
+
+class IntelligentSelectionResponse(BaseModel):
+    """Response for intelligent layout selection"""
+    primary: dict
+    alternatives: List[dict]
+    analysis: dict
+    theme_suggestion: str
+
+
+@router.post("/select/intelligent", response_model=IntelligentSelectionResponse)
+async def select_layout_intelligent(request: IntelligentSelectionRequest):
+    """
+    Intelligently select the best layout for the given content.
+
+    This endpoint uses the ContentAnalyzer and IntelligentLayoutSelector
+    to provide smart layout recommendations.
+
+    Args:
+        request: Contains title, key_message, bullets, and optional context
+
+    Returns:
+        - primary: Best layout recommendation
+        - alternatives: Alternative layout options
+        - analysis: Detailed content analysis
+        - theme_suggestion: Recommended theme
+    """
+    try:
+        from lib.layout.intelligent_selector import get_layout_selector
+
+        selector = get_layout_selector()
+
+        result = selector.select(
+            title=request.title,
+            key_message=request.key_message,
+            bullets=request.bullets,
+            context=request.context,
+            preferred_category=request.preferred_category
+        )
+
+        return IntelligentSelectionResponse(
+            primary=result.primary.to_dict(),
+            alternatives=[a.to_dict() for a in result.alternatives],
+            analysis=result.analysis.to_dict(),
+            theme_suggestion=result.theme_suggestion
+        )
+
+    except Exception as e:
+        logger.error(f"Intelligent layout selection failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/analyze")
+async def analyze_content(request: IntelligentSelectionRequest):
+    """
+    Analyze content without selecting a layout.
+
+    Returns only the analysis result for cases where
+    you want to understand the content before layout selection.
+    """
+    try:
+        from lib.layout.content_analyzer import get_content_analyzer
+
+        analyzer = get_content_analyzer()
+
+        analysis = analyzer.analyze(
+            title=request.title,
+            key_message=request.key_message,
+            bullets=request.bullets,
+            context=request.context
+        )
+
+        return {
+            "analysis": analysis.to_dict()
+        }
+
+    except Exception as e:
+        logger.error(f"Content analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
