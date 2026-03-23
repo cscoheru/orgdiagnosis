@@ -12,6 +12,7 @@ Created: 2026-03-22
 """
 
 import os
+import io
 import tempfile
 import uuid
 import shutil
@@ -19,18 +20,22 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from loguru import logger
 
+# MinIO storage
+from lib.storage.minio_client import (
+    upload_file,
+    download_file,
+    get_file_url,
+    delete_file,
+    file_exists
+)
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge-v2"])
-
-# 文件存储目录
-STORAGE_DIR = Path(__file__).parent.parent / "storage" / "documents"
-STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ==================== Pydantic 模型 ====================
@@ -190,19 +195,37 @@ async def upload_document(
             detail=f"不支持的文件格式: {ext}。支持: PPTX, PDF, DOCX, XLSX, MD, JSON, PNG, JPG"
         )
 
-    # 保存文件到永久存储
+    # 保存文件到 MinIO
     content = await file.read()
     doc_id = str(uuid.uuid4())
     storage_filename = f"{doc_id}{ext}"
-    storage_path = STORAGE_DIR / storage_filename
+    minio_object_name = f"documents/{storage_filename}"
 
-    with open(storage_path, "wb") as f:
-        f.write(content)
-
+    # 上传到 MinIO
     try:
+        upload_file(
+            file_data=content,
+            object_name=minio_object_name,
+            metadata={
+                "original_filename": filename,
+                "doc_id": doc_id
+            }
+        )
+        logger.info(f"File uploaded to MinIO: {minio_object_name}")
+    except Exception as e:
+        logger.error(f"MinIO upload failed: {e}")
+        raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
+
+    # 临时保存到本地用于解析 (解析器需要文件路径)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(content)
+            temp_path = tmp.name
+
         # 解析文档
         parser = _get_parser()
-        parsed = parser.parse(str(storage_path))
+        parsed = parser.parse(temp_path)
 
         # 存储到数据库
         store = _get_store()
@@ -211,7 +234,7 @@ async def upload_document(
             "id": doc_id,
             "filename": filename,
             "file_type": ext[1:],  # 去掉点
-            "file_path": str(storage_path),
+            "file_path": minio_object_name,  # 存储MinIO对象名
             "file_size": len(content),
             "project_id": project_id,
             "title": parsed.title,
@@ -257,10 +280,17 @@ async def upload_document(
 
     except Exception as e:
         logger.error(f"Document upload failed: {e}")
-        # 删除已保存的文件如果处理失败
-        if storage_path.exists():
-            storage_path.unlink()
+        # 删除 MinIO 中已上传的文件
+        if minio_object_name:
+            try:
+                delete_file(minio_object_name)
+            except:
+                pass
         raise HTTPException(status_code=500, detail=f"文档处理失败: {str(e)}")
+    finally:
+        # 清理临时文件
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 
 @router.get("/documents")
@@ -320,27 +350,62 @@ async def get_document_page(doc_id: str, page_number: int):
 
 @router.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str):
-    """删除文档"""
+    """删除文档 - 同时删除 MinIO 中的文件"""
     store = _get_store()
+
+    # 先获取文档信息以获得 MinIO 对象名
+    document = store.get_document(doc_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="文档不存在")
+
+    minio_object_name = document.get("file_path")
+
+    # 删除数据库记录
     success = store.delete_document(doc_id)
     if not success:
-        raise HTTPException(status_code=404, detail="文档不存在")
+        raise HTTPException(status_code=404, detail="文档删除失败")
+
+    # 删除 MinIO 中的文件
+    if minio_object_name:
+        try:
+            delete_file(minio_object_name)
+            logger.info(f"Deleted file from MinIO: {minio_object_name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete file from MinIO: {e}")
+            # 不阻止数据库删除的成功响应
+
     return {"message": "文档删除成功"}
 
 
 @router.get("/documents/{doc_id}/download")
 async def download_document(doc_id: str):
-    """下载文档文件"""
+    """下载文档文件 - 从 MinIO 获取"""
     store = _get_store()
     document = store.get_document(doc_id)
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
 
-    file_path = document.get("file_path")
-    if not file_path or not Path(file_path).exists():
-        raise HTTPException(status_code=404, detail="文件不存在")
+    minio_object_name = document.get("file_path")
+    if not minio_object_name:
+        raise HTTPException(status_code=404, detail="文件路径不存在")
 
     filename = document.get("filename", f"document.{document.get('file_type', 'bin')}")
+
+    try:
+        # 从 MinIO 下载文件
+        file_content = download_file(minio_object_name)
+
+        # 流式返回文件
+        return StreamingResponse(
+            iter([file_content]),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to download from MinIO: {e}")
+        raise HTTPException(status_code=404, detail=f"文件下载失败: {str(e)}")
 
     return FileResponse(
         path=file_path,
@@ -351,15 +416,15 @@ async def download_document(doc_id: str):
 
 @router.get("/documents/{doc_id}/preview")
 async def preview_document(doc_id: str):
-    """预览文档文件 (用于PDF等可嵌入格式)"""
+    """预览文档文件 (用于PDF等可嵌入格式) - 从 MinIO 获取"""
     store = _get_store()
     document = store.get_document(doc_id)
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
 
-    file_path = document.get("file_path")
-    if not file_path or not Path(file_path).exists():
-        raise HTTPException(status_code=404, detail="文件不存在")
+    minio_object_name = document.get("file_path")
+    if not minio_object_name:
+        raise HTTPException(status_code=404, detail="文件路径不存在")
 
     file_type = document.get("file_type", "").lower()
 
@@ -376,10 +441,18 @@ async def preview_document(doc_id: str):
 
     media_type = content_types.get(file_type, "application/octet-stream")
 
-    return FileResponse(
-        path=file_path,
-        media_type=media_type
-    )
+    try:
+        # 从 MinIO 下载文件
+        file_content = download_file(minio_object_name)
+
+        # 流式返回文件
+        return StreamingResponse(
+            iter([file_content]),
+            media_type=media_type
+        )
+    except Exception as e:
+        logger.error(f"Failed to preview from MinIO: {e}")
+        raise HTTPException(status_code=404, detail=f"文件预览失败: {str(e)}")
 
 
 # ==================== 搜索 ====================
