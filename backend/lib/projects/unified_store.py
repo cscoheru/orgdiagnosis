@@ -774,6 +774,182 @@ class UnifiedProjectStore:
             """, (project_id,))
             return [dict(row) for row in cursor.fetchall()]
 
+    # ============================================================
+    # 文件夹操作
+    # ============================================================
+
+    def create_folder(
+        self, project_id: str, name: str, parent_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """创建文件夹"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 验证项目存在
+            cursor.execute("SELECT id FROM projects WHERE id = ?", (project_id,))
+            if not cursor.fetchone():
+                raise ValueError(f"Project {project_id} not found")
+
+            # 构建路径
+            if parent_id:
+                parent = self.get_folder(parent_id)
+                if not parent:
+                    raise ValueError(f"Parent folder {parent_id} not found")
+                path = f"{parent['path']}/{name}"
+            else:
+                path = f"/{name}"
+
+            folder_id = f"folder_{uuid.uuid4().hex[:8]}"
+            now = datetime.utcnow().isoformat()
+
+            cursor.execute("""
+                INSERT INTO folders (id, project_id, parent_id, name, path, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (folder_id, project_id, parent_id, name, path, now, now))
+
+            conn.commit()
+
+        return self.get_folder(folder_id)
+
+    def get_folder(self, folder_id: str) -> Optional[Dict[str, Any]]:
+        """获取文件夹"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM folders WHERE id = ?", (folder_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_folders_by_project(self, project_id: str) -> List[Dict[str, Any]]:
+        """获取项目的所有文件夹"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM folders WHERE project_id = ? ORDER BY path",
+                (project_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_folders_by_parent(self, project_id: str, parent_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """获取指定父文件夹下的直接子文件夹"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            if parent_id is None:
+                cursor.execute(
+                    "SELECT * FROM folders WHERE project_id = ? AND parent_id IS NULL ORDER BY name",
+                    (project_id,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM folders WHERE project_id = ? AND parent_id = ? ORDER BY name",
+                    (project_id, parent_id)
+                )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_folder(
+        self, folder_id: str, name: Optional[str] = None, parent_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """更新文件夹（重命名或移动）"""
+        folder = self.get_folder(folder_id)
+        if not folder:
+            raise ValueError(f"Folder {folder_id} not found")
+
+        now = datetime.utcnow().isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            if name:
+                # 重命名 - 更新路径及所有子文件夹路径
+                old_path = folder['path']
+                new_path = old_path.rsplit('/', 1)[0] + '/' + name
+
+                # 更新当前文件夹
+                cursor.execute("""
+                    UPDATE folders SET name = ?, path = ?, updated_at = ?
+                    WHERE id = ?
+                """, (name, new_path, now, folder_id))
+
+                # 更新所有子文件夹的路径
+                cursor.execute("""
+                    SELECT id, path FROM folders WHERE path LIKE ?
+                """, (old_path + '/%',))
+                children = cursor.fetchall()
+
+                for child in children:
+                    child_new_path = child['path'].replace(old_path, new_path, 1)
+                    cursor.execute("""
+                        UPDATE folders SET path = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (child_new_path, now, child['id']))
+
+            if parent_id is not None:
+                # 移动文件夹
+                if parent_id == folder_id:
+                    raise ValueError("Cannot move folder to itself")
+
+                # 验证新父文件夹存在且不是子文件夹
+                if parent_id:
+                    new_parent = self.get_folder(parent_id)
+                    if not new_parent:
+                        raise ValueError(f"Parent folder {parent_id} not found")
+                    if new_parent['path'].startswith(folder['path'] + '/'):
+                        raise ValueError("Cannot move folder to its own descendant")
+
+                # 计算新路径
+                old_path = folder['path']
+                if parent_id:
+                    new_parent = self.get_folder(parent_id)
+                    new_path = f"{new_parent['path']}/{folder['name']}"
+                else:
+                    new_path = f"/{folder['name']}"
+
+                # 更新当前文件夹
+                cursor.execute("""
+                    UPDATE folders SET parent_id = ?, path = ?, updated_at = ?
+                    WHERE id = ?
+                """, (parent_id, new_path, now, folder_id))
+
+                # 更新所有子文件夹的路径
+                cursor.execute("""
+                    SELECT id, path FROM folders WHERE path LIKE ?
+                """, (old_path + '/%',))
+                children = cursor.fetchall()
+
+                for child in children:
+                    child_new_path = child['path'].replace(old_path, new_path, 1)
+                    cursor.execute("""
+                        UPDATE folders SET path = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (child_new_path, now, child['id']))
+
+            conn.commit()
+
+        return self.get_folder(folder_id)
+
+    def delete_folder(self, folder_id: str) -> bool:
+        """删除文件夹（级联删除子内容）"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            # 由于外键设置了 ON DELETE CASCADE，删除文件夹会自动删除子文件夹和文件
+            cursor.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_or_create_root_folder(self, project_id: str) -> Dict[str, Any]:
+        """获取或创建项目根文件夹"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM folders WHERE project_id = ? AND parent_id IS NULL",
+                (project_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+
+        # 创建根文件夹
+        return self.create_folder(project_id, "root", parent_id=None)
+
 
 # 全局实例
 unified_store = UnifiedProjectStore()
