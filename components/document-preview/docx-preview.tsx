@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface DOCXPreviewProps {
   url: string;
@@ -13,75 +13,66 @@ export default function DOCXPreview({ url, onError }: DOCXPreviewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Check if running in browser
-    if (typeof window === 'undefined') {
-      return;
-    }
+  const loadDOCX = useCallback(async () => {
+    if (typeof window === 'undefined' || !containerRef.current) return;
 
-    let mounted = true;
+    try {
+      setLoading(true);
+      setError(null);
 
-    async function loadDOCX() {
+      // Fetch the DOCX file
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to load DOCX: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+
+      // Use dynamic import with function call to avoid bundling
+      const renderDocx = async () => {
+        // @ts-ignore - dynamic import
+        const module = await import(/* webpackChunkName: "docx-preview" */ 'docx-preview');
+        return module.renderAsync;
+      };
+
+      const renderAsync = await renderDocx();
+
       if (!containerRef.current) return;
 
-      try {
-        setLoading(true);
-        setError(null);
+      // Clear previous content
+      containerRef.current.innerHTML = '';
 
-        // Fetch the DOCX file
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to load DOCX: ${response.status}`);
-        }
+      // Render DOCX
+      await renderAsync(arrayBuffer, containerRef.current, undefined, {
+        className: 'docx-preview-wrapper',
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        ignoreFonts: false,
+        breakPages: true,
+        ignoreLastRenderedPageBreak: true,
+        experimental: false,
+        trimXmlDeclaration: true,
+        useBase64URL: true,
+        renderHeaders: true,
+        renderFooters: true,
+        renderFootnotes: true,
+        renderEndnotes: true,
+      });
 
-        const arrayBuffer = await response.arrayBuffer();
+      setLoading(false);
 
-        // Dynamic import to avoid SSR issues - only in browser
-        const docx = await import('docx-preview');
-
-        if (!containerRef.current || !mounted) return;
-
-        // Clear previous content
-        containerRef.current.innerHTML = '';
-
-        // Render DOCX
-        await docx.renderAsync(arrayBuffer, containerRef.current, undefined, {
-          className: 'docx-preview-wrapper',
-          inWrapper: true,
-          ignoreWidth: false,
-          ignoreHeight: false,
-          ignoreFonts: false,
-          breakPages: true,
-          ignoreLastRenderedPageBreak: true,
-          experimental: false,
-          trimXmlDeclaration: true,
-          useBase64URL: true,
-          renderHeaders: true,
-          renderFooters: true,
-          renderFootnotes: true,
-          renderEndnotes: true,
-        });
-
-        if (mounted) {
-          setLoading(false);
-        }
-
-      } catch (err) {
-        if (mounted) {
-          const errorMsg = err instanceof Error ? err.message : '加载DOCX失败';
-          setError(errorMsg);
-          setLoading(false);
-          onError?.(errorMsg);
-        }
-      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : '加载DOCX失败';
+      setError(errorMsg);
+      setLoading(false);
+      onError?.(errorMsg);
     }
-
-    loadDOCX();
-
-    return () => {
-      mounted = false;
-    };
   }, [url, onError]);
+
+  useEffect(() => {
+    loadDOCX();
+  }, [loadDOCX]);
 
   if (loading) {
     return (
