@@ -68,21 +68,30 @@ export default function ProjectsPage() {
         setLoading(true)
         setError(null)
 
-        console.log('[ProjectsPage] Fetching from:', `${API_BASE}/api/projects/`)
+        const url = `${API_BASE}/api/projects/`
+        console.log('[ProjectsPage] API_BASE:', API_BASE)
+        console.log('[ProjectsPage] Full URL:', url)
+        console.log('[ProjectsPage] Starting fetch...')
 
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+        const timeoutId = setTimeout(() => {
+          console.log('[ProjectsPage] Request timed out after 10s')
+          controller.abort()
+        }, 10000)
 
-        const response = await fetch(`${API_BASE}/api/projects/`, {
+        const startTime = Date.now()
+        const response = await fetch(url, {
+          method: 'GET',
           headers: { 'Accept': 'application/json' },
           signal: controller.signal
         })
+        const elapsed = Date.now() - startTime
 
         clearTimeout(timeoutId)
 
         if (cancelled) return
 
-        console.log('[ProjectsPage] Response status:', response.status)
+        console.log(`[ProjectsPage] Response received in ${elapsed}ms, status:`, response.status)
 
         if (!response.ok) {
           const errorText = await response.text()
@@ -91,15 +100,17 @@ export default function ProjectsPage() {
         }
 
         const data = await response.json()
-        console.log('[ProjectsPage] Received data:', data)
+        console.log('[ProjectsPage] Data received:', data)
         if (!cancelled) {
           setProjects(data.projects || [])
         }
       } catch (err) {
         console.error('[ProjectsPage] Fetch error:', err)
+        console.error('[ProjectsPage] Error name:', err instanceof Error ? err.name : 'unknown')
+        console.error('[ProjectsPage] Error message:', err instanceof Error ? err.message : 'unknown')
         if (!cancelled) {
           if (err instanceof Error && err.name === 'AbortError') {
-            setError('请求超时，请检查网络连接')
+            setError('请求超时 - 后端可能未响应。请检查后端服务是否运行在 http://localhost:8000')
           } else {
             setError(err instanceof Error ? err.message : '加载失败')
           }
