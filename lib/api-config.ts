@@ -26,7 +26,7 @@ export async function uploadFile(file: File): Promise<{
   formData.append('file', file);
 
   try {
-    const response = await fetch(`${API_BASE_URL}/upload`, {
+    const response = await fetch(`${API_BASE_URL}/api/upload`, {
       method: 'POST',
       body: formData,
     });
@@ -64,7 +64,7 @@ export async function analyzeText(text: string): Promise<{
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 分钟
 
-    const response = await fetch(`${API_BASE_URL}/analyze`, {
+    const response = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
@@ -105,7 +105,7 @@ export async function createDiagnosis(rawInput: string, data: any): Promise<{
   error?: string;
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/diagnosis`, {
+    const response = await fetch(`${API_BASE_URL}/api/diagnosis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ raw_input: rawInput, data }),
@@ -136,7 +136,7 @@ export async function getDiagnosis(sessionId: string): Promise<{
   error?: string;
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/diagnosis/${sessionId}`);
+    const response = await fetch(`${API_BASE_URL}/api/diagnosis/${sessionId}`);
 
     if (!response.ok) {
       return {
@@ -158,7 +158,7 @@ export async function getDiagnosis(sessionId: string): Promise<{
  * 导出 PDF
  */
 export function exportPDF(sessionId: string): void {
-  window.open(`${API_BASE_URL}/export/${sessionId}`, '_blank');
+  window.open(`${API_BASE_URL}/api/export/${sessionId}`, '_blank');
 }
 
 /**
@@ -167,7 +167,7 @@ export function exportPDF(sessionId: string): void {
 export async function getDiagnosisHistory(limit = 20, offset = 0): Promise<any[]> {
   try {
     const response = await fetch(
-      `${API_BASE_URL}/diagnosis?limit=${limit}&offset=${offset}`
+      `${API_BASE_URL}/api/diagnosis?limit=${limit}&offset=${offset}`
     );
 
     if (!response.ok) {

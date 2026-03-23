@@ -40,3 +40,11 @@ api_router.include_router(layout.router, tags=["布局推荐"])
 # 新增: 知识库 V2 API (简化版，无向量)
 from api import knowledge_v2
 api_router.include_router(knowledge_v2.router, tags=["知识库V2"])
+
+# 新增: 文件夹管理 API
+from backend.api import folders
+api_router.include_router(folders.router, tags=["文件夹管理"])
+
+# 新增: 文件管理 API
+from backend.api import files
+api_router.include_router(files.router, tags=["文件管理"])

@@ -44,6 +44,12 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Log API base URL for debugging
+  useEffect(() => {
+    console.log('[ProjectsPage] API_BASE:', API_BASE)
+    console.log('[ProjectsPage] NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL)
+  }, [])
+
   // New project form
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newProject, setNewProject] = useState({
@@ -62,23 +68,41 @@ export default function ProjectsPage() {
         setLoading(true)
         setError(null)
 
+        console.log('[ProjectsPage] Fetching from:', `${API_BASE}/api/projects/`)
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
         const response = await fetch(`${API_BASE}/api/projects/`, {
-          headers: { 'Accept': 'application/json' }
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal
         })
+
+        clearTimeout(timeoutId)
 
         if (cancelled) return
 
+        console.log('[ProjectsPage] Response status:', response.status)
+
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`)
+          const errorText = await response.text()
+          console.error('[ProjectsPage] Error response:', errorText)
+          throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 100)}`)
         }
 
         const data = await response.json()
+        console.log('[ProjectsPage] Received data:', data)
         if (!cancelled) {
           setProjects(data.projects || [])
         }
       } catch (err) {
+        console.error('[ProjectsPage] Fetch error:', err)
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : '加载失败')
+          if (err instanceof Error && err.name === 'AbortError') {
+            setError('请求超时，请检查网络连接')
+          } else {
+            setError(err instanceof Error ? err.message : '加载失败')
+          }
         }
       } finally {
         if (!cancelled) {
