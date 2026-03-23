@@ -83,6 +83,23 @@ def init_unified_db():
         """)
 
         # ============================================================
+        # 文件夹表 - 支持任意层级
+        # ============================================================
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS folders (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_project ON folders(project_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id)")
+
+        # ============================================================
         # 诊断会话表 - 链接到项目
         # ============================================================
         cursor.execute("""
