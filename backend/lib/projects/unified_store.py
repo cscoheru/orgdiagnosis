@@ -950,6 +950,204 @@ class UnifiedProjectStore:
         # 创建根文件夹
         return self.create_folder(project_id, "root", parent_id=None)
 
+    # ============================================================
+    # 文件操作
+    # ============================================================
+
+    def create_file(
+        self,
+        folder_id: str,
+        filename: str,
+        minio_path: str,
+        file_type: Optional[str] = None,
+        size: Optional[int] = None,
+        metadata: Optional[Dict] = None,
+        source_type: Optional[str] = None
+    ) -> Dict:
+        """创建文件记录"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 验证文件夹存在
+            folder = self.get_folder(folder_id)
+            if not folder:
+                raise ValueError(f"Folder {folder_id} not found")
+
+            file_id = f"file_{uuid.uuid4().hex[:8]}"
+            now = datetime.utcnow().isoformat()
+
+            cursor.execute("""
+                INSERT INTO files (id, folder_id, filename, file_type, minio_path, size, metadata, source_type, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                file_id, folder_id, filename, file_type, minio_path, size,
+                json.dumps(metadata) if metadata else None,
+                source_type, now
+            ))
+
+            # 添加到全文搜索索引
+            cursor.execute("""
+                INSERT INTO files_search (file_id, filename, content)
+                VALUES (?, ?, ?)
+            """, (file_id, filename, metadata.get('content', '') if metadata else ''))
+
+            conn.commit()
+
+        return self.get_file(file_id)
+
+    def get_file(self, file_id: str) -> Optional[Dict]:
+        """获取文件"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM files WHERE id = ?", (file_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            file_data = dict(row)
+            # 解析 metadata JSON
+            if file_data.get('metadata'):
+                file_data['metadata'] = json.loads(file_data['metadata'])
+            return file_data
+
+    def get_files_by_folder(self, folder_id: str) -> List[Dict]:
+        """获取文件夹内的所有文件"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM files WHERE folder_id = ? ORDER BY created_at DESC",
+                (folder_id,)
+            )
+            files = []
+            for row in cursor.fetchall():
+                file_data = dict(row)
+                if file_data.get('metadata'):
+                    file_data['metadata'] = json.loads(file_data['metadata'])
+                files.append(file_data)
+            return files
+
+    def update_file(
+        self,
+        file_id: str,
+        filename: Optional[str] = None,
+        metadata: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """更新文件元数据"""
+        file_data = self.get_file(file_id)
+        if not file_data:
+            return None
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            if filename:
+                cursor.execute("""
+                    UPDATE files SET filename = ? WHERE id = ?
+                """, (filename, file_id))
+
+                # 更新搜索索引中的文件名
+                cursor.execute("""
+                    UPDATE files_search SET filename = ? WHERE file_id = ?
+                """, (filename, file_id))
+
+            if metadata is not None:
+                cursor.execute("""
+                    UPDATE files SET metadata = ? WHERE id = ?
+                """, (json.dumps(metadata), file_id))
+
+                # 更新搜索索引中的内容
+                content = metadata.get('content', '') if isinstance(metadata, dict) else ''
+                cursor.execute("""
+                    UPDATE files_search SET content = ? WHERE file_id = ?
+                """, (content, file_id))
+
+            conn.commit()
+
+        return self.get_file(file_id)
+
+    def delete_file(self, file_id: str) -> bool:
+        """删除文件记录（MinIO文件通过API单独删除）"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 先删除搜索索引
+            cursor.execute("DELETE FROM files_search WHERE file_id = ?", (file_id,))
+
+            # 再删除文件记录
+            cursor.execute("DELETE FROM files WHERE id = ?", (file_id,))
+
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def search_files(
+        self,
+        query: str,
+        project_id: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict]:
+        """使用FTS5搜索文件，中文回退到LIKE"""
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 使用 FTS5 全文搜索
+            # FTS5 MATCH 查询需要特殊处理搜索词
+            search_query = query.replace('"', '""')  # 转义双引号
+
+            if project_id:
+                # 需要关联 folders 表来过滤 project_id
+                cursor.execute("""
+                    SELECT f.* FROM files f
+                    JOIN folders fo ON f.folder_id = fo.id
+                    WHERE f.id IN (
+                        SELECT file_id FROM files_search WHERE files_search MATCH ?
+                    ) AND fo.project_id = ?
+                    ORDER BY f.created_at DESC
+                    LIMIT ?
+                """, (f'"{search_query}"', project_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT f.* FROM files f
+                    WHERE f.id IN (
+                        SELECT file_id FROM files_search WHERE files_search MATCH ?
+                    )
+                    ORDER BY f.created_at DESC
+                    LIMIT ?
+                """, (f'"{search_query}"', limit))
+
+            files = []
+            for row in cursor.fetchall():
+                file_data = dict(row)
+                if file_data.get('metadata'):
+                    file_data['metadata'] = json.loads(file_data['metadata'])
+                files.append(file_data)
+
+            # 如果FTS5没有结果，使用LIKE作为回退（支持中文）
+            if not files:
+                like_query = f"%{query}%"
+                if project_id:
+                    cursor.execute("""
+                        SELECT f.* FROM files f
+                        JOIN folders fo ON f.folder_id = fo.id
+                        WHERE f.filename LIKE ? AND fo.project_id = ?
+                        ORDER BY f.created_at DESC
+                        LIMIT ?
+                    """, (like_query, project_id, limit))
+                else:
+                    cursor.execute("""
+                        SELECT * FROM files
+                        WHERE filename LIKE ?
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                    """, (like_query, limit))
+
+                for row in cursor.fetchall():
+                    file_data = dict(row)
+                    if file_data.get('metadata'):
+                        file_data['metadata'] = json.loads(file_data['metadata'])
+                    files.append(file_data)
+
+            return files
+
 
 # 全局实例
 unified_store = UnifiedProjectStore()
