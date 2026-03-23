@@ -4,34 +4,35 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import {
   uploadDocument,
-  getCategories,
-  getCategoryName,
-  pollUploadStatus,
-  type Category,
-  type UploadStatus
-} from '@/lib/kb-api';
+  getProjects,
+  type Project
+} from '@/lib/knowledge-v2-api';
 
 interface UploadTask {
   id: string;
   file: File;
-  category: string;
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed';
+  projectId: string;
+  status: 'pending' | 'uploading' | 'completed' | 'failed';
   progress: number;
-  taskId?: string;
-  chunksCreated?: number;
+  documentId?: string;
+  pageCount?: number;
+  classification?: any;
   error?: string;
 }
 
 export default function KnowledgeUploadPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('general');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('');
+  const [autoClassify, setAutoClassify] = useState(true);
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load categories on mount
+  // Load projects on mount
   useEffect(() => {
-    getCategories().then(setCategories).catch(console.error);
+    getProjects().then(data => {
+      setProjects(data);
+    }).catch(console.error);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -50,30 +51,30 @@ export default function KnowledgeUploadPage() {
 
     const files = Array.from(e.dataTransfer.files);
     addFilesToQueue(files);
-  }, [selectedCategory]);
+  }, [selectedProject]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
       addFilesToQueue(files);
     }
-  }, [selectedCategory]);
+  }, [selectedProject]);
 
   const addFilesToQueue = (files: File[]) => {
-    const supportedTypes = ['.pdf', '.docx', '.pptx', '.md', '.txt'];
-    const maxSizeKB = 50 * 1024; // 50MB
+    const supportedTypes = ['.pptx', '.pdf', '.docx', '.xlsx', '.xls', '.md', '.json', '.png', '.jpg', '.jpeg'];
+    const maxSizeMB = 50;
 
     const validFiles = files.filter(file => {
       const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-      const sizeKB = file.size / 1024;
+      const sizeMB = file.size / (1024 * 1024);
 
       if (!supportedTypes.includes(ext)) {
-        alert(`不支持的文件类型: ${file.name}`);
+        alert(`不支持的文件类型: ${file.name}\n支持: PPTX, PDF, DOCX, XLSX, MD, JSON, PNG, JPG`);
         return false;
       }
 
-      if (sizeKB > maxSizeKB) {
-        alert(`文件过大: ${file.name} (最大50MB)`);
+      if (sizeMB > maxSizeMB) {
+        alert(`文件过大: ${file.name} (最大${maxSizeMB}MB)`);
         return false;
       }
 
@@ -83,7 +84,7 @@ export default function KnowledgeUploadPage() {
     const newTasks: UploadTask[] = validFiles.map(file => ({
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       file,
-      category: selectedCategory,
+      projectId: selectedProject,
       status: 'pending',
       progress: 0
     }));
@@ -102,44 +103,24 @@ export default function KnowledgeUploadPage() {
       );
 
       // Call upload API
-      const response = await uploadDocument(task.file, task.category);
+      const response = await uploadDocument(
+        task.file,
+        {
+          project_id: task.projectId || undefined,
+          auto_classify: autoClassify
+        }
+      );
 
-      // Update status to processing
+      // Update status to completed
       setUploadQueue(prev =>
         prev.map(t => t.id === task.id ? {
           ...t,
-          status: 'processing',
-          progress: 20,
-          taskId: response.task_id
+          status: 'completed',
+          progress: 100,
+          documentId: response.document_id,
+          pageCount: response.page_count,
+          classification: response.classification
         } : t)
-      );
-
-      // Poll for status
-      pollUploadStatus(
-        response.task_id,
-        (status: UploadStatus) => {
-          // Completed
-          setUploadQueue(prev =>
-            prev.map(t => t.id === task.id ? {
-              ...t,
-              status: 'completed',
-              progress: 100,
-              chunksCreated: status.chunks_created || 0
-            } : t)
-          );
-        },
-        (error: string) => {
-          // Failed
-          setUploadQueue(prev =>
-            prev.map(t => t.id === task.id ? {
-              ...t,
-              status: 'failed',
-              error
-            } : t)
-          );
-        },
-        2000, // Poll every 2 seconds
-        60    // Max 60 attempts (2 minutes)
       );
 
     } catch (error) {
@@ -166,9 +147,7 @@ export default function KnowledgeUploadPage() {
       case 'pending':
         return { text: '等待中', color: 'text-gray-500', icon: '⏳' };
       case 'uploading':
-        return { text: '上传中...', color: 'text-blue-500', icon: '📤' };
-      case 'processing':
-        return { text: '处理中...', color: 'text-purple-500', icon: '🔄' };
+        return { text: '上传处理中...', color: 'text-blue-500', icon: '📤' };
       case 'completed':
         return { text: '已完成', color: 'text-green-500', icon: '✅' };
       case 'failed':
@@ -184,13 +163,24 @@ export default function KnowledgeUploadPage() {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
   };
 
+  const getDimensionLabel = (code: string) => {
+    const names: Record<string, string> = {
+      'strategy': '🎯 战略',
+      'structure': '🏢 组织',
+      'performance': '📊 绩效',
+      'compensation': '💰 薪酬',
+      'talent': '👥 人才'
+    };
+    return names[code] || code;
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">⬆️ 上传中心</h1>
-          <p className="text-gray-500 mt-1">上传历史咨询报告到知识库</p>
+          <p className="text-gray-500 mt-1">上传咨询报告到知识库，自动解析和分类</p>
         </div>
         <Link
           href="/knowledge/documents"
@@ -201,22 +191,48 @@ export default function KnowledgeUploadPage() {
         </Link>
       </div>
 
-      {/* Category Selection */}
+      {/* Settings */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          默认分类 (可针对每个文件单独设置)
-        </label>
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {categories.map(cat => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Project Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              📁 所属项目
+            </label>
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">不指定项目</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">可选择项目进行分组管理</p>
+          </div>
+
+          {/* Auto Classify */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              🎯 自动分类
+            </label>
+            <div className="flex items-center gap-3 mt-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoClassify}
+                  onChange={(e) => setAutoClassify(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-600">
+                  启用五维自动分类
+                </span>
+              </label>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">基于关键词自动分类到五维模型</p>
+          </div>
+        </div>
       </div>
 
       {/* Drop Zone */}
@@ -238,7 +254,7 @@ export default function KnowledgeUploadPage() {
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".pdf,.docx,.pptx,.md,.txt"
+          accept=".pptx,.pdf,.docx,.xlsx,.xls,.md,.json,.png,.jpg,.jpeg"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -248,7 +264,8 @@ export default function KnowledgeUploadPage() {
           拖拽文件到此处，或点击选择文件
         </p>
         <p className="text-sm text-gray-500">
-          支持: PDF, DOCX, PPTX, MD, TXT &nbsp;|&nbsp; 单个文件最大: 50MB
+          支持: <span className="font-medium">PPTX</span>, <span className="font-medium">PDF</span>, <span className="font-medium">DOCX</span>, <span className="font-medium">XLSX</span>, <span className="font-medium">MD</span>, <span className="font-medium">JSON</span>, <span className="font-medium">图片</span>
+          &nbsp;|&nbsp; 单个文件最大: 50MB
         </p>
       </div>
 
@@ -269,13 +286,13 @@ export default function KnowledgeUploadPage() {
             {uploadQueue.map(task => {
               const status = getStatusDisplay(task);
               const ext = task.file.name.split('.').pop()?.toLowerCase() || '';
-              const icon = {
-                pdf: '📄',
-                docx: '📝',
-                pptx: '📊',
-                md: '📑',
-                txt: '📃'
-              }[ext] || '📁';
+              const icon = ext === 'pdf' ? '📄' :
+                          ext === 'pptx' ? '📊' :
+                          ext === 'docx' ? '📝' :
+                          ext === 'xlsx' || ext === 'xls' ? '📈' :
+                          ext === 'md' ? '📑' :
+                          ext === 'json' ? '📋' :
+                          ['png', 'jpg', 'jpeg'].includes(ext) ? '🖼️' : '📁';
 
               return (
                 <div key={task.id} className="p-4">
@@ -290,7 +307,7 @@ export default function KnowledgeUploadPage() {
                           <span className={`text-sm ${status.color}`}>
                             {status.icon} {status.text}
                           </span>
-                          {task.status !== 'uploading' && task.status !== 'processing' && (
+                          {task.status !== 'uploading' && (
                             <button
                               onClick={() => removeFromQueue(task.id)}
                               className="text-gray-400 hover:text-gray-600"
@@ -303,27 +320,47 @@ export default function KnowledgeUploadPage() {
 
                       <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
                         <span>{formatFileSize(task.file.size)}</span>
-                        <span>•</span>
-                        <span>{getCategoryName(task.category)}</span>
+                        {task.pageCount && (
+                          <>
+                            <span>•</span>
+                            <span>{task.pageCount} 页</span>
+                          </>
+                        )}
                       </div>
 
                       {/* Progress Bar */}
-                      {(task.status === 'uploading' || task.status === 'processing') && (
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                      {task.status === 'uploading' && (
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-2">
                           <div
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              task.status === 'uploading' ? 'bg-blue-500' : 'bg-purple-500'
-                            }`}
+                            className="h-full bg-blue-500 rounded-full transition-all duration-300 animate-pulse"
                             style={{ width: `${task.progress}%` }}
                           />
                         </div>
                       )}
 
-                      {/* Success Message */}
-                      {task.status === 'completed' && task.chunksCreated && (
-                        <p className="text-sm text-green-600 mt-1">
-                          ✓ 创建了 {task.chunksCreated} 个文档块
-                        </p>
+                      {/* Classification Result */}
+                      {task.status === 'completed' && task.classification?.dimension_l1 && (
+                        <div className="mt-2 p-2 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500 mb-1">自动分类结果:</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">
+                              {getDimensionLabel(task.classification.dimension_l1)}
+                            </span>
+                            {task.classification.dimension_l2_name && (
+                              <>
+                                <span className="text-gray-300">→</span>
+                                <span className="text-sm text-gray-600">
+                                  {task.classification.dimension_l2_name}
+                                </span>
+                              </>
+                            )}
+                            {task.classification.confidence && (
+                              <span className="text-xs text-gray-400 ml-auto">
+                                置信度 {Math.round(task.classification.confidence * 100)}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       )}
 
                       {/* Error Message */}
@@ -331,6 +368,16 @@ export default function KnowledgeUploadPage() {
                         <p className="text-sm text-red-600 mt-1">
                           {task.error}
                         </p>
+                      )}
+
+                      {/* Success Actions */}
+                      {task.status === 'completed' && task.documentId && (
+                        <Link
+                          href={`/knowledge/documents/${task.documentId}`}
+                          className="text-sm text-blue-500 hover:text-blue-700 mt-2 inline-block"
+                        >
+                          查看文档详情 →
+                        </Link>
                       )}
                     </div>
                   </div>
@@ -345,10 +392,10 @@ export default function KnowledgeUploadPage() {
       <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
         <h3 className="font-medium text-blue-800 mb-2">💡 上传提示</h3>
         <ul className="text-sm text-blue-700 space-y-1">
-          <li>• 文档上传后会自动进行文本提取和向量化处理</li>
-          <li>• 处理时间取决于文件大小，通常需要几秒到几分钟</li>
-          <li>• 建议为每个文档选择合适的分类，以便后续检索</li>
-          <li>• 如需批量上传大量文档，请联系管理员获取 API 密钥</li>
+          <li>• 支持多种格式: PPTX, PDF, DOCX, XLSX, Markdown, JSON, 图片</li>
+          <li>• 文档会自动解析，支持全文搜索</li>
+          <li>• 自动分类基于五维模型关键词匹配</li>
+          <li>• 可选择项目进行分组，便于按项目筛选</li>
         </ul>
       </div>
     </div>

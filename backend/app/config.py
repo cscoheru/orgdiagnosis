@@ -3,8 +3,12 @@
 """
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# Load .env with override=True to ensure .env file values take precedence
+# over system environment variables (important for API URLs)
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path, override=True)
 
 class Settings:
     # 应用配置

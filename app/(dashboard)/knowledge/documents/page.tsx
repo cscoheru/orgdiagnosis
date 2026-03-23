@@ -5,58 +5,52 @@ import Link from 'next/link';
 import {
   getDocuments,
   deleteDocument,
-  getCategories,
-  formatFileSize,
-  getStatusConfig,
-  getCategoryName,
-  getFileTypeIcon,
+  getProjects,
+  getL1Dimensions,
+  getDimensionName,
+  getDimensionColor,
+  getDimensionIcon,
   type Document,
-  type DocumentList,
-  type Category
-} from '@/lib/kb-api';
+  type Project,
+  type Dimension
+} from '@/lib/knowledge-v2-api';
 
 export default function KnowledgeDocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    total_pages: 0
-  });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [dimensions, setDimensions] = useState<Dimension[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('');
-
-  // Selection for batch operations
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedProject, setSelectedProject] = useState('');
+  const [selectedL1, setSelectedL1] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [docsData, categoriesData] = await Promise.all([
+      const [docsData, projectsData, dimensionsData] = await Promise.all([
         getDocuments({
-          page: pagination.page,
-          limit: pagination.limit,
-          category: selectedCategory || undefined,
-          status: selectedStatus || undefined,
-          search: searchQuery || undefined
+          project_id: selectedProject || undefined,
+          dimension_l1: selectedL1 || undefined,
+          limit: 50
         }),
-        getCategories()
+        getProjects(),
+        getL1Dimensions()
       ]);
-      setDocuments(docsData.documents);
-      setPagination(docsData.pagination);
-      setCategories(categoriesData);
+      // getDocuments returns Document[] directly
+      const docs = Array.isArray(docsData) ? docsData : [];
+      setDocuments(docs);
+      setTotal(docs.length);
+      setProjects(projectsData);
+      setDimensions(dimensionsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载文档失败');
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, pagination.limit, selectedCategory, selectedStatus, searchQuery]);
+  }, [selectedProject, selectedL1]);
 
   useEffect(() => {
     fetchData();
@@ -68,45 +62,35 @@ export default function KnowledgeDocumentsPage() {
     try {
       await deleteDocument(docId);
       setDocuments(docs => docs.filter(d => d.id !== docId));
-      setSelectedIds(ids => {
-        const newIds = new Set(ids);
-        newIds.delete(docId);
-        return newIds;
-      });
+      setTotal(t => t - 1);
     } catch (err) {
       alert(err instanceof Error ? err.message : '删除失败');
     }
   };
 
-  const handleSelectAll = () => {
-    if (selectedIds.size === documents.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(documents.map(d => d.id)));
-    }
-  };
-
-  const handleSelectOne = (docId: string) => {
-    setSelectedIds(ids => {
-      const newIds = new Set(ids);
-      if (newIds.has(docId)) {
-        newIds.delete(docId);
-      } else {
-        newIds.add(docId);
-      }
-      return newIds;
-    });
-  };
-
-  const formatDate = (dateStr: string | null) => {
+  const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return '--';
     return new Date(dateStr).toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: '2-digit'
     });
+  };
+
+  const getFileIcon = (type: string) => {
+    const icons: Record<string, string> = {
+      pptx: '📊',
+      pdf: '📄',
+      docx: '📝',
+      xlsx: '📈',
+      xls: '📈',
+      md: '📑',
+      json: '📋',
+      png: '🖼️',
+      jpg: '🖼️',
+      jpeg: '🖼️'
+    };
+    return icons[type] || '📄';
   };
 
   if (loading && documents.length === 0) {
@@ -144,7 +128,7 @@ export default function KnowledgeDocumentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">📚 文档管理</h1>
-          <p className="text-gray-500 mt-1">管理知识库中的历史咨询报告</p>
+          <p className="text-gray-500 mt-1">管理知识库中的咨询报告（共 {total} 份）</p>
         </div>
         <Link
           href="/knowledge/upload"
@@ -158,66 +142,46 @@ export default function KnowledgeDocumentsPage() {
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex flex-wrap gap-4">
-          {/* Search */}
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-              <input
-                type="text"
-                placeholder="搜索文档名称..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPagination(p => ({ ...p, page: 1 }));
-                }}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+          {/* Project Filter */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">📁 项目</label>
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">全部项目</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Category Filter */}
-          <select
-            value={selectedCategory}
-            onChange={(e) => {
-              setSelectedCategory(e.target.value);
-              setPagination(p => ({ ...p, page: 1 }));
-            }}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">全部分类</option>
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={selectedStatus}
-            onChange={(e) => {
-              setSelectedStatus(e.target.value);
-              setPagination(p => ({ ...p, page: 1 }));
-            }}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">全部状态</option>
-            <option value="pending">等待中</option>
-            <option value="processing">处理中</option>
-            <option value="ready">就绪</option>
-            <option value="error">错误</option>
-          </select>
+          {/* L1 Dimension Filter */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">🎯 五维维度</label>
+            <select
+              value={selectedL1}
+              onChange={(e) => setSelectedL1(e.target.value)}
+              className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">全部维度</option>
+              {dimensions.map(d => (
+                <option key={d.id} value={d.code}>
+                  {getDimensionIcon(d.code)} {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Reset Filters */}
-          {(searchQuery || selectedCategory || selectedStatus) && (
+          {(selectedProject || selectedL1) && (
             <button
               onClick={() => {
-                setSearchQuery('');
-                setSelectedCategory('');
-                setSelectedStatus('');
-                setPagination(p => ({ ...p, page: 1 }));
+                setSelectedProject('');
+                setSelectedL1('');
               }}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 self-end"
             >
               清除筛选
             </button>
@@ -225,177 +189,89 @@ export default function KnowledgeDocumentsPage() {
         </div>
       </div>
 
-      {/* Batch Actions */}
-      {selectedIds.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
-          <span className="text-blue-700">
-            已选择 {selectedIds.size} 个文档
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (confirm(`确定要删除选中的 ${selectedIds.size} 个文档吗？`)) {
-                  selectedIds.forEach(id => handleDelete(id));
-                }
-              }}
-              className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+      {/* Documents Grid */}
+      {documents.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
+          <span className="text-4xl block mb-2">📭</span>
+          <p>暂无文档</p>
+          <Link href="/knowledge/upload" className="text-blue-500 hover:underline text-sm">
+            上传第一份文档
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {documents.map(doc => (
+            <div
+              key={doc.id}
+              className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow"
             >
-              批量删除
-            </button>
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
-            >
-              取消选择
-            </button>
-          </div>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{getFileIcon(doc.file_type)}</span>
+                  <div>
+                    <h3 className="font-medium text-gray-800 line-clamp-1">
+                      {doc.title || doc.filename}
+                    </h3>
+                    <p className="text-xs text-gray-400">{doc.page_count || 0} 页</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Classification */}
+              {doc.dimension_l1 && (
+                <div className="mb-3">
+                  <span className={`px-2 py-1 rounded text-xs ${getDimensionColor(doc.dimension_l1)}`}>
+                    {getDimensionIcon(doc.dimension_l1)} {getDimensionName(doc.dimension_l1)}
+                    {doc.dimension_l2 && ` > ${doc.dimension_l2}`}
+                  </span>
+                  {doc.confidence && (
+                    <span className="text-xs text-gray-400 ml-2">
+                      {Math.round(doc.confidence * 100)}% 置信
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Metadata */}
+              <div className="text-xs text-gray-400 space-y-1">
+                {doc.author && <p>👤 {doc.author}</p>}
+                <p>📅 {formatDate(doc.uploaded_at)}</p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                <Link
+                  href={`/knowledge/documents/${doc.id}`}
+                  className="text-sm text-blue-500 hover:text-blue-700"
+                >
+                  查看详情 →
+                </Link>
+                <button
+                  onClick={() => handleDelete(doc.id)}
+                  className="text-sm text-red-500 hover:text-red-700"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Documents Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-4 py-3 text-left">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.size === documents.length && documents.length > 0}
-                  onChange={handleSelectAll}
-                  className="rounded"
-                />
-              </th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">文档名称</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">分类</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">状态</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">大小</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">块数</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">质量</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {documents.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
-                  <span className="text-4xl block mb-2">📭</span>
-                  <p>暂无文档</p>
-                  <Link href="/knowledge/upload" className="text-blue-500 hover:underline text-sm">
-                    上传第一份文档
-                  </Link>
-                </td>
-              </tr>
-            ) : (
-              documents.map(doc => {
-                const statusConfig = getStatusConfig(doc.status);
-                return (
-                  <tr key={doc.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(doc.id)}
-                        onChange={() => handleSelectOne(doc.id)}
-                        className="rounded"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{getFileTypeIcon(doc.file_type)}</span>
-                        <div>
-                          <p className="font-medium text-gray-800">{doc.file_name}</p>
-                          <p className="text-xs text-gray-400">{formatDate(doc.uploaded_at)}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-sm">
-                        {getCategoryName(doc.category)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`flex items-center gap-1 ${statusConfig.color}`}>
-                        <span>{statusConfig.icon}</span>
-                        <span className="text-sm">{statusConfig.text}</span>
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {formatFileSize(doc.file_size_kb)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {doc.chunk_count || '--'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {doc.quality_score ? (
-                        <div className="flex items-center gap-1">
-                          <div className="w-16 bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-full rounded-full ${
-                                doc.quality_score >= 0.8 ? 'bg-green-500' :
-                                doc.quality_score >= 0.6 ? 'bg-yellow-500' : 'bg-red-500'
-                              }`}
-                              style={{ width: `${doc.quality_score * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {Math.round(doc.quality_score * 100)}%
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">--</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            // TODO: Implement preview
-                            alert('预览功能开发中');
-                          }}
-                          className="p-1 text-gray-400 hover:text-blue-500"
-                          title="预览"
-                        >
-                          👁️
-                        </button>
-                        <button
-                          onClick={() => handleDelete(doc.id)}
-                          className="p-1 text-gray-400 hover:text-red-500"
-                          title="删除"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-
-        {/* Pagination */}
-        {pagination.total_pages > 1 && (
-          <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-            <span className="text-sm text-gray-500">
-              共 {pagination.total} 个文档，第 {pagination.page} / {pagination.total_pages} 页
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}
-                disabled={pagination.page <= 1}
-                className="px-3 py-1 border border-gray-200 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-              >
-                上一页
-              </button>
-              <button
-                onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}
-                disabled={pagination.page >= pagination.total_pages}
-                className="px-3 py-1 border border-gray-200 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-              >
-                下一页
-              </button>
+      {/* Quick Stats */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-100">
+        <h3 className="font-medium text-gray-800 mb-4">📊 按维度统计</h3>
+        <div className="grid grid-cols-5 gap-3">
+          {dimensions.map(dim => (
+            <div key={dim.id} className="text-center">
+              <span className="text-2xl">{getDimensionIcon(dim.code)}</span>
+              <p className="text-sm font-medium mt-1">{dim.name}</p>
+              <p className="text-xs text-gray-500">
+                {documents.filter(d => d.dimension_l1 === dim.code).length} 份
+              </p>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
     </div>
   );

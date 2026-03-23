@@ -2,17 +2,21 @@
  * Project Management API Client
  *
  * Handles all project-related operations with auto-save functionality
+ * Uses backend API instead of direct Supabase connection for better reliability
  */
 
-import { supabase } from './db/supabase'
+import { createClient } from '@supabase/supabase-js'
 
-// ============================================================
-// Supabase Client Wrapper (bypasses strict typing for new tables)
-// ============================================================
+// API base URL for backend endpoints
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// Use any to bypass strict typing since tables don't exist in schema yet
-// This will be removed once tables are added to types/database.ts
-const db = supabase as any
+// Supabase client for direct database operations (used by some legacy functions)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db: any = supabaseUrl && supabaseKey
+  ? createClient(supabaseUrl, supabaseKey)
+  : null
 
 // ============================================================
 // User ID Helper (authenticated or anonymous fallback)
@@ -37,36 +41,18 @@ function getOrCreateAnonymousUserId(): string {
  * Get user ID - returns authenticated user ID or falls back to anonymous ID
  */
 async function getUserId(): Promise<string> {
-  try {
-    const { data: { user }, error } = await db.auth.getUser()
-
-    if (error) {
-      console.warn('Auth error, falling back to anonymous user:', error.message)
-      return getOrCreateAnonymousUserId()
-    }
-
-    if (user) {
-      return user.id
-    }
-
-    // No authenticated user, use anonymous ID
-    return getOrCreateAnonymousUserId()
-  } catch (error) {
-    console.warn('Failed to get user, falling back to anonymous:', error)
-    return getOrCreateAnonymousUserId()
-  }
+  // For now, use anonymous user ID
+  // TODO: Integrate with actual auth when ready
+  return getOrCreateAnonymousUserId()
 }
 
 /**
  * Check if current user is authenticated
+ * For now, always returns false as we use anonymous users
  */
 export async function isAuthenticated(): Promise<boolean> {
-  try {
-    const { data: { user } } = await db.auth.getUser()
-    return !!user
-  } catch {
-    return false
-  }
+  // TODO: Integrate with actual auth when ready
+  return false
 }
 
 // ============================================================
@@ -178,9 +164,6 @@ export interface ProjectWithDetails extends Project {
   exports?: ProjectExport[]
 }
 
-// API base URL for backend endpoints
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
 // ============================================================
 // Project CRUD Operations
 // ============================================================
@@ -197,58 +180,27 @@ export interface CreateProjectInput {
  * Create a new project
  */
 export async function createProject(input: CreateProjectInput): Promise<Project> {
-  const userId = await getUserId()
-  console.log('[ProjectAPI] Creating project for user:', userId, 'input:', input)
-
-  const insertData = {
-    name: input.name,
-    description: input.description,
-    client_name: input.client_name,
-    client_industry: input.client_industry,
-    client_id: input.client_id,
-    created_by: userId,
-    status: 'draft',
-    current_step: 'requirement',
-  }
-  console.log('[ProjectAPI] Insert data:', JSON.stringify(insertData, null, 2))
+  console.log('[ProjectAPI] Creating project:', input)
 
   try {
-    const { data, error } = await db
-      .from('projects')
-      .insert(insertData)
-      .select()
-      .single()
+    const response = await fetch(`${API_BASE}/api/projects/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    })
 
-    console.log('[ProjectAPI] Insert response:', { data, error })
-
-    if (error) {
-      console.error('[ProjectAPI] Create project error:', JSON.stringify(error, null, 2))
-      console.error('[ProjectAPI] Error details:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      })
-      throw new Error(error.message || 'Failed to create project')
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      console.error('[ProjectAPI] Create project error:', error)
+      throw new Error(error.detail || `Failed to create project: ${response.status}`)
     }
 
-    console.log('[ProjectAPI] Project created:', data.id)
+    const result = await response.json()
+    console.log('[ProjectAPI] Project created:', result.project?.id)
 
-    // Create initial requirement record
-    const { error: reqError } = await db
-      .from('project_requirements')
-      .insert({
-        project_id: data.id,
-        form_step: 1,
-        form_completed: false,
-      })
-
-    if (reqError) {
-      console.error('[ProjectAPI] Failed to create requirement record:', reqError)
-      // Don't throw - project is created, requirement can be created later
-    }
-
-    return data
+    return result.project
   } catch (error) {
     console.error('[ProjectAPI] Failed to create project:', error)
     throw error
@@ -263,90 +215,51 @@ export async function getProjects(options?: {
   limit?: number
   offset?: number
 }): Promise<{ projects: Project[]; total: number }> {
-  const userId = await getUserId()
-  console.log('[ProjectAPI] Getting projects for user:', userId)
+  console.log('[ProjectAPI] Getting projects')
 
   try {
-    let query = db
-      .from('projects')
-      .select('*', { count: 'exact' })
-      .order('updated_at', { ascending: false })
+    const params = new URLSearchParams()
+    if (options?.status) params.append('status', options.status)
+    if (options?.limit) params.append('limit', options.limit.toString())
+    if (options?.offset) params.append('offset', options.offset.toString())
 
-    // Filter by user ID OR null (for testing/dev mode)
-    // In production, you may want to remove the null check
-    query = query.or(`created_by.eq.${userId},created_by.is.null`)
+    const response = await fetch(`${API_BASE}/api/projects/?${params.toString()}`)
 
-    if (options?.status) {
-      query = query.eq('status', options.status)
+    if (!response.ok) {
+      console.error('[ProjectAPI] Failed to fetch projects:', response.status)
+      return { projects: [], total: 0 }
     }
 
-    if (options?.limit) {
-      query = query.limit(options.limit)
+    const result = await response.json()
+    console.log('[ProjectAPI] Found projects:', result.projects?.length || 0)
+
+    return {
+      projects: result.projects || [],
+      total: result.total || 0
     }
-
-    if (options?.offset) {
-      query = query.range(options.offset, options.offset + (options.limit || 10) - 1)
-    }
-
-    const { data, error, count } = await query
-
-    if (error) {
-      console.error('[ProjectAPI] Query error:', error)
-      // If table doesn't exist, return empty array
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        console.warn('Projects table does not exist. Please run database migration.')
-        return { projects: [], total: 0 }
-      }
-      throw error
-    }
-
-    console.log('[ProjectAPI] Found projects:', data?.length || 0)
-    return { projects: data || [], total: count || 0 }
   } catch (error) {
     console.error('[ProjectAPI] Failed to load projects:', error)
-    // Return empty array instead of throwing
     return { projects: [], total: 0 }
   }
 }
 
 /**
  * Get a single project with all related data
- * Optimized: parallel queries for faster loading
  */
 export async function getProject(projectId: string): Promise<ProjectWithDetails | null> {
-  const userId = await getUserId()
+  try {
+    const response = await fetch(`${API_BASE}/api/projects/${projectId}`)
 
-  // Get project first
-  const { data: project, error: projectError } = await db
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .single()
+    if (!response.ok) {
+      if (response.status === 404) return null
+      throw new Error(`Failed to fetch project: ${response.status}`)
+    }
 
-  if (projectError) {
-    if (projectError.code === 'PGRST116') return null
-    throw projectError
-  }
-
-  // Fetch all related data in parallel for better performance
-  const [
-    requirementResult,
-    outlineResult,
-    slidesResult,
-    exportsResult
-  ] = await Promise.all([
-    db.from('project_requirements').select('*').eq('project_id', projectId).single(),
-    db.from('project_outlines').select('*').eq('project_id', projectId).order('version', { ascending: false }).limit(1).single(),
-    db.from('project_slides').select('*').eq('project_id', projectId).order('slide_index', { ascending: true }),
-    db.from('project_exports').select('*').eq('project_id', projectId).order('created_at', { ascending: false })
-  ])
-
-  return {
-    ...project,
-    requirement: requirementResult.data || undefined,
-    outline: outlineResult.data || undefined,
-    slides: slidesResult.data || undefined,
-    exports: exportsResult.data || undefined,
+    const result = await response.json()
+    return result.project
+  } catch (error) {
+    console.error('[ProjectAPI] Failed to get project:', error)
+    return null
   }
 }
 
@@ -357,27 +270,35 @@ export async function updateProject(
   projectId: string,
   updates: ProjectUpdate
 ): Promise<Project> {
-  const { data, error } = await db
-    .from('projects')
-    .update(updates)
-    .eq('id', projectId)
-    .select()
-    .single()
+  const response = await fetch(`${API_BASE}/api/projects/${projectId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  })
 
-  if (error) throw error
-  return data
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `Failed to update project: ${response.status}`)
+  }
+
+  const result = await response.json()
+  return result.project
 }
 
 /**
  * Delete a project (cascades to all related data)
  */
 export async function deleteProject(projectId: string): Promise<void> {
-  const { error } = await db
-    .from('projects')
-    .delete()
-    .eq('id', projectId)
+  const response = await fetch(`${API_BASE}/api/projects/${projectId}`, {
+    method: 'DELETE',
+  })
 
-  if (error) throw error
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `Failed to delete project: ${response.status}`)
+  }
 }
 
 // ============================================================
@@ -416,59 +337,46 @@ export async function saveRequirement(
   data: RequirementFormData,
   formStep: number
 ): Promise<ProjectRequirement> {
-  const now = new Date().toISOString()
-
-  // Find the last changed field for debugging
-  const lastSavedField = Object.keys(data).pop()
-
-  // Use upsert to handle both create and update
-  const { data: result, error } = await db
-    .from('project_requirements')
-    .upsert({
+  const response = await fetch(`${API_BASE}/api/projects/requirements/save`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
       project_id: projectId,
-      ...data,
       form_step: formStep,
-      last_saved_at: now,
-      last_saved_field: lastSavedField || null,
-      form_completed: formStep >= 4,
-    }, {
-      onConflict: 'project_id'
-    })
-    .select()
-    .single()
+      ...data,
+    }),
+  })
 
-  if (error) {
-    console.error('[ProjectAPI] saveRequirement error:', JSON.stringify(error, null, 2))
-    throw new Error(error.message || 'Failed to save requirement')
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    console.error('[ProjectAPI] saveRequirement error:', error)
+    throw new Error(error.detail || 'Failed to save requirement')
   }
 
-  // Update project status if needed
-  if (formStep >= 4) {
-    await db
-      .from('projects')
-      .update({ status: 'requirement', current_step: 'outline' })
-      .eq('id', projectId)
-  }
-
-  return result
+  const result = await response.json()
+  return result.requirement
 }
 
 /**
  * Get requirement data for a project
  */
 export async function getRequirement(projectId: string): Promise<ProjectRequirement | null> {
-  const { data, error } = await db
-    .from('project_requirements')
-    .select('*')
-    .eq('project_id', projectId)
-    .single()
+  try {
+    const response = await fetch(`${API_BASE}/api/projects/requirements/${projectId}`)
 
-  if (error) {
-    if (error.code === 'PGRST116') return null
-    throw error
+    if (!response.ok) {
+      if (response.status === 404) return null
+      throw new Error(`Failed to fetch requirement: ${response.status}`)
+    }
+
+    const result = await response.json()
+    return result.requirement
+  } catch (error) {
+    console.error('[ProjectAPI] Failed to get requirement:', error)
+    return null
   }
-
-  return data
 }
 
 // ============================================================
@@ -755,36 +663,18 @@ export async function getDownloadUrl(exportId: string): Promise<string | null> {
  * Check if user has any draft projects to recover
  */
 export async function hasDraftProjects(): Promise<Project | null> {
-  const userId = await getUserId()
-
   try {
-    const { data, error } = await db
-      .from('projects')
-      .select('*')
-      .eq('created_by', userId)
-      .in('status', ['draft', 'requirement', 'outline', 'slides'])
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .single()
+    const response = await fetch(`${API_BASE}/api/projects/draft/check`)
 
-    if (error) {
-      // No draft found or table doesn't exist
-      if (error.code === 'PGRST116' || error.code === '42P01') {
-        return null
-      }
-      console.error('Error checking for draft projects:', JSON.stringify(error, null, 2))
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      })
+    if (!response.ok) {
+      console.error('[ProjectAPI] Failed to check draft projects:', response.status)
       return null
     }
 
-    return data
+    const result = await response.json()
+    return result.draft || null
   } catch (error) {
-    console.error('Failed to check for draft projects:', error)
+    console.error('[ProjectAPI] Failed to check for draft projects:', error)
     return null
   }
 }
@@ -797,41 +687,22 @@ export async function getProjectStats(): Promise<{
   by_status: Record<string, number>
   recent: Project[]
 }> {
-  const userId = await getUserId()
-
   try {
-    const { data: projects, error } = await db
-      .from('projects')
-      .select('status')
-      .eq('created_by', userId)
+    const response = await fetch(`${API_BASE}/api/projects/stats/summary`)
 
-    if (error) {
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        console.warn('Projects table does not exist. Please run database migration.')
-        return { total: 0, by_status: {}, recent: [] }
-      }
-      throw error
+    if (!response.ok) {
+      console.error('[ProjectAPI] Failed to get project stats:', response.status)
+      return { total: 0, by_status: {}, recent: [] }
     }
 
-    const by_status: Record<string, number> = {}
-    projects?.forEach((p: { status: string }) => {
-      by_status[p.status] = (by_status[p.status] || 0) + 1
-    })
-
-    const { data: recent } = await db
-      .from('projects')
-      .select('*')
-      .eq('created_by', userId)
-      .order('updated_at', { ascending: false })
-      .limit(5)
-
+    const result = await response.json()
     return {
-      total: projects?.length || 0,
-      by_status,
-      recent: recent || [],
+      total: result.total || 0,
+      by_status: result.by_status || {},
+      recent: result.recent || [],
     }
   } catch (error) {
-    console.error('Failed to get project stats:', error)
+    console.error('[ProjectAPI] Failed to get project stats:', error)
     return { total: 0, by_status: {}, recent: [] }
   }
 }

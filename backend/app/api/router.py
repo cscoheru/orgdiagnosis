@@ -7,7 +7,7 @@ from app.api import upload, analyze, diagnosis, export_pdf
 from app.api import langgraph_diagnosis
 
 # 新增: 报告生成 API
-from api import requirement, report
+from api import requirement, report, knowledge
 
 api_router = APIRouter()
 
@@ -25,3 +25,18 @@ api_router.include_router(requirement.router, tags=["需求管理"])
 
 # 新增: 报告生成 API
 api_router.include_router(report.router, tags=["报告生成"])
+
+# 新增: 知识库管理 API
+api_router.include_router(knowledge.router, tags=["知识库管理"])
+
+# 新增: 项目管理 API
+from api import projects
+api_router.include_router(projects.router, tags=["项目管理"])
+
+# 新增: 布局推荐 API
+from api import layout
+api_router.include_router(layout.router, tags=["布局推荐"])
+
+# 新增: 知识库 V2 API (简化版，无向量)
+from api import knowledge_v2
+api_router.include_router(knowledge_v2.router, tags=["知识库V2"])
