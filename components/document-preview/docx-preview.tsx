@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useState } from 'react';
 
 interface DOCXPreviewProps {
   url: string;
@@ -8,116 +8,48 @@ interface DOCXPreviewProps {
   onDownload?: () => void;
 }
 
-export default function DOCXPreview({ url, onError }: DOCXPreviewProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+/**
+ * DOCX Preview Component
+ *
+ * Uses iframe-based preview as a simple fallback since docx-preview library
+ * has SSR issues with Next.js.
+ */
+export default function DOCXPreview({ url, onDownload }: DOCXPreviewProps) {
+  const [loadError, setLoadError] = useState(false);
 
-  const loadDOCX = useCallback(async () => {
-    if (typeof window === 'undefined' || !containerRef.current) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch the DOCX file
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to load DOCX: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-
-      // Use dynamic import with function call to avoid bundling
-      const renderDocx = async () => {
-        // @ts-ignore - dynamic import
-        const module = await import(/* webpackChunkName: "docx-preview" */ 'docx-preview');
-        return module.renderAsync;
-      };
-
-      const renderAsync = await renderDocx();
-
-      if (!containerRef.current) return;
-
-      // Clear previous content
-      containerRef.current.innerHTML = '';
-
-      // Render DOCX
-      await renderAsync(arrayBuffer, containerRef.current, undefined, {
-        className: 'docx-preview-wrapper',
-        inWrapper: true,
-        ignoreWidth: false,
-        ignoreHeight: false,
-        ignoreFonts: false,
-        breakPages: true,
-        ignoreLastRenderedPageBreak: true,
-        experimental: false,
-        trimXmlDeclaration: true,
-        useBase64URL: true,
-        renderHeaders: true,
-        renderFooters: true,
-        renderFootnotes: true,
-        renderEndnotes: true,
-      });
-
-      setLoading(false);
-
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '加载DOCX失败';
-      setError(errorMsg);
-      setLoading(false);
-      onError?.(errorMsg);
-    }
-  }, [url, onError]);
-
-  useEffect(() => {
-    loadDOCX();
-  }, [loadDOCX]);
-
-  if (loading) {
+  // Try iframe first - works for some browsers
+  if (!loadError) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-center">
-          <div className="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
-          <p className="text-gray-500">加载DOCX预览...</p>
-        </div>
+      <div className="w-full">
+        <iframe
+          src={url}
+          className="w-full border-0 rounded-lg"
+          style={{ height: '700px' }}
+          title="DOCX预览"
+          onError={() => setLoadError(true)}
+        />
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-12 text-red-500">
-        <span className="text-4xl block mb-3">❌</span>
-        <p>DOCX预览加载失败</p>
-        <p className="text-sm text-gray-400 mt-2">{error}</p>
-      </div>
-    );
-  }
-
+  // Fallback to download option
   return (
-    <div className="docx-preview-container">
-      <div
-        ref={containerRef}
-        className="bg-white shadow-lg mx-auto"
-        style={{
-          maxWidth: '100%',
-          minHeight: '500px',
-          maxHeight: '800px',
-          overflow: 'auto'
-        }}
-      />
-      <style jsx global>{`
-        .docx-preview-wrapper {
-          background: white;
-          padding: 20px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          margin: 0 auto;
-        }
-        .docx-preview-wrapper section.docx {
-          min-height: 500px;
-        }
-      `}</style>
+    <div className="text-center py-16 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
+      <span className="text-6xl block mb-4">📝</span>
+      <h3 className="text-xl font-semibold text-gray-800 mb-2">Word 文档</h3>
+      <p className="text-gray-500 mb-2">浏览器不支持直接预览DOCX格式</p>
+      <p className="text-sm text-gray-400 mb-6">
+        建议下载后使用 Microsoft Word 或 WPS 查看
+      </p>
+      {onDownload && (
+        <button
+          onClick={onDownload}
+          className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 inline-flex items-center gap-2 shadow-lg"
+        >
+          <span>⬇️</span>
+          下载文件查看
+        </button>
+      )}
     </div>
   );
 }
