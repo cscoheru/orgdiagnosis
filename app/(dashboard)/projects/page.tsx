@@ -1,10 +1,10 @@
 'use client'
 
 /**
- * Project Management Dashboard - Simplified
+ * Project Management Dashboard - Simplified with direct fetching
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -44,12 +44,6 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Log API base URL for debugging
-  useEffect(() => {
-    console.log('[ProjectsPage] API_BASE:', API_BASE)
-    console.log('[ProjectsPage] NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL)
-  }, [])
-
   // New project form
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newProject, setNewProject] = useState({
@@ -59,78 +53,35 @@ export default function ProjectsPage() {
   })
   const [creating, setCreating] = useState(false)
 
-  // Fetch projects on mount
-  useEffect(() => {
-    let cancelled = false
+  // Fetch function
+  const fetchProjects = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
 
-    async function loadProjects() {
-      try {
-        setLoading(true)
-        setError(null)
+      const response = await fetch(`${API_BASE}/api/projects/`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      })
 
-        const url = `${API_BASE}/api/projects/`
-        console.log('[ProjectsPage] API_BASE:', API_BASE)
-        console.log('[ProjectsPage] Full URL:', url)
-        console.log('[ProjectsPage] Starting fetch...')
-
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => {
-          console.log('[ProjectsPage] Request timed out after 10s')
-          controller.abort()
-        }, 10000)
-
-        const startTime = Date.now()
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-          signal: controller.signal
-        })
-        const elapsed = Date.now() - startTime
-
-        clearTimeout(timeoutId)
-
-        if (cancelled) return
-
-        console.log(`[ProjectsPage] Response received in ${elapsed}ms, status:`, response.status)
-
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error('[ProjectsPage] Error response:', errorText)
-          throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 100)}`)
-        }
-
-        const data = await response.json()
-        console.log('[ProjectsPage] Data received:', data)
-        if (!cancelled) {
-          setProjects(data.projects || [])
-        }
-      } catch (err) {
-        console.error('[ProjectsPage] Fetch error:', err)
-        console.error('[ProjectsPage] Error name:', err instanceof Error ? err.name : 'unknown')
-        console.error('[ProjectsPage] Error message:', err instanceof Error ? err.message : 'unknown')
-        if (!cancelled) {
-          if (err instanceof Error && err.name === 'AbortError') {
-            setError('请求超时 - 后端可能未响应。请检查后端服务是否运行在 http://localhost:8000')
-          } else {
-            setError(err instanceof Error ? err.message : '加载失败')
-          }
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
+
+      const data = await response.json()
+      setProjects(data.projects || [])
+      setLoading(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载失败')
+      setLoading(false)
     }
-
-    loadProjects()
-
-    return () => { cancelled = true }
   }, [])
 
-  // Reload function
-  const reload = () => {
-    window.location.reload()
-  }
+  // Fetch on mount
+  useEffect(() => {
+    fetchProjects()
+  }, [fetchProjects])
 
   // Create project
   const handleCreate = async () => {
@@ -209,7 +160,7 @@ export default function ProjectsPage() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center justify-between">
           <span>⚠️ {error}</span>
-          <button onClick={reload} className="text-red-600 hover:underline">
+          <button onClick={fetchProjects} className="text-red-600 hover:underline">
             重试
           </button>
         </div>

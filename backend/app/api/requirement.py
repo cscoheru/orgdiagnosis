@@ -155,14 +155,6 @@ async def extract_requirement(request: ExtractRequirementRequest):
             success=False,
             error=f"提取失败: {str(e)}"
         )
-        return ExtractRequirementResponse(
-            success=False,
-            error=f"提取失败: {str(e)}"
-        )
-        return ExtractRequirementResponse(
-            success=False,
-            error=str(e)
-        )
 
 
 @router.get("/template")

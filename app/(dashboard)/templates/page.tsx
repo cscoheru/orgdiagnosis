@@ -3,127 +3,66 @@
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 
-interface Template {
-  id: string;
-  name: string;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+interface Theme {
+  theme_id: string;
+  theme_name: string;
+  style: string;
+  color: string;
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
   description: string;
-  thumbnail?: string;
-  style: {
-    primaryColor: string;
-    secondaryColor: string;
-    backgroundColor: string;
-    textColor: string;
-    fontFamily: string;
-    headingFont?: string;
-  };
-  slides: {
-    title: string;
-    subtitle?: string;
-    layout: 'title' | 'section' | 'content' | 'two-column' | 'image-left' | 'image-right';
-  }[];
-  isSystem?: boolean;
-  createdAt: string;
-  updatedAt: string;
+  preview_url?: string;
 }
 
-// System preset templates
-const SYSTEM_TEMPLATES: Template[] = [
-  {
-    id: 'template-blue-professional',
-    name: '蓝色商务',
-    description: '专业商务风格，适合咨询报告',
+// Backend theme to display template converter
+function themeToDisplay(theme: Theme) {
+  return {
+    id: theme.theme_id,
+    name: theme.theme_name,
+    description: theme.description,
     style: {
-      primaryColor: '#2563eb',
-      secondaryColor: '#3b82f6',
+      primaryColor: theme.primary_color,
+      secondaryColor: theme.secondary_color,
       backgroundColor: '#ffffff',
       textColor: '#1e293b',
-      fontFamily: 'Microsoft YaHei, sans-serif',
-      headingFont: 'Microsoft YaHei, sans-serif',
     },
-    slides: [
-      { title: '封面页', layout: 'title' },
-      { title: '目录页', layout: 'content' },
-      { title: '章节页', layout: 'section' },
-      { title: '内容页', layout: 'content' },
-      { title: '双栏页', layout: 'two-column' },
-    ],
     isSystem: true,
-    createdAt: '2026-03-21T00:00:00Z',
-    updatedAt: '2026-03-21T00:00:00Z',
-  },
-  {
-    id: 'template-green-nature',
-    name: '绿色自然',
-    description: '清新自然风格，适合环保、健康主题',
-    style: {
-      primaryColor: '#16a34a',
-      secondaryColor: '#22c55e',
-      backgroundColor: '#f0fdf4',
-      textColor: '#14532d',
-      fontFamily: 'Microsoft YaHei, sans-serif',
-    },
-    slides: [
-      { title: '封面页', layout: 'title' },
-      { title: '内容页', layout: 'content' },
-      { title: '章节页', layout: 'section' },
-    ],
-    isSystem: true,
-    createdAt: '2026-03-21T00:00:00Z',
-    updatedAt: '2026-03-21T00:00:00Z',
-  },
-  {
-    id: 'template-purple-creative',
-    name: '紫色创意',
-    description: '现代创意风格，适合设计、营销主题',
-    style: {
-      primaryColor: '#9333ea',
-      secondaryColor: '#a855f7',
-      backgroundColor: '#faf5ff',
-      textColor: '#3b0764',
-      fontFamily: 'Microsoft YaHei, sans-serif',
-    },
-    slides: [
-      { title: '封面页', layout: 'title' },
-      { title: '内容页', layout: 'content' },
-      { title: '图片左文右', layout: 'image-left' },
-      { title: '文左图片右', layout: 'image-right' },
-    ],
-    isSystem: true,
-    createdAt: '2026-03-21T00:00:00Z',
-    updatedAt: '2026-03-21T00:00:00Z',
-  },
-  {
-    id: 'template-orange-energy',
-    name: '橙色活力',
-    description: '活力动感风格，适合创业、科技主题',
-    style: {
-      primaryColor: '#ea580c',
-      secondaryColor: '#f97316',
-      backgroundColor: '#fff7ed',
-      textColor: '#431407',
-      fontFamily: 'Microsoft YaHei, sans-serif',
-    },
-    slides: [
-      { title: '封面页', layout: 'title' },
-      { title: '内容页', layout: 'content' },
-      { title: '章节页', layout: 'section' },
-    ],
-    isSystem: true,
-    createdAt: '2026-03-21T00:00:00Z',
-    updatedAt: '2026-03-21T00:00:00Z',
-  },
-];
+    source: 'backend',
+  };
+}
 
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<Template[]>(SYSTEM_TEMPLATES);
+  const [themes, setThemes] = useState<Theme[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load custom templates on mount
+  // Load themes from backend API
   useEffect(() => {
-    const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]');
-    setTemplates([...SYSTEM_TEMPLATES, ...customTemplates]);
+    const loadThemes = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${API_BASE}/api/layout/themes`);
+        if (!response.ok) throw new Error('Failed to load themes');
+
+        const data = await response.json();
+        console.log('[Templates] Loaded themes from API:', data.total);
+        setThemes(data.themes || []);
+      } catch (err) {
+        console.error('[Templates] Failed to load themes:', err);
+        setError('加载主题失败，请检查后端服务');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadThemes();
   }, []);
 
+  // Upload template to backend
   const handleUpload = useCallback(async (file: File) => {
     if (!file.name.endsWith('.pptx')) {
       alert('只支持 PPTX 格式的母版文件');
@@ -131,51 +70,65 @@ export default function TemplatesPage() {
     }
 
     setUploading(true);
+    setError(null);
 
     try {
-      // For now, create a simple template record
-      // In production, this would parse the PPTX and extract styles
-      const newTemplate: Template = {
-        id: `template_${Date.now()}`,
-        name: file.name.replace('.pptx', ''),
-        description: '用户上传的母版',
-        style: {
-          primaryColor: '#2563eb',
-          secondaryColor: '#3b82f6',
-          backgroundColor: '#ffffff',
-          textColor: '#1e293b',
-          fontFamily: 'Microsoft YaHei, sans-serif',
-        },
-        slides: [
-          { title: '封面页', layout: 'title' },
-          { title: '内容页', layout: 'content' },
-        ],
-        isSystem: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('use_ai_description', 'true');
 
-      const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]');
-      customTemplates.push(newTemplate);
-      localStorage.setItem('customTemplates', JSON.stringify(customTemplates));
+      const response = await fetch(`${API_BASE}/api/layout/template/upload`, {
+        method: 'POST',
+        body: formData,
+      });
 
-      setTemplates([...SYSTEM_TEMPLATES, ...customTemplates]);
-      alert('母版上传成功！');
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('上传失败，请重试');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Upload failed');
+      }
+
+      const result = await response.json();
+      console.log('[Templates] Upload result:', result);
+
+      if (result.success) {
+        alert(`母版上传成功！解析了 ${result.layouts_count} 个布局`);
+        // Reload themes after successful upload
+        const themesResponse = await fetch(`${API_BASE}/api/layout/themes`);
+        if (themesResponse.ok) {
+          const data = await themesResponse.json();
+          setThemes(data.themes || []);
+        }
+      } else {
+        alert(result.message || '上传失败，请重试');
+      }
+    } catch (err) {
+      console.error('[Templates] Upload error:', err);
+      setError(err instanceof Error ? err.message : '上传失败，请重试');
     } finally {
       setUploading(false);
     }
   }, []);
 
-  const handleDelete = useCallback((id: string) => {
+  // Delete template from backend
+  const handleDelete = useCallback(async (templateId: string) => {
     if (!confirm('确定要删除这个母版吗？')) return;
 
-    const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]');
-    const updated = customTemplates.filter((t: Template) => t.id !== id);
-    localStorage.setItem('customTemplates', JSON.stringify(updated));
-    setTemplates([...SYSTEM_TEMPLATES, ...updated]);
+    try {
+      const response = await fetch(`${API_BASE}/api/layout/template/${templateId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete template');
+      }
+
+      // Remove from local state
+      setThemes(prev => prev.filter(t => t.theme_id !== templateId));
+      alert('母版已删除');
+    } catch (err) {
+      console.error('[Templates] Delete error:', err);
+      alert('删除失败，请重试');
+    }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -192,6 +145,20 @@ export default function TemplatesPage() {
     e.stopPropagation();
   }, []);
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-gray-600">加载主题...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto">
       {/* Header */}
@@ -203,8 +170,24 @@ export default function TemplatesPage() {
               管理 PPT 整体视觉风格（配色、字体、布局）
             </p>
           </div>
+          <Link
+            href="/layouts"
+            className="text-blue-600 hover:text-blue-700 text-sm"
+          >
+            管理 Layout →
+          </Link>
         </div>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center justify-between">
+          <span>⚠️ {error}</span>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-700">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Upload Area */}
       <div
@@ -225,7 +208,7 @@ export default function TemplatesPage() {
         {uploading ? (
           <div className="flex items-center justify-center gap-3">
             <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-gray-600">正在上传...</span>
+            <span className="text-gray-600">正在上传并解析...</span>
           </div>
         ) : (
           <>
@@ -235,103 +218,104 @@ export default function TemplatesPage() {
               </svg>
             </div>
             <p className="text-gray-600 font-medium">点击或拖拽上传 PPTX 母版</p>
-            <p className="text-sm text-gray-400 mt-1">支持 .pptx 格式</p>
+            <p className="text-sm text-gray-400 mt-1">支持 .pptx 格式，AI 将自动解析布局和样式</p>
           </>
         )}
       </div>
 
-      {/* Templates Grid */}
+      {/* Themes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates.map((template) => (
-          <div
-            key={template.id}
-            className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group"
-          >
-            {/* Preview */}
+        {themes.map((theme) => {
+          const display = themeToDisplay(theme);
+          return (
             <div
-              className="aspect-video relative"
-              style={{
-                background: `linear-gradient(135deg, ${template.style.backgroundColor} 0%, ${template.style.primaryColor}15 100%)`,
-              }}
+              key={theme.theme_id}
+              className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group"
             >
-              {/* Title slide preview */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div
-                    className="w-16 h-1 mx-auto mb-3 rounded"
-                    style={{ backgroundColor: template.style.primaryColor }}
-                  />
-                  <div
-                    className="text-lg font-semibold"
-                    style={{ color: template.style.textColor }}
-                  >
-                    {template.name}
+              {/* Preview */}
+              <div
+                className="aspect-video relative"
+                style={{
+                  background: `linear-gradient(135deg, ${display.style.backgroundColor} 0%, ${display.style.primaryColor}15 100%)`,
+                }}
+              >
+                {/* Title slide preview */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div
+                      className="w-16 h-1 mx-auto mb-3 rounded"
+                      style={{ backgroundColor: display.style.primaryColor }}
+                    />
+                    <div
+                      className="text-lg font-semibold"
+                      style={{ color: display.style.textColor }}
+                    >
+                      {theme.theme_name}
+                    </div>
+                    <div
+                      className="w-16 h-1 mx-auto mt-3 rounded"
+                      style={{ backgroundColor: display.style.secondaryColor }}
+                    />
                   </div>
+                </div>
+
+                {/* Color palette */}
+                <div className="absolute bottom-2 right-2 flex gap-1">
                   <div
-                    className="w-16 h-1 mx-auto mt-3 rounded"
-                    style={{ backgroundColor: template.style.secondaryColor }}
+                    className="w-4 h-4 rounded-full border border-white shadow"
+                    style={{ backgroundColor: theme.primary_color }}
+                    title="主色"
+                  />
+                  <div
+                    className="w-4 h-4 rounded-full border border-white shadow"
+                    style={{ backgroundColor: theme.secondary_color }}
+                    title="辅色"
+                  />
+                  <div
+                    className="w-4 h-4 rounded-full border border-gray-200 shadow"
+                    style={{ backgroundColor: theme.accent_color }}
+                    title="强调色"
                   />
                 </div>
-              </div>
 
-              {/* Color palette */}
-              <div className="absolute bottom-2 right-2 flex gap-1">
-                <div
-                  className="w-4 h-4 rounded-full border border-white shadow"
-                  style={{ backgroundColor: template.style.primaryColor }}
-                  title="主色"
-                />
-                <div
-                  className="w-4 h-4 rounded-full border border-white shadow"
-                  style={{ backgroundColor: template.style.secondaryColor }}
-                  title="辅色"
-                />
-                <div
-                  className="w-4 h-4 rounded-full border border-gray-200 shadow"
-                  style={{ backgroundColor: template.style.backgroundColor }}
-                  title="背景色"
-                />
-              </div>
-
-              {/* System badge */}
-              {template.isSystem && (
+                {/* Style badge */}
                 <div className="absolute top-2 left-2 px-2 py-0.5 bg-white/80 backdrop-blur text-xs text-gray-600 rounded-full">
-                  系统
+                  {theme.style}
                 </div>
-              )}
 
-              {/* Actions overlay */}
-              {!template.isSystem && (
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(template.id);
-                    }}
-                    className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600"
-                  >
-                    删除
-                  </button>
+                {/* Actions overlay */}
+                {!display.isSystem && (
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(theme.theme_id);
+                      }}
+                      className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600"
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="p-4">
+                <h3 className="font-medium text-gray-900">{theme.theme_name}</h3>
+                <p className="text-sm text-gray-500 mt-1">{theme.description}</p>
+                <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                  <span className="capitalize">{theme.color} · {theme.style}</span>
                 </div>
-              )}
-            </div>
-
-            {/* Info */}
-            <div className="p-4">
-              <h3 className="font-medium text-gray-900">{template.name}</h3>
-              <p className="text-sm text-gray-500 mt-1">{template.description}</p>
-              <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
-                <span>{template.slides.length} 个页面布局</span>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {templates.length === 0 && (
+      {themes.length === 0 && !loading && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
           <div className="text-gray-400 text-4xl mb-4">📭</div>
-          <p className="text-gray-500">暂无母版，上传一个 PPTX 文件开始</p>
+          <p className="text-gray-500">暂无主题，上传一个 PPTX 文件开始</p>
         </div>
       )}
     </div>

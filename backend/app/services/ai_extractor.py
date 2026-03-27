@@ -1,16 +1,12 @@
 """
 AI 信息抽取服务
-使用 DeepSeek API 进行五维诊断分析
+使用统一 AI 客户端进行五维诊断分析
 """
-import httpx
-import json
 import logging
 import time
-from typing import Dict, Any, Optional
-from tenacity import retry, stop_after_attempt, wait_exponential
+from typing import Dict, Any
 
-from app.config import settings
-from app.models.schemas import FiveDimensionsData, L1Dimension, L2Category, L3Item, ConfidenceLevel
+from app.services.ai_client import ai_client
 
 logger = logging.getLogger(__name__)
 
@@ -100,23 +96,15 @@ def generate_user_prompt(text: str) -> str:
 
 
 class AIExtractor:
-    """AI 信息抽取服务"""
+    """AI 信息抽取服务 - 使用统一 AI 客户端"""
 
     def __init__(self):
-        self.api_key = settings.DEEPSEEK_API_KEY
-        self.api_url = settings.DEEPSEEK_API_URL
-        self.timeout = 30  # 缩短超时到30秒，超时后使用 mock 数据
-        self.max_tokens = settings.AI_MAX_TOKENS
+        self.timeout = 30  # 诊断分析超时 30 秒
 
     def is_configured(self) -> bool:
         """检查 API 是否配置"""
-        return bool(self.api_key)
+        return ai_client.is_configured()
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True
-    )
     async def extract(self, text: str) -> Dict[str, Any]:
         """
         从文本中抽取五维诊断数据
@@ -129,9 +117,8 @@ class AIExtractor:
         """
         start_time = time.time()
 
-        # 检查 API 配置
         if not self.is_configured():
-            logger.warning("DeepSeek API 未配置，使用 Mock 数据")
+            logger.warning("AI API 未配置，使用 Mock 数据")
             return self._generate_mock_data(text)
 
         # 截断超长文本
@@ -139,86 +126,34 @@ class AIExtractor:
             text = text[:20000] + "\n...[文本已截断，保留前20000字符]"
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    self.api_url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.api_key}"
-                    },
-                    json={
-                        "model": "deepseek-chat",
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": generate_user_prompt(text)}
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": self.max_tokens
-                    }
-                )
+            data = await ai_client.chat_json(
+                SYSTEM_PROMPT,
+                generate_user_prompt(text),
+                temperature=0.3,
+                max_tokens=4096,
+                timeout=self.timeout,
+            )
 
-                if response.status_code == 429:
-                    logger.warning("API 限流，使用 Mock 数据")
-                    return self._generate_mock_data(text)
+            # 验证数据结构
+            required_dims = ['strategy', 'structure', 'performance', 'compensation', 'talent']
+            for dim in required_dims:
+                if dim not in data:
+                    raise ValueError(f"缺少维度: {dim}")
 
-                if response.status_code == 402:
-                    logger.warning("API 余额不足，使用 Mock 数据")
-                    return self._generate_mock_data(text)
+            # 计算聚合分数
+            self._calculate_scores(data)
 
-                response.raise_for_status()
-
-                result = response.json()
-                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-                if not content:
-                    raise ValueError("API 返回内容为空")
-
-                # 解析 JSON
-                data = self._parse_response(content)
-                processing_time = int((time.time() - start_time) * 1000)
-
-                logger.info(f"AI 分析完成，耗时 {processing_time}ms")
-                return data
-
-        except httpx.TimeoutException:
-            logger.warning("API 请求超时，使用 Mock 数据")
-            return self._generate_mock_data(text)
+            processing_time = int((time.time() - start_time) * 1000)
+            logger.info(f"AI 分析完成，耗时 {processing_time}ms")
+            return data
 
         except Exception as e:
-            logger.warning(f"API 请求失败: {str(e)}，使用 Mock 数据")
+            logger.warning(f"AI 分析失败: {e}，使用 Mock 数据")
             return self._generate_mock_data(text)
 
     async def generate(self, text: str) -> Dict[str, Any]:
-        """
-        generate 方法（extract 的别名，用于 PDF 生成器调用）
-        """
+        """generate 方法（extract 的别名，用于 PDF 生成器调用）"""
         return await self.extract(text)
-
-    def _parse_response(self, content: str) -> Dict[str, Any]:
-        """解析 API 响应"""
-        # 提取 JSON
-        json_match = content
-        if "```json" in content:
-            import re
-            match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
-            if match:
-                json_match = match.group(1)
-
-        try:
-            data = json.loads(json_match)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"JSON 解析失败: {str(e)}")
-
-        # 验证数据结构
-        required_dims = ['strategy', 'structure', 'performance', 'compensation', 'talent']
-        for dim in required_dims:
-            if dim not in data:
-                raise ValueError(f"缺少维度: {dim}")
-
-        # 计算聚合分数
-        self._calculate_scores(data)
-
-        return data
 
     def _calculate_scores(self, data: Dict[str, Any]) -> None:
         """计算聚合分数"""
@@ -265,229 +200,23 @@ class AIExtractor:
                 "score": 72,
                 "L2_categories": {
                     "business_status": {
-                        "score": 65,
-                        "label": "业务现状",
+                        "score": 65, "label": "业务现状",
                         "L3_items": {
-                            "performance_gap": {
-                                "score": 60 if "营收" in text_lower or "增长" in text_lower else 70,
-                                "evidence": "原文提及业绩相关内容" if "增长" in text_lower else "未提及具体业绩差距",
-                                "confidence": "medium"
-                            },
-                            "opportunity_gap": {
-                                "score": 55 if "机会" in text_lower else 70,
-                                "evidence": "原文提及市场机会" if "机会" in text_lower else "未提及机会差距",
-                                "confidence": "medium"
-                            }
+                            "performance_gap": {"score": 60 if "营收" in text_lower or "增长" in text_lower else 70, "evidence": "原文提及业绩相关内容" if "增长" in text_lower else "未提及具体业绩差距", "confidence": "medium"},
+                            "opportunity_gap": {"score": 55 if "机会" in text_lower else 70, "evidence": "原文提及市场机会" if "机会" in text_lower else "未提及机会差距", "confidence": "medium"}
                         }
                     },
-                    "strategic_planning": {
-                        "score": 75,
-                        "label": "战略规划",
-                        "L3_items": {
-                            "market_insight": {"score": 78, "evidence": "模拟数据", "confidence": "low"},
-                            "strategic_intent": {"score": 75, "evidence": "模拟数据", "confidence": "low"},
-                            "innovation_focus": {"score": 72, "evidence": "模拟数据", "confidence": "low"},
-                            "business_design": {"score": 75, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "strategy_execution": {
-                        "score": 68,
-                        "label": "战略执行",
-                        "L3_items": {
-                            "critical_tasks": {"score": 65, "evidence": "模拟数据", "confidence": "low"},
-                            "organizational_support": {"score": 70, "evidence": "模拟数据", "confidence": "low"},
-                            "talent_readiness": {"score": 60, "evidence": "模拟数据", "confidence": "low"},
-                            "corporate_culture": {"score": 77, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "strategy_evaluation": {
-                        "score": 80,
-                        "label": "战略评估",
-                        "L3_items": {
-                            "business_analysis": {"score": 82, "evidence": "模拟数据", "confidence": "low"},
-                            "execution_evaluation": {"score": 78, "evidence": "模拟数据", "confidence": "low"},
-                            "strategy_iteration": {"score": 80, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    }
+                    "strategic_planning": {"score": 75, "label": "战略规划", "L3_items": {"market_insight": {"score": 78, "evidence": "模拟数据", "confidence": "low"}, "strategic_intent": {"score": 75, "evidence": "模拟数据", "confidence": "low"}, "innovation_focus": {"score": 72, "evidence": "模拟数据", "confidence": "low"}, "business_design": {"score": 75, "evidence": "模拟数据", "confidence": "low"}}},
+                    "strategy_execution": {"score": 68, "label": "战略执行", "L3_items": {"critical_tasks": {"score": 65, "evidence": "模拟数据", "confidence": "low"}, "organizational_support": {"score": 70, "evidence": "模拟数据", "confidence": "low"}, "talent_readiness": {"score": 60, "evidence": "模拟数据", "confidence": "low"}, "corporate_culture": {"score": 77, "evidence": "模拟数据", "confidence": "low"}}},
+                    "strategy_evaluation": {"score": 80, "label": "战略评估", "L3_items": {"business_analysis": {"score": 82, "evidence": "模拟数据", "confidence": "low"}, "execution_evaluation": {"score": 78, "evidence": "模拟数据", "confidence": "low"}, "strategy_iteration": {"score": 80, "evidence": "模拟数据", "confidence": "low"}}}
                 }
             },
-            "structure": {
-                "label": "组织",
-                "description": "提升系统运转效率",
-                "score": 58 if "组织" in text_lower or "架构" in text_lower else 65,
-                "L2_categories": {
-                    "organizational_structure": {
-                        "score": 60,
-                        "label": "组织架构",
-                        "L3_items": {
-                            "structure_type": {"score": 62, "evidence": "模拟数据", "confidence": "low"},
-                            "layers_and_span": {"score": 55, "evidence": "模拟数据", "confidence": "low"},
-                            "departmental_boundaries": {"score": 63, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "authority_and_responsibility": {
-                        "score": 68,
-                        "label": "权责分配",
-                        "L3_items": {
-                            "decision_mechanism": {"score": 70, "evidence": "模拟数据", "confidence": "low"},
-                            "delegation_system": {"score": 65, "evidence": "模拟数据", "confidence": "low"},
-                            "role_definitions": {"score": 69, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "collaboration_and_processes": {
-                        "score": 55 if "协作" in text_lower or "部门墙" in text_lower else 65,
-                        "label": "协同流程",
-                        "L3_items": {
-                            "core_processes": {"score": 68, "evidence": "模拟数据", "confidence": "low"},
-                            "cross_functional_collaboration": {
-                                "score": 50 if "协作" in text_lower else 65,
-                                "evidence": "原文提及跨部门协作问题" if "协作" in text_lower else "模拟数据",
-                                "confidence": "medium"
-                            },
-                            "process_digitalization": {"score": 62, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "organizational_effectiveness": {
-                        "score": 68,
-                        "label": "组织效能",
-                        "L3_items": {
-                            "per_capita_efficiency": {"score": 70, "evidence": "模拟数据", "confidence": "low"},
-                            "agility": {"score": 66, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    }
-                }
-            },
-            "performance": {
-                "label": "绩效",
-                "description": "明确指挥棒",
-                "score": 52 if "绩效" in text_lower or "考核" in text_lower else 60,
-                "L2_categories": {
-                    "system_design": {
-                        "score": 50,
-                        "label": "绩效体系设计",
-                        "L3_items": {
-                            "goal_setting_tools": {"score": 52, "evidence": "模拟数据", "confidence": "low"},
-                            "metric_cascading": {"score": 48, "evidence": "模拟数据", "confidence": "low"},
-                            "weights_and_standards": {"score": 50, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "process_management": {
-                        "score": 55,
-                        "label": "过程管理",
-                        "L3_items": {
-                            "goal_tracking": {"score": 58, "evidence": "模拟数据", "confidence": "low"},
-                            "performance_coaching": {"score": 52, "evidence": "模拟数据", "confidence": "low"},
-                            "data_collection": {"score": 55, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "appraisal_and_feedback": {
-                        "score": 48 if "公平" in text_lower else 58,
-                        "label": "考核与反馈",
-                        "L3_items": {
-                            "appraisal_fairness": {
-                                "score": 45 if "公平" in text_lower else 60,
-                                "evidence": "原文提及考核公平性问题" if "公平" in text_lower else "模拟数据",
-                                "confidence": "medium"
-                            },
-                            "feedback_quality": {"score": 60, "evidence": "模拟数据", "confidence": "low"},
-                            "grievance_mechanism": {"score": 58, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "result_application": {
-                        "score": 55,
-                        "label": "结果应用",
-                        "L3_items": {
-                            "link_to_rewards": {"score": 58, "evidence": "模拟数据", "confidence": "low"},
-                            "promotion_and_elimination": {"score": 52, "evidence": "模拟数据", "confidence": "low"},
-                            "link_to_learning_and_development": {"score": 55, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    }
-                }
-            },
-            "compensation": {
-                "label": "薪酬",
-                "description": "提供核心动力",
-                "score": 55 if "薪酬" in text_lower or "工资" in text_lower else 68,
-                "L2_categories": {
-                    "compensation_strategy": {
-                        "score": 70,
-                        "label": "薪酬策略",
-                        "L3_items": {
-                            "market_positioning": {"score": 68, "evidence": "模拟数据", "confidence": "low"},
-                            "fixed_vs_variable_mix": {"score": 72, "evidence": "模拟数据", "confidence": "low"},
-                            "internal_equity": {"score": 70, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "compensation_structure": {
-                        "score": 66,
-                        "label": "薪酬结构",
-                        "L3_items": {
-                            "base_pay": {"score": 68, "evidence": "模拟数据", "confidence": "low"},
-                            "short_term_incentives": {"score": 65, "evidence": "模拟数据", "confidence": "low"},
-                            "long_term_incentives": {"score": 55, "evidence": "模拟数据", "confidence": "low"},
-                            "benefits_and_allowances": {"score": 72, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "management_and_budgeting": {
-                        "score": 68,
-                        "label": "管理与预算",
-                        "L3_items": {
-                            "payroll_management": {"score": 70, "evidence": "模拟数据", "confidence": "low"},
-                            "salary_adjustment": {"score": 65, "evidence": "模拟数据", "confidence": "low"},
-                            "pay_transparency": {"score": 60, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    }
-                }
-            },
-            "talent": {
-                "label": "人才",
-                "description": "打造核心资产",
-                "score": 50 if "人才" in text_lower or "流失" in text_lower or "离职" in text_lower else 58,
-                "L2_categories": {
-                    "planning_and_review": {
-                        "score": 58,
-                        "label": "规划与盘点",
-                        "L3_items": {
-                            "competency_models": {"score": 60, "evidence": "模拟数据", "confidence": "low"},
-                            "talent_review": {"score": 55, "evidence": "模拟数据", "confidence": "low"},
-                            "pipeline_health": {"score": 59, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "acquisition_and_allocation": {
-                        "score": 55,
-                        "label": "获取与配置",
-                        "L3_items": {
-                            "employer_branding": {"score": 58, "evidence": "模拟数据", "confidence": "low"},
-                            "recruitment_precision": {"score": 52, "evidence": "模拟数据", "confidence": "low"},
-                            "internal_mobility": {"score": 48, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "training_and_development": {
-                        "score": 60,
-                        "label": "培养与发展",
-                        "L3_items": {
-                            "onboarding": {"score": 65, "evidence": "模拟数据", "confidence": "low"},
-                            "leadership_development": {"score": 55, "evidence": "模拟数据", "confidence": "low"},
-                            "career_pathways": {"score": 55, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    },
-                    "retention_and_engagement": {
-                        "score": 45 if "流失" in text_lower or "离职" in text_lower else 55,
-                        "label": "保留与激励",
-                        "L3_items": {
-                            "key_talent_turnover": {
-                                "score": 40 if "流失" in text_lower or "离职" in text_lower else 55,
-                                "evidence": "原文提及人才流失问题" if "流失" in text_lower else "模拟数据",
-                                "confidence": "medium"
-                            },
-                            "employee_engagement": {"score": 58, "evidence": "模拟数据", "confidence": "low"},
-                            "non_financial_incentives": {"score": 52, "evidence": "模拟数据", "confidence": "low"}
-                        }
-                    }
-                }
-            },
+            "structure": {"label": "组织", "description": "提升系统运转效率", "score": 58 if "组织" in text_lower or "架构" in text_lower else 65, "L2_categories": {"organizational_structure": {"score": 60, "label": "组织架构", "L3_items": {"structure_type": {"score": 62, "evidence": "模拟数据", "confidence": "low"}, "layers_and_span": {"score": 55, "evidence": "模拟数据", "confidence": "low"}, "departmental_boundaries": {"score": 63, "evidence": "模拟数据", "confidence": "low"}}}, "authority_and_responsibility": {"score": 68, "label": "权责分配", "L3_items": {"decision_mechanism": {"score": 70, "evidence": "模拟数据", "confidence": "low"}, "delegation_system": {"score": 65, "evidence": "模拟数据", "confidence": "low"}, "role_definitions": {"score": 69, "evidence": "模拟数据", "confidence": "low"}}}, "collaboration_and_processes": {"score": 55 if "协作" in text_lower or "部门墙" in text_lower else 65, "label": "协同流程", "L3_items": {"core_processes": {"score": 68, "evidence": "模拟数据", "confidence": "low"}, "cross_functional_collaboration": {"score": 50 if "协作" in text_lower else 65, "evidence": "原文提及跨部门协作问题" if "协作" in text_lower else "模拟数据", "confidence": "medium"}, "process_digitalization": {"score": 62, "evidence": "模拟数据", "confidence": "low"}}}, "organizational_effectiveness": {"score": 68, "label": "组织效能", "L3_items": {"per_capita_efficiency": {"score": 70, "evidence": "模拟数据", "confidence": "low"}, "agility": {"score": 66, "evidence": "模拟数据", "confidence": "low"}}}}},
+            "performance": {"label": "绩效", "description": "明确指挥棒", "score": 52 if "绩效" in text_lower or "考核" in text_lower else 60, "L2_categories": {"system_design": {"score": 50, "label": "绩效体系设计", "L3_items": {"goal_setting_tools": {"score": 52, "evidence": "模拟数据", "confidence": "low"}, "metric_cascading": {"score": 48, "evidence": "模拟数据", "confidence": "low"}, "weights_and_standards": {"score": 50, "evidence": "模拟数据", "confidence": "low"}}}, "process_management": {"score": 55, "label": "过程管理", "L3_items": {"goal_tracking": {"score": 58, "evidence": "模拟数据", "confidence": "low"}, "performance_coaching": {"score": 52, "evidence": "模拟数据", "confidence": "low"}, "data_collection": {"score": 55, "evidence": "模拟数据", "confidence": "low"}}}, "appraisal_and_feedback": {"score": 48 if "公平" in text_lower else 58, "label": "考核与反馈", "L3_items": {"appraisal_fairness": {"score": 45 if "公平" in text_lower else 60, "evidence": "原文提及考核公平性问题" if "公平" in text_lower else "模拟数据", "confidence": "medium"}, "feedback_quality": {"score": 60, "evidence": "模拟数据", "confidence": "low"}, "grievance_mechanism": {"score": 58, "evidence": "模拟数据", "confidence": "low"}}}, "result_application": {"score": 55, "label": "结果应用", "L3_items": {"link_to_rewards": {"score": 58, "evidence": "模拟数据", "confidence": "low"}, "promotion_and_elimination": {"score": 52, "evidence": "模拟数据", "confidence": "low"}, "link_to_learning_and_development": {"score": 55, "evidence": "模拟数据", "confidence": "low"}}}}},
+            "compensation": {"label": "薪酬", "description": "提供核心动力", "score": 55 if "薪酬" in text_lower or "工资" in text_lower else 68, "L2_categories": {"compensation_strategy": {"score": 70, "label": "薪酬策略", "L3_items": {"market_positioning": {"score": 68, "evidence": "模拟数据", "confidence": "low"}, "fixed_vs_variable_mix": {"score": 72, "evidence": "模拟数据", "confidence": "low"}, "internal_equity": {"score": 70, "evidence": "模拟数据", "confidence": "low"}}}, "compensation_structure": {"score": 66, "label": "薪酬结构", "L3_items": {"base_pay": {"score": 68, "evidence": "模拟数据", "confidence": "low"}, "short_term_incentives": {"score": 65, "evidence": "模拟数据", "confidence": "low"}, "long_term_incentives": {"score": 55, "evidence": "模拟数据", "confidence": "low"}, "benefits_and_allowances": {"score": 72, "evidence": "模拟数据", "confidence": "low"}}}, "management_and_budgeting": {"score": 68, "label": "管理与预算", "L3_items": {"payroll_management": {"score": 70, "evidence": "模拟数据", "confidence": "low"}, "salary_adjustment": {"score": 65, "evidence": "模拟数据", "confidence": "low"}, "pay_transparency": {"score": 60, "evidence": "模拟数据", "confidence": "low"}}}}},
+            "talent": {"label": "人才", "description": "打造核心资产", "score": 50 if "人才" in text_lower or "流失" in text_lower or "离职" in text_lower else 58, "L2_categories": {"planning_and_review": {"score": 58, "label": "规划与盘点", "L3_items": {"competency_models": {"score": 60, "evidence": "模拟数据", "confidence": "low"}, "talent_review": {"score": 55, "evidence": "模拟数据", "confidence": "low"}, "pipeline_health": {"score": 59, "evidence": "模拟数据", "confidence": "low"}}}, "acquisition_and_allocation": {"score": 55, "label": "获取与配置", "L3_items": {"employer_branding": {"score": 58, "evidence": "模拟数据", "confidence": "low"}, "recruitment_precision": {"score": 52, "evidence": "模拟数据", "confidence": "low"}, "internal_mobility": {"score": 48, "evidence": "模拟数据", "confidence": "low"}}}, "training_and_development": {"score": 60, "label": "培养与发展", "L3_items": {"onboarding": {"score": 65, "evidence": "模拟数据", "confidence": "low"}, "leadership_development": {"score": 55, "evidence": "模拟数据", "confidence": "low"}, "career_pathways": {"score": 55, "evidence": "模拟数据", "confidence": "low"}}}, "retention_and_engagement": {"score": 45 if "流失" in text_lower or "离职" in text_lower else 55, "label": "保留与激励", "L3_items": {"key_talent_turnover": {"score": 40 if "流失" in text_lower or "离职" in text_lower else 55, "evidence": "原文提及人才流失问题" if "流失" in text_lower else "模拟数据", "confidence": "medium"}, "employee_engagement": {"score": 58, "evidence": "模拟数据", "confidence": "low"}, "non_financial_incentives": {"score": 52, "evidence": "模拟数据", "confidence": "low"}}}}},
             "overall_score": 62,
-            "summary": "基于提供的信息，该组织整体健康度处于中等水平。主要问题集中在绩效管理和人才保留方面，建议重点关注考核公平性优化和核心人才保留策略。"
+            "summary": "基于提供的信息，该组织整体健康度处于中等水平。"
         }
 
 

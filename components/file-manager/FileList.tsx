@@ -41,7 +41,7 @@ interface FileListProps {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function fetchFiles(folderId: string): Promise<KnowledgeFile[]> {
-  const response = await fetch(`${API_BASE}/knowledge/files?folder_id=${folderId}`);
+  const response = await fetch(`${API_BASE}/api/knowledge/files?folder_id=${folderId}`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Failed to fetch files' }));
     throw new Error(error.detail || 'Failed to fetch files');
@@ -51,7 +51,7 @@ async function fetchFiles(folderId: string): Promise<KnowledgeFile[]> {
 }
 
 async function deleteFile(fileId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/knowledge/files/${fileId}`, {
+  const response = await fetch(`${API_BASE}/api/knowledge/files/${fileId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -61,7 +61,7 @@ async function deleteFile(fileId: string): Promise<void> {
 }
 
 async function getDownloadUrl(fileId: string): Promise<{ download_url: string; filename: string }> {
-  const response = await fetch(`${API_BASE}/knowledge/files/${fileId}/download`);
+  const response = await fetch(`${API_BASE}/api/knowledge/files/${fileId}/download`);
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Failed to get download URL' }));
     throw new Error(error.detail || 'Failed to get download URL');

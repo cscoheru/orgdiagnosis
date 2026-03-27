@@ -44,6 +44,7 @@ const navigationGroups: NavGroup[] = [
     icon: '📚',
     items: [
       { name: '仪表盘', href: '/knowledge/dashboard', icon: '📊' },
+      { name: '文件管理', href: '/knowledge/files', icon: '📁' },
       { name: '智能检索', href: '/knowledge/search', icon: '🔍' },
       { name: '文档管理', href: '/knowledge/documents', icon: '📄' },
       { name: '上传中心', href: '/knowledge/upload', icon: '⬆️' },

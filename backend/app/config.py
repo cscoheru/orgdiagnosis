@@ -17,16 +17,30 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     API_PREFIX: str = ""  # 路由前缀在 main.py 中设置
 
-    # CORS - 允许所有来源（开发/生产环境）
-    CORS_ORIGINS: list = ["*"]
+    # CORS - 限制为前端域名
+    _cors_raw = os.getenv("CORS_ORIGINS", "")
+    if _cors_raw:
+        CORS_ORIGINS: list = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    else:
+        CORS_ORIGINS: list = [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            os.getenv("FRONTEND_URL", ""),
+        ]
+    CORS_ORIGINS: list = [o for o in CORS_ORIGINS if o]
 
     # Supabase
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
 
-    # DeepSeek API
+    # DeepSeek API (legacy, 保留向后兼容)
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     DEEPSEEK_API_URL: str = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
+
+    # AI 提供商配置 (新统一配置)
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "")  # dashscope | deepseek (空=自动检测)
+    AI_MODEL: str = os.getenv("AI_MODEL", "")
+    AI_API_URL: str = os.getenv("AI_API_URL", "")
 
     # 文件上传限制
     MAX_FILE_SIZE: int = 20 * 1024 * 1024  # 20MB

@@ -5,18 +5,8 @@
  * Uses backend API instead of direct Supabase connection for better reliability
  */
 
-import { createClient } from '@supabase/supabase-js'
-
 // API base URL for backend endpoints
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-// Supabase client for direct database operations (used by some legacy functions)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db: any = supabaseUrl && supabaseKey
-  ? createClient(supabaseUrl, supabaseKey)
-  : null
 
 // ============================================================
 // User ID Helper (authenticated or anonymous fallback)
@@ -350,9 +340,25 @@ export async function saveRequirement(
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    console.error('[ProjectAPI] saveRequirement error:', error)
-    throw new Error(error.detail || 'Failed to save requirement')
+    const errorText = await response.text()
+    let errorMessage = `HTTP ${response.status}`
+    try {
+      const errorJson = JSON.parse(errorText)
+      // FastAPI validation errors have 'detail' field
+      if (errorJson.detail) {
+        if (typeof errorJson.detail === 'string') {
+          errorMessage = errorJson.detail
+        } else if (Array.isArray(errorJson.detail)) {
+          // FastAPI validation error format
+          errorMessage = errorJson.detail.map((e: { msg?: string; loc?: string[] }) =>
+            `${e.loc?.join('.')}: ${e.msg}`
+          ).join(', ')
+        }
+      }
+    } catch {
+      errorMessage = errorText || errorMessage
+    }
+    throw new Error(errorMessage)
   }
 
   const result = await response.json()
@@ -380,7 +386,7 @@ export async function getRequirement(projectId: string): Promise<ProjectRequirem
 }
 
 // ============================================================
-// Outline Operations
+// Outline Operations (Types only - operations via backend API)
 // ============================================================
 
 export interface OutlineSection {
@@ -396,114 +402,8 @@ export interface OutlineSection {
   }[]
 }
 
-/**
- * Save outline (creates new version)
- */
-export async function saveOutline(
-  projectId: string,
-  sections: OutlineSection[],
-  metadata?: {
-    generation_model?: string
-    generation_tokens?: number
-    rag_sources?: Array<{ id: string; title: string; score: number }>
-  }
-): Promise<ProjectOutline> {
-  // Get current version
-  const { data: existing } = await db
-    .from('project_outlines')
-    .select('version')
-    .eq('project_id', projectId)
-    .order('version', { ascending: false })
-    .limit(1)
-    .single()
-
-  const nextVersion = (existing?.version || 0) + 1
-
-  const { data, error } = await db
-    .from('project_outlines')
-    .insert({
-      project_id: projectId,
-      sections: sections as any,
-      version: nextVersion,
-      generation_model: metadata?.generation_model,
-      generation_tokens: metadata?.generation_tokens,
-      rag_sources: metadata?.rag_sources as any,
-    })
-    .select()
-    .single()
-
-  if (error) throw error
-
-  // Update project status
-  await db
-    .from('projects')
-    .update({ status: 'outline', current_step: 'outline' })
-    .eq('id', projectId)
-
-  return data
-}
-
-/**
- * Confirm outline (user approves)
- */
-export async function confirmOutline(
-  projectId: string,
-  outlineId: string
-): Promise<ProjectOutline> {
-  const userId = await getUserId()
-
-  const { data, error } = await db
-    .from('project_outlines')
-    .update({
-      is_confirmed: true,
-      confirmed_at: new Date().toISOString(),
-      confirmed_by: userId,
-    })
-    .eq('id', outlineId)
-    .select()
-    .single()
-
-  if (error) throw error
-
-  // Update project to move to slides step
-  await db
-    .from('projects')
-    .update({ current_step: 'slides' })
-    .eq('id', projectId)
-
-  return data
-}
-
-/**
- * Get outline (latest version or specific)
- */
-export async function getOutline(
-  projectId: string,
-  version?: number
-): Promise<ProjectOutline | null> {
-  let query = db
-    .from('project_outlines')
-    .select('*')
-    .eq('project_id', projectId)
-
-  if (version) {
-    query = query.eq('version', version)
-  } else {
-    query = query.order('version', { ascending: false }).limit(1)
-  }
-
-  const { data, error } = await query.single()
-
-  if (error) {
-    if (error.code === 'PGRST116') return null
-    throw error
-  }
-
-  return data
-}
-
 // ============================================================
-// Slides Operations
+// Slides Operations (Types only - operations via backend API)
 // ============================================================
 
 export interface SlideData {
@@ -516,92 +416,6 @@ export interface SlideData {
   layout_type?: string
   model_id?: string
   model_params?: Record<string, any>
-}
-
-/**
- * Save or update a single slide
- */
-export async function saveSlide(
-  projectId: string,
-  slide: SlideData
-): Promise<ProjectSlide> {
-  const { data, error } = await db
-    .from('project_slides')
-    .upsert({
-      project_id: projectId,
-      ...slide,
-      status: 'edited',
-    }, {
-      onConflict: 'project_id,slide_index',
-    })
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
-}
-
-/**
- * Batch save slides (from AI generation)
- */
-export async function saveSlides(
-  projectId: string,
-  slides: SlideData[]
-): Promise<ProjectSlide[]> {
-  const { data, error } = await db
-    .from('project_slides')
-    .upsert(
-      slides.map(s => ({
-        project_id: projectId,
-        ...s,
-        status: 'generated',
-      })),
-      { onConflict: 'project_id,slide_index' }
-    )
-    .select()
-
-  if (error) throw error
-
-  // Update project status
-  await db
-    .from('projects')
-    .update({ status: 'slides', current_step: 'slides' })
-    .eq('id', projectId)
-
-  return data
-}
-
-/**
- * Get all slides for a project
- */
-export async function getSlides(projectId: string): Promise<ProjectSlide[]> {
-  const { data, error } = await db
-    .from('project_slides')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('slide_index', { ascending: true })
-
-  if (error) throw error
-  return data || []
-}
-
-/**
- * Confirm slides (user approves for export)
- */
-export async function confirmSlides(projectId: string): Promise<void> {
-  const userId = await getUserId()
-
-  // Update all slides to approved
-  await db
-    .from('project_slides')
-    .update({ status: 'approved' })
-    .eq('project_id', projectId)
-
-  // Update project to move to export step
-  await db
-    .from('projects')
-    .update({ current_step: 'export' })
-    .eq('id', projectId)
 }
 
 // ============================================================
@@ -626,33 +440,6 @@ export async function triggerExport(
   }
 
   return response.json()
-}
-
-/**
- * Get export status
- */
-export async function getExportStatus(exportId: string): Promise<ProjectExport> {
-  const { data, error } = await db
-    .from('project_exports')
-    .select('*')
-    .eq('id', exportId)
-    .single()
-
-  if (error) throw error
-  return data
-}
-
-/**
- * Get download URL for completed export
- */
-export async function getDownloadUrl(exportId: string): Promise<string | null> {
-  const export_ = await getExportStatus(exportId)
-
-  if (export_.status !== 'completed') {
-    return null
-  }
-
-  return export_.download_url || null
 }
 
 // ============================================================

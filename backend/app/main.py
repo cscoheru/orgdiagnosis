@@ -6,11 +6,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
+import os
 import time
 
 from app.config import settings
 from app.api.router import api_router
 from app.models.schemas import HealthResponse
+from app.middleware.auth import AuthMiddleware
+
+# Rate limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+rate_limit_enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+limiter = Limiter(key_func=get_remote_address, enabled=rate_limit_enabled)
 
 # 配置日志
 logging.basicConfig(
@@ -23,9 +33,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    logger.info(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} 启动中...")
-    logger.info(f"📝 Supabase 配置: {'已配置' if settings.SUPABASE_URL else '未配置'}")
-    logger.info(f"🤖 DeepSeek API: {'已配置' if settings.DEEPSEEK_API_KEY else '未配置'}")
+    logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} starting...")
+    logger.info(f"Supabase: {'configured' if settings.SUPABASE_URL else 'not configured'}")
+    logger.info(f"Auth: {'ENABLED' if os.getenv('AUTH_ENABLED', 'false').lower() == 'true' else 'DISABLED (set AUTH_ENABLED=true to enable)'}")
     yield
     logger.info("👋 应用关闭")
 
@@ -35,8 +45,12 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="企业组织诊断系统后端 API",
-    lifespan=lifespan
+    lifespan=lifespan,
+    state={"limiter": limiter}
 )
+
+# Rate limit exceeded handler
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS 配置
 app.add_middleware(
@@ -46,6 +60,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 认证中间件 (通过 AUTH_ENABLED=true 启用)
+app.add_middleware(AuthMiddleware)
 
 
 # 请求日志中间件
@@ -71,7 +88,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "success": False,
             "error": "服务器内部错误",
-            "detail": str(exc) if settings.DEBUG else None
         }
     )
 

@@ -18,16 +18,19 @@ export function DimensionDetailChart({ dimensionKey, data }: DimensionDetailChar
     setMounted(true);
   }, []);
 
+  // Handle case where L2_categories might be undefined or empty
+  const l2Categories = data?.L2_categories || {};
+
   // L2 雷达图数据
-  const radarData = Object.entries(data.L2_categories).map(([key, category]) => ({
+  const radarData = Object.entries(l2Categories).map(([key, category]) => ({
     key,
-    name: category.label || key,
-    score: category.score,
+    name: category?.label || key,
+    score: category?.score || 0,
     fullMark: 100,
   }));
 
   // 选中的 L2 数据
-  const selectedL2Data = selectedL2 ? data.L2_categories[selectedL2] : null;
+  const selectedL2Data = selectedL2 ? l2Categories[selectedL2] : null;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">

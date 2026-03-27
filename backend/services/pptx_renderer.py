@@ -337,21 +337,132 @@ class PPTXRenderer:
             alignment=PP_ALIGN.CENTER
         )
 
-        # 图表数据 - 显示为表格
+        # 图表数据 - 渲染为 PPTX 表格
         chart_data = slide_data.get("chart_data", {})
-        if chart_data:
-            # 简单处理：将数据转为文本
-            data_text = ""
-            for key, value in chart_data.items():
-                data_text += f"• {key}: {value}\n"
+        rows = slide_data.get("chart_rows", [])
 
-            self._add_text_box(
-                slide, 0.5, 1.5, 12.333, 5.0,
-                data_text,
-                font_size=16, bold=False,
-                color=self.COLORS["text_dark"],
-                alignment=PP_ALIGN.LEFT
-            )
+        if rows and isinstance(rows[0], dict):
+            # 结构化表格数据: [{"label": "...", "values": [...]}]
+            self._render_table_from_rows(slide, rows, 1.5)
+        elif chart_data and isinstance(chart_data, dict):
+            # 键值对数据: {"指标1": 85, "指标2": 72}
+            self._render_table_from_kv(slide, chart_data, 1.5)
+        else:
+            # Fallback: 渲染 bullets
+            bullets = slide_data.get("bullets", [])
+            if bullets:
+                bullet_text = "\n\n".join([f"• {b}" for b in bullets])
+                self._add_text_box(
+                    slide, 0.5, 1.5, 12.333, 5.0,
+                    bullet_text,
+                    font_size=16, bold=False,
+                    color=self.COLORS["text_dark"],
+                    alignment=PP_ALIGN.LEFT
+                )
+
+    def _render_table_from_rows(self, slide, rows: list, top: float):
+        """从结构化行数据渲染表格"""
+        if not rows:
+            return
+
+        # 确定列名
+        first_row = rows[0]
+        if isinstance(first_row, dict) and "values" in first_row:
+            # rows = [{"label": "X", "values": [1, 2, 3]}, ...]
+            headers = first_row.get("columns", [f"指标{i+1}" for i in range(len(first_row.get("values", [])))])
+            num_cols = len(headers)
+            table_data = [[first_row.get("label", "")] + [str(v) for v in first_row.get("values", [])]]
+            for row in rows[1:]:
+                table_data.append([row.get("label", "")] + [str(v) for v in row.get("values", [])])
+        else:
+            headers = list(first_row.keys())
+            num_cols = len(headers)
+            table_data = [[str(first_row.get(h, "")) for h in headers]]
+            for row in rows[1:]:
+                table_data.append([str(row.get(h, "")) for h in headers])
+
+        if not table_data:
+            return
+
+        num_rows = len(table_data)
+        col_width = min(2.5, 12.0 / max(num_cols, 1))
+
+        try:
+            table_shape = slide.shapes.add_table(num_rows, num_cols, Inches(0.5), Inches(top), Inches(col_width * num_cols), Inches(0.4 * num_rows))
+            table = table_shape.table
+
+            # Header row styling
+            for j, header in enumerate(headers):
+                cell = table.cell(0, j)
+                cell.text = header
+                for paragraph in cell.text_frame.paragraphs:
+                    paragraph.font.size = Pt(12)
+                    paragraph.font.bold = True
+                    paragraph.font.color.rgb = self.COLORS["white"]
+                # Blue background
+                cell_fill = cell.fill
+                cell_fill.solid()
+                cell_fill.fore_color.rgb = self.COLORS["primary"]
+
+            # Data rows
+            for i in range(1, num_rows):
+                for j in range(num_cols):
+                    cell = table.cell(i, j)
+                    cell.text = table_data[i][j] if j < len(table_data[i]) else ""
+                    for paragraph in cell.text_frame.paragraphs:
+                        paragraph.font.size = Pt(11)
+                    # Alternating row colors
+                    if i % 2 == 0:
+                        cell_fill = cell.fill
+                        cell_fill.solid()
+                        cell_fill.fore_color.rgb = self.COLORS["background"]
+        except Exception as e:
+            logger.warning(f"Failed to render table: {e}")
+
+    def _render_table_from_kv(self, slide, chart_data: dict, top: float):
+        """从键值对渲染表格"""
+        if not chart_data:
+            return
+
+        items = list(chart_data.items())
+        num_rows = len(items) + 1  # +1 for header
+        num_cols = 2
+
+        try:
+            table_shape = slide.shapes.add_table(num_rows, num_cols, Inches(0.5), Inches(top), Inches(12.0), Inches(0.4 * num_rows))
+            table = table_shape.table
+
+            # Header
+            for j, header in enumerate(["指标", "数值"]):
+                cell = table.cell(0, j)
+                cell.text = header
+                for paragraph in cell.text_frame.paragraphs:
+                    paragraph.font.size = Pt(12)
+                    paragraph.font.bold = True
+                    paragraph.font.color.rgb = self.COLORS["white"]
+                cell_fill = cell.fill
+                cell_fill.solid()
+                cell_fill.fore_color.rgb = self.COLORS["primary"]
+
+            # Data rows
+            for i, (key, value) in enumerate(items):
+                cell_key = table.cell(i + 1, 0)
+                cell_key.text = str(key)
+                for p in cell_key.text_frame.paragraphs:
+                    p.font.size = Pt(11)
+
+                cell_val = table.cell(i + 1, 1)
+                cell_val.text = str(value)
+                for p in cell_val.text_frame.paragraphs:
+                    p.font.size = Pt(11)
+
+                if i % 2 == 0:
+                    for cell in [cell_key, cell_val]:
+                        fill = cell.fill
+                        fill.solid()
+                        fill.fore_color.rgb = self.COLORS["background"]
+        except Exception as e:
+            logger.warning(f"Failed to render KV table: {e}")
 
 
 # 便捷函数

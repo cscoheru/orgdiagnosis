@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { Suspense, useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
@@ -15,7 +15,7 @@ import {
   type Dimension
 } from '@/lib/knowledge-v2-api';
 
-export default function KnowledgeSearchPage() {
+function KnowledgeSearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -400,5 +400,29 @@ export default function KnowledgeSearchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function SearchLoading() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
+          <div className="h-4 w-64 bg-gray-200 rounded animate-pulse mt-2" />
+        </div>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="h-12 bg-gray-200 rounded animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
+export default function KnowledgeSearchPage() {
+  return (
+    <Suspense fallback={<SearchLoading />}>
+      <KnowledgeSearchContent />
+    </Suspense>
   );
 }

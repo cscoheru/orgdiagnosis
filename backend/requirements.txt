@@ -1,46 +1,53 @@
 # FastAPI 核心
-fastapi==0.109.2
-uvicorn[standard]==0.27.1
-python-multipart==0.0.9
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
 pydantic>=2.6.3
 pydantic-settings>=2.4.0
 
 # 文件处理
-pdfplumber==0.10.3
-Pillow==10.4.0
-python-docx==1.1.0
-openpyxl==3.1.2
+pdfplumber>=0.11.0
+Pillow>=10.4.0
+python-docx>=1.1.0
+openpyxl>=3.1.2
 
-# 数据库 (让 supabase 自动安装依赖)
+# 数据库
 supabase
 
 # 工具
-python-dotenv==1.0.1
-tenacity==8.2.3
-loguru==0.7.2
+python-dotenv>=1.0.1
+tenacity>=8.2.3
+loguru>=0.7.2
+httpx>=0.27.0
+PyJWT>=2.8.0
 
-# LangChain 生态 (架构升级 2026-03-18)
-langchain==0.3.14
-langchain-openai==0.2.14
-langchain-community==0.3.14
-langgraph==0.2.59
-langchain-text-splitters==0.3.5
-chromadb==0.5.23
-pymupdf==1.25.3
-unstructured==0.16.12
-langgraph-checkpoint-sqlite==2.0.11
+# LangChain + LangGraph (诊断工作流)
+langchain>=0.3.14
+langchain-openai>=0.2.14
+langchain-community>=0.3.14
+langgraph>=0.2.59
+langchain-text-splitters>=0.3.5
+chromadb>=0.5.23
+pymupdf>=1.25.3
+langgraph-checkpoint-sqlite>=2.0.11
 
-# LlamaIndex 生态 (Phase 1 - 2026-03-20)
-llama-index==0.10.68
-llama-index-readers-file==0.1.33
-llama-index-vector-stores-chroma==0.1.10
-llama-index-embeddings-dashscope==0.1.3
+# LlamaIndex (知识库 RAG - kb_process.py 使用)
+llama-index>=0.10.68
+llama-index-readers-file>=0.1.33
+llama-index-vector-stores-chroma>=0.1.10
+llama-index-embeddings-dashscope>=0.1.3
+
+# 文档解析 (langchain/processor.py 使用)
+unstructured>=0.16.12
 
 # DashScope SDK
 dashscope>=1.14.0
 
 # PPTX 生成
-python-pptx==0.6.23
+python-pptx>=0.6.23
 
 # 对象存储
 minio>=7.2.0
+
+# Rate limiting
+slowapi>=0.1.9

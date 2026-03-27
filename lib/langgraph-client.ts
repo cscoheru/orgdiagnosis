@@ -54,16 +54,18 @@ export interface AnalyzeResponse {
   message: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/langgraph';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api/langgraph`
+  : 'http://localhost:8000/api/langgraph';
 
 /**
  * Submit text for analysis
  */
-export async function submitAnalysis(text: string): Promise<AnalyzeResponse> {
+export async function submitAnalysis(text: string, projectId?: string): Promise<AnalyzeResponse> {
   const response = await fetch(`${API_BASE}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, project_id: projectId }),
   });
 
   if (!response.ok) {
@@ -76,9 +78,12 @@ export async function submitAnalysis(text: string): Promise<AnalyzeResponse> {
 /**
  * Submit file for analysis
  */
-export async function submitFileAnalysis(file: File): Promise<AnalyzeResponse> {
+export async function submitFileAnalysis(file: File, projectId?: string): Promise<AnalyzeResponse> {
   const formData = new FormData();
   formData.append('file', file);
+  if (projectId) {
+    formData.append('project_id', projectId);
+  }
 
   const response = await fetch(`${API_BASE}/analyze-file`, {
     method: 'POST',

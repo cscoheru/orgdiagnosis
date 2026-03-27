@@ -11,11 +11,6 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import uuid
 import json
-import sys
-import os
-
-# Add lib to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from lib.projects.store import project_store
 
 router = APIRouter(prefix="/projects", tags=["projects"])

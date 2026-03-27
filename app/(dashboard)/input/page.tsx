@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { reliableFileUpload, isFileSupported, getSupportedFileTypes, type UploadResult } from '@/lib/reliable-upload';
 import { AudioRecorder, isSpeechRecognitionSupported, RecordingStatus } from '@/lib/audio-transcriber';
 import { submitAnalysis, submitFileAnalysis, pollUntilComplete, type TaskStatus } from '@/lib/langgraph-client';
+import ProjectSelector from '@/components/project/ProjectSelector';
 
 export default function InputPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function InputPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ progress: number; status: string } | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   // 录音相关状态
   const [isRecording, setIsRecording] = useState(false);
@@ -35,7 +37,7 @@ export default function InputPage() {
 
     try {
       // 调用 LangGraph API
-      const { task_id } = await submitAnalysis(fullText);
+      const { task_id } = await submitAnalysis(fullText, selectedProjectId || undefined);
       setUploadProgress({ progress: 10, status: '任务已创建，开始分析...' });
 
       // 轮询等待完成
@@ -52,8 +54,11 @@ export default function InputPage() {
 
       setUploadProgress({ progress: 100, status: '分析完成！' });
 
-      // 跳转到结果页面 (使用 task_id 作为路由参数)
-      router.push(`/result/${task_id}`);
+      // 跳转到结果页面 (使用 task_id 作为路由参数，附带 project_id)
+      const resultUrl = selectedProjectId
+        ? `/result/${task_id}?project_id=${selectedProjectId}`
+        : `/result/${task_id}`;
+      router.push(resultUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : '分析失败，请重试');
       setUploadProgress(null);
@@ -87,7 +92,7 @@ export default function InputPage() {
 
     try {
       // 直接提交文件到 LangGraph API
-      const { task_id } = await submitFileAnalysis(file);
+      const { task_id } = await submitFileAnalysis(file, selectedProjectId || undefined);
       setUploadProgress({ progress: 15, status: '文件已上传，开始分析...' });
 
       // 轮询等待完成
@@ -104,8 +109,11 @@ export default function InputPage() {
 
       setUploadProgress({ progress: 100, status: '分析完成！' });
 
-      // 跳转到结果页面
-      router.push(`/result/${task_id}`);
+      // 跳转到结果页面 (附带 project_id)
+      const resultUrl = selectedProjectId
+        ? `/result/${task_id}?project_id=${selectedProjectId}`
+        : `/result/${task_id}`;
+      router.push(resultUrl);
     } catch (err) {
       setUploadProgress(null);
       setError(err instanceof Error ? err.message : '文件处理失败，请重试');
@@ -182,6 +190,20 @@ export default function InputPage() {
         <p className="text-gray-600">
           输入会议记录、访谈文字或语音转写，AI 将自动分析并映射到五维模型
         </p>
+      </div>
+
+      {/* Project Selection */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
+        <div className="flex items-center gap-4">
+          <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+            关联项目
+          </label>
+          <ProjectSelector
+            selectedProjectId={selectedProjectId}
+            onProjectChange={setSelectedProjectId}
+            placeholder="选择项目以保存诊断结果..."
+          />
+        </div>
       </div>
 
       {/* Input Area */}

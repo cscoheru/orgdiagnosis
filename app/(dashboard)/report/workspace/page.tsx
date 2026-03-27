@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   getTaskStatus,
   getModules,
@@ -17,12 +18,24 @@ import {
 } from '@/lib/report-api';
 import ModuleCard from '@/components/workspace/module-card';
 
-type WorkspaceStep = 'modules' | 'page_titles' | 'slides' | 'preview';
+type WorkspaceStep = 'modules' | 'page_titles' | 'theme' | 'slides' | 'preview';
+
+// Theme interface
+interface Theme {
+  theme_id: string;
+  theme_name: string;
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
+  style: string;
+  description: string;
+}
 
 function WorkspaceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const taskId = searchParams.get('task_id');
+  const projectId = searchParams.get('project');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +46,10 @@ function WorkspaceContent() {
   const [slides, setSlides] = useState<SlideDraft[]>([]);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Theme selection state
+  const [themes, setThemes] = useState<Theme[]>([]);
+  const [selectedTheme, setSelectedTheme] = useState<Theme | null>(null);
 
   // Fetch initial data
   useEffect(() => {
@@ -84,7 +101,10 @@ function WorkspaceContent() {
           setExpandedModules(new Set(modulesData.modules.map(m => m.module_id)));
         } else if (status.status === 'completed') {
           // Already completed, redirect to preview for download
-          router.push(`/report/preview?task_id=${taskId}`);
+          const previewUrl = projectId
+            ? `/report/preview?task_id=${taskId}&project_id=${projectId}`
+            : `/report/preview?task_id=${taskId}`;
+          router.push(previewUrl);
         } else if (status.status === 'failed') {
           setError(status.error_message || '任务失败');
         } else if (status.status === 'pending' || status.status === 'generating_modules') {
@@ -100,6 +120,26 @@ function WorkspaceContent() {
 
     fetchData();
   }, [taskId]);
+
+  // Load themes on mount
+  useEffect(() => {
+    const loadThemes = async () => {
+      try {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_BASE}/api/layout/themes`);
+        if (response.ok) {
+          const data = await response.json();
+          setThemes(data.themes || []);
+          if (data.themes?.length > 0) {
+            setSelectedTheme(data.themes[0]);
+          }
+        }
+      } catch (e) {
+        console.warn('[Workspace] Failed to load themes:', e);
+      }
+    };
+    loadThemes();
+  }, []);
 
   // Poll until modules are ready
   const pollUntilReady = async (taskId: string) => {
@@ -216,9 +256,28 @@ function WorkspaceContent() {
     setIsProcessing(true);
     try {
       await confirmPageTitles(taskId, pageTitles);
-      await pollUntilSlidesReady(taskId);
+      // Go to theme selection step instead of directly generating slides
+      setStep('theme');
     } catch (err) {
       setError(err instanceof Error ? err.message : '确认页面标题失败');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Confirm theme and start generating slides
+  const handleConfirmTheme = async () => {
+    if (!taskId) return;
+    setIsProcessing(true);
+    try {
+      // Store selected theme for later use in export
+      if (selectedTheme) {
+        localStorage.setItem(`theme_${taskId}`, JSON.stringify(selectedTheme));
+      }
+      // Start generating slides
+      await pollUntilSlidesReady(taskId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成内容失败');
     } finally {
       setIsProcessing(false);
     }
@@ -231,7 +290,10 @@ function WorkspaceContent() {
     try {
       await confirmSlides(taskId, slides);
       // Navigate to preview page
-      router.push(`/report/preview?task_id=${taskId}`);
+      const previewUrl = projectId
+        ? `/report/preview?task_id=${taskId}&project_id=${projectId}`
+        : `/report/preview?task_id=${taskId}`;
+      router.push(previewUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : '确认内容失败');
     } finally {
@@ -392,6 +454,112 @@ function WorkspaceContent() {
     </div>
   );
 
+  // Render theme selector
+  const renderThemeSelector = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-white">
+        <h2 className="text-lg font-semibold text-gray-900">🎨 选择主题风格</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          为报告选择一个全局视觉主题，包括配色、字体等
+        </p>
+      </div>
+
+      <div className="p-6">
+        {/* Theme grid */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {themes.map((theme) => (
+            <button
+              key={theme.theme_id}
+              onClick={() => setSelectedTheme(theme)}
+              className={`relative p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                selectedTheme?.theme_id === theme.theme_id
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              {/* Color preview */}
+              <div className="flex items-center gap-2 mb-3">
+                <div
+                  className="w-8 h-8 rounded-full shadow-inner"
+                  style={{ backgroundColor: theme.primary_color }}
+                  title="主色"
+                />
+                <div
+                  className="w-6 h-6 rounded-full shadow-inner"
+                  style={{ backgroundColor: theme.secondary_color }}
+                  title="辅色"
+                />
+                <div
+                  className="w-4 h-4 rounded-full shadow-inner"
+                  style={{ backgroundColor: theme.accent_color }}
+                  title="强调色"
+                />
+              </div>
+
+              {/* Theme name */}
+              <h3 className="font-medium text-gray-900 text-left">{theme.theme_name}</h3>
+              <p className="text-xs text-gray-500 text-left mt-1">{theme.description}</p>
+
+              {/* Selected indicator */}
+              {selectedTheme?.theme_id === theme.theme_id && (
+                <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Preview area */}
+        {selectedTheme && (
+          <div className="mt-6 p-6 rounded-xl border border-gray-200" style={{ backgroundColor: selectedTheme.primary_color + '10' }}>
+            <h4 className="font-medium mb-3" style={{ color: selectedTheme.primary_color }}>
+              预览效果
+            </h4>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-4 bg-white rounded-lg shadow-sm">
+                <div className="w-full h-2 rounded mb-2" style={{ backgroundColor: selectedTheme.primary_color }} />
+                <div className="w-3/4 h-2 rounded bg-gray-200 mb-1" />
+                <div className="w-1/2 h-2 rounded bg-gray-100" />
+              </div>
+              <div className="p-4 bg-white rounded-lg shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedTheme.secondary_color }} />
+                  <div className="w-2/3 h-2 rounded bg-gray-200" />
+                </div>
+                <div className="w-full h-2 rounded bg-gray-100 mb-1" />
+                <div className="w-5/6 h-2 rounded bg-gray-100" />
+              </div>
+              <div className="p-4 bg-white rounded-lg shadow-sm">
+                <div className="w-full h-2 rounded mb-2" style={{ backgroundColor: selectedTheme.accent_color }} />
+                <div className="w-2/3 h-2 rounded bg-gray-200 mb-1" />
+                <div className="w-1/3 h-2 rounded bg-gray-100" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+        <div className="text-sm text-gray-500">
+          {themes.length} 个主题可用
+        </div>
+        <button
+          onClick={handleConfirmTheme}
+          disabled={isProcessing || !selectedTheme}
+          className="px-6 py-2 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          {isProcessing && (
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          )}
+          确认主题，生成内容 →
+        </button>
+      </div>
+    </div>
+  );
+
   // Render slides editor (card-based with full editing)
   const renderSlidesEditor = () => {
     return (
@@ -420,8 +588,15 @@ function WorkspaceContent() {
       </div>
 
       <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-        <div className="text-sm text-gray-500">
-          共 {slides.length} 页幻灯片
+        <div className="text-sm text-gray-500 flex items-center gap-4">
+          <span>共 {slides.length} 页幻灯片</span>
+          <Link
+            href={projectId ? `/templates?project=${projectId}` : '/templates'}
+            className="text-purple-600 hover:text-purple-700 flex items-center gap-1"
+          >
+            <span>🎨</span>
+            选择模板
+          </Link>
         </div>
         <button
           onClick={handleGoToPreview}
@@ -443,8 +618,9 @@ function WorkspaceContent() {
     const steps = [
       { id: 'modules', label: '模块审核', color: 'blue' },
       { id: 'page_titles', label: '页面标题', color: 'purple' },
+      { id: 'theme', label: '主题选择', color: 'orange' },
       { id: 'slides', label: '内容编辑', color: 'green' },
-      { id: 'preview', label: '预览导出', color: 'orange' },
+      { id: 'preview', label: '预览导出', color: 'red' },
     ];
     const currentIndex = steps.findIndex(s => s.id === step);
     return { steps, currentIndex };
@@ -507,6 +683,7 @@ function WorkspaceContent() {
       {/* Content */}
       {step === 'modules' && renderModulesEditor()}
       {step === 'page_titles' && renderPageTitlesEditor()}
+      {step === 'theme' && renderThemeSelector()}
       {step === 'slides' && renderSlidesEditor()}
     </div>
   );

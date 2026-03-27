@@ -18,6 +18,7 @@ class L3Item(BaseModel):
     score: int = Field(..., ge=0, le=100)
     evidence: str = ""
     confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM
+    notes: str = ""
 
 
 # ==================== L2 分类 ====================

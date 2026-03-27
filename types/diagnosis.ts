@@ -58,6 +58,8 @@ export interface FiveDimensionsData {
   talent: DimensionData;
   /** 整体健康度 (加权平均) */
   overall_score: number;
+  /** 诊断摘要 */
+  summary?: string;
 }
 
 // ============================================

@@ -120,21 +120,79 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
     """
     内部方法：调用 AI 分析维度
 
-    TODO: 集成实际的 AI 服务 (DeepSeek/GLM)
+    使用统一 AI 客户端分析单个维度。
+    由于 LangGraph 节点是同步函数，使用 asyncio.run() 调用异步客户端。
     """
-    # 临时返回 mock 数据
-    from lib.langchain import FIVE_DIMENSIONS_SCHEMA, create_empty_report
+    from app.services.ai_client import ai_client
 
-    report = create_empty_report(task_id)
-    dim_data = report.dimensions[0]  # 临时
+    if not ai_client.is_configured():
+        logger.warning(f"[{task_id}] AI not configured, returning mock for {dimension}")
+        return {
+            "category": dimension,
+            "total_score": 50.0,
+            "summary_insight": f"AI 未配置，{dimension}维度使用模拟数据",
+            "secondary_metrics": []
+        }
 
-    # 返回维度结果
-    return {
-        "category": dimension,
-        "total_score": 50.0,
-        "summary_insight": f"基于文档分析，{dimension}维度需要改进",
-        "secondary_metrics": []
+    dimension_prompts = {
+        "strategy": "战略 (Strategy) - 评估企业战略规划、市场定位和执行能力",
+        "structure": "组织 (Structure) - 评估组织架构、权责分配和协同效率",
+        "performance": "绩效 (Performance) - 评估绩效体系设计、过程管理和结果应用",
+        "compensation": "薪酬 (Compensation) - 评估薪酬策略、结构和内部公平性",
+        "talent": "人才 (Talent) - 评估人才规划、获取、培养和保留机制",
     }
+
+    system_prompt = f"""你是一位资深的组织诊断专家。请分析以下文本中关于【{dimension_prompts.get(dimension, dimension)}】的信息。
+
+请返回严格的 JSON 格式：
+{{
+    "category": "{dimension}",
+    "total_score": <0-100的整数，综合评分>,
+    "summary_insight": "<50字以内的维度总结>",
+    "secondary_metrics": [
+        {{"name": "<子指标名称>", "score": <0-100>, "detail": "<简要说明>"}}
+    ]
+}}"""
+
+    user_prompt = f"请分析以下组织相关文本，重点关注{dimension_prompts.get(dimension, dimension)}维度：\n\n{context}"
+
+    try:
+        # 在同步上下文中运行异步代码
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # 如果已在事件循环中，创建新线程运行
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                result_future = pool.submit(
+                    asyncio.run,
+                    ai_client.chat_json(system_prompt, user_prompt, timeout=60)
+                )
+                result = result_future.result(timeout=90)
+        else:
+            result = asyncio.run(ai_client.chat_json(system_prompt, user_prompt, timeout=60))
+
+        # 确保返回格式正确
+        result.setdefault("category", dimension)
+        result.setdefault("total_score", 50.0)
+        result.setdefault("summary_insight", "")
+        result.setdefault("secondary_metrics", [])
+
+        logger.info(f"[{task_id}] AI analysis for {dimension}: score={result['total_score']}")
+        return result
+
+    except Exception as e:
+        logger.error(f"[{task_id}] AI analysis failed for {dimension}: {e}")
+        return {
+            "category": dimension,
+            "total_score": 50.0,
+            "summary_insight": f"分析失败: {str(e)}",
+            "secondary_metrics": []
+        }
 
 
 def analyze_strategy_node(state: DiagnosticState) -> DiagnosticState:

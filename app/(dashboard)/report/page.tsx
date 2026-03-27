@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import RequirementForm from '@/components/requirement-form';
 import {
   ClientRequirement,
@@ -9,6 +10,7 @@ import {
   pollUntilComplete,
   confirmModules,
   confirmPageTitles,
+  getTaskStatus,
 } from '@/lib/report-api';
 import {
   getProject,
@@ -18,6 +20,19 @@ import {
 } from '@/lib/project-api';
 
 const AUTOSAVE_DELAY = 1000; // 1 second debounce
+
+// Steps that indicate content has been generated (anything after requirement means task exists)
+const GENERATED_STEPS = ['outline', 'slides', 'export', 'completed'];
+
+// Check if requirement form is completed (has meaningful data)
+function hasRequirementData(requirement: any): boolean {
+  return !!(
+    requirement?.client_name ||
+    requirement?.industry ||
+    (requirement?.pain_points && requirement.pain_points.length > 0) ||
+    (requirement?.goals && requirement.goals.length > 0)
+  );
+}
 
 function ReportContent() {
   const router = useRouter();
@@ -35,6 +50,10 @@ function ReportContent() {
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  // Track if project already has generated content
+  const [hasGeneratedContent, setHasGeneratedContent] = useState(false);
+  const [existingTaskId, setExistingTaskId] = useState<string | null>(null);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initialFormDataRef = useRef<ClientRequirement | null>(null);
@@ -58,14 +77,12 @@ function ReportContent() {
       return;
     }
 
+    let cancelled = false;
+
     const loadProject = async () => {
       try {
         setLoading(true);
-        console.log('[Report] Loading project:', projectId);
         const projectData = await getProject(projectId);
-        console.log('[Report] Project loaded:', projectData?.id);
-
-        if (!isMountedRef.current) return;
 
         if (!projectData) {
           alert('项目不存在，将跳转到项目管理页面');
@@ -75,18 +92,67 @@ function ReportContent() {
 
         setProject(projectData);
 
+        // Try to get existing task ID from localStorage FIRST
+        // This is the key indicator that user has generated content before
+        let foundTaskId: string | null = null;
+        if (projectId) {
+          const storedTaskId = localStorage.getItem(`task_${projectId}`);
+          if (storedTaskId) {
+            // Verify task still exists
+            try {
+              const taskStatus = await getTaskStatus(storedTaskId);
+              if (taskStatus && taskStatus.status !== 'failed') {
+                foundTaskId = storedTaskId;
+                setExistingTaskId(storedTaskId);
+              }
+            } catch {
+              // Task not found, will need to regenerate
+            }
+          }
+        }
+
+        // Check if project already has generated content OR has saved requirement data OR has existing task
+        // This allows user to skip regeneration if they already filled in requirements
+        const hasContent = GENERATED_STEPS.includes(projectData.current_step) ||
+                          !!(projectData.requirement && hasRequirementData(projectData.requirement)) ||
+                          !!foundTaskId;
+        setHasGeneratedContent(hasContent);
+
         // Set initial form data from requirement
         if (projectData.requirement) {
           const req = projectData.requirement;
+
+          // Parse JSON string fields - backend stores them as JSON strings
+          let painPoints: string[] = [''];
+          let goals: string[] = [''];
+
+          if (req.pain_points) {
+            try {
+              painPoints = typeof req.pain_points === 'string'
+                ? JSON.parse(req.pain_points)
+                : req.pain_points;
+              if (!Array.isArray(painPoints)) painPoints = [''];
+            } catch { painPoints = ['']; }
+          }
+
+          if (req.goals) {
+            try {
+              goals = typeof req.goals === 'string'
+                ? JSON.parse(req.goals)
+                : req.goals;
+              if (!Array.isArray(goals)) goals = [''];
+            } catch { goals = ['']; }
+          }
+
           const formData: ClientRequirement = {
             client_name: req.client_name || '',
             industry: req.industry || '',
             industry_background: '',
             company_intro: '',
             company_scale: '',
-            core_pain_points: (req.pain_points as string[]) || [''],
+            core_pain_points: painPoints,
             pain_severity: 'medium',
-            project_goals: (req.goals as string[]) || [''],
+            project_goals: goals,
             success_criteria: [''],
             phase_planning: [{
               phase_id: 'phase_1',
@@ -106,17 +172,20 @@ function ReportContent() {
             setLastSaved(new Date(req.last_saved_at));
           }
         }
+
+        setLoading(false);
       } catch (error) {
         console.error('Failed to load project:', error);
         alert('加载项目失败');
-      } finally {
-        if (isMountedRef.current) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     };
 
     loadProject();
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, router]);
 
   // Auto-save handler for project-based form
@@ -140,8 +209,8 @@ function ReportContent() {
           industry: data.industry,
           company_stage: data.company_scale,
           employee_count: data.company_scale ? parseInt(data.company_scale) : undefined,
-          pain_points: data.core_pain_points,
-          goals: data.project_goals,
+          pain_points: Array.isArray(data.core_pain_points) ? data.core_pain_points : [],
+          goals: Array.isArray(data.project_goals) ? data.project_goals : [],
           timeline: undefined,
           report_type: 'comprehensive',
           slide_count: 20,
@@ -151,6 +220,8 @@ function ReportContent() {
           language: 'zh-CN',
           template_style: 'consulting',
         };
+
+        console.log('[AutoSave] Saving:', JSON.stringify(requirementData, null, 2));
 
         await saveRequirement(projectId, requirementData, step);
 
@@ -164,6 +235,27 @@ function ReportContent() {
       }
     }, AUTOSAVE_DELAY);
   }, [projectId]);
+
+  // Continue editing existing content (skip regeneration)
+  const handleContinueEdit = useCallback(() => {
+    if (!projectId) return;
+
+    // Use existing task ID if available
+    if (existingTaskId) {
+      // Navigate directly to workspace with existing task
+      const workspaceUrl = `/report/workspace?project=${projectId}&task_id=${existingTaskId}`;
+      router.push(workspaceUrl);
+    } else {
+      // Try to get from localStorage as fallback
+      const storedTaskId = localStorage.getItem(`task_${projectId}`);
+      if (storedTaskId) {
+        const workspaceUrl = `/report/workspace?project=${projectId}&task_id=${storedTaskId}`;
+        router.push(workspaceUrl);
+      } else {
+        console.error('No existing task ID found, cannot continue edit');
+      }
+    }
+  }, [projectId, existingTaskId, router]);
 
   const handleSubmit = async (requirement: ClientRequirement) => {
     console.log('[Report] handleSubmit called with requirement:', requirement);
@@ -295,6 +387,11 @@ function ReportContent() {
         setProgress(100);
         setStatus('生成完成，跳转到编辑页面...');
 
+        // Save task_id to localStorage for later recovery
+        if (projectId && task_id) {
+          localStorage.setItem(`task_${projectId}`, task_id);
+        }
+
         // Navigate to workspace
         const workspaceUrl = projectId
           ? `/report/workspace?project=${projectId}&task_id=${task_id}`
@@ -417,7 +514,31 @@ function ReportContent() {
         isLoading={isGenerating}
         initialData={initialFormDataRef.current || undefined}
         onAutoSave={projectId ? handleAutoSave : undefined}
+        hasGeneratedContent={hasGeneratedContent}
+        onContinueEdit={hasGeneratedContent ? handleContinueEdit : undefined}
       />
+
+      {/* Quick navigation if content exists */}
+      {hasGeneratedContent && (
+        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-blue-800">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm">此项目已生成过内容，您可以继续编辑或重新生成</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/templates?project=${projectId}`}
+                className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+              >
+                选择模板 →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tips */}
       <div className="mt-8 p-6 bg-amber-50 rounded-xl border border-amber-200">

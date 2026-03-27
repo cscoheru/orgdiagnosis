@@ -66,13 +66,6 @@ class ConfirmSlidesRequest(BaseModel):
 
 # === Multi-Level Expansion Models ===
 
-class ModulesResponse(BaseModel):
-    """模块列表响应"""
-    task_id: str
-    modules: List[Dict[str, Any]]
-    total_modules: int
-
-
 class ConfirmModulesRequest(BaseModel):
     """确认模块请求"""
     task_id: str
@@ -551,12 +544,6 @@ async def get_page_titles(task_id: str):
                 status_code=400,
                 detail=f"页面标题尚未生成，当前状态: {task['status']}"
             )
-
-    return PageTitlesResponse(
-        task_id=task_id,
-        page_titles=page_titles,
-        total_pages=len(page_titles),
-    )
 
     return PageTitlesResponse(
         task_id=task_id,

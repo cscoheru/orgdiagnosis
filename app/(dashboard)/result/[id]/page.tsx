@@ -1,36 +1,164 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { DimensionRadarChart } from '@/components/charts/radar-chart';
 import { WarningCards } from '@/components/charts/warning-cards';
 import { DimensionDetailChart } from '@/components/charts/dimension-detail-chart';
-import type { FiveDimensionsData } from '@/types/diagnosis';
+import { SkeletonRadar, SkeletonScoreBar } from '@/components/ui/skeleton';
+import type { FiveDimensionsData, DimensionData } from '@/types/diagnosis';
 import { DIMENSION_KEYS } from '@/types/diagnosis';
-import { getDiagnosis, exportPDF } from '@/lib/api-config';
+import { getTaskStatus, getTaskResult } from '@/lib/langgraph-client';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// LangGraph result dimension type
+interface LangGraphDimension {
+  category: string;
+  total_score: number;
+  summary_insight: string;
+  secondary_metrics: Array<{
+    name: string;
+    display_name: string;
+    avg_score: number;
+    tertiary_metrics: Array<{
+      name: string;
+      display_name: string;
+      score: number;
+      evidence: string;
+      analysis: string;
+      confidence: string;
+    }>;
+  }>;
+}
+
+interface LangGraphResult {
+  task_id: string;
+  status: string;
+  overall_score: number;
+  dimensions: LangGraphDimension[];
+  completed_at: string;
+}
+
+// Transform LangGraph result to FiveDimensionsData format
+function transformLangGraphResult(result: LangGraphResult): FiveDimensionsData {
+  const dimensionLabels: Record<string, string> = {
+    strategy: '战略',
+    structure: '组织',
+    performance: '绩效',
+    compensation: '薪酬',
+    talent: '人才',
+  };
+
+  const dimensionDescriptions: Record<string, string> = {
+    strategy: '做正确的事 - 战略方向与市场定位',
+    structure: '提升系统运转效率 - 组织架构与流程',
+    performance: '持续创造价值 - 绩效管理与目标达成',
+    compensation: '激励与保留 - 薪酬体系与激励机制',
+    talent: '人才发展 - 人才招聘、培养与发展',
+  };
+
+  const data: FiveDimensionsData = {
+    overall_score: result.overall_score,
+    strategy: createEmptyDimension('strategy'),
+    structure: createEmptyDimension('structure'),
+    performance: createEmptyDimension('performance'),
+    compensation: createEmptyDimension('compensation'),
+    talent: createEmptyDimension('talent'),
+  };
+
+  // Map dimensions from result
+  for (const dim of result.dimensions) {
+    const key = dim.category as keyof Omit<FiveDimensionsData, 'overall_score' | 'summary'>;
+    if (key in data) {
+      (data as any)[key] = {
+        label: dimensionLabels[key] || dim.category,
+        description: dimensionDescriptions[key] || dim.summary_insight,
+        score: dim.total_score,
+        L2_categories: transformSecondaryMetrics(dim.secondary_metrics || []),
+      };
+    }
+  }
+
+  return data;
+}
+
+function createEmptyDimension(key: string): DimensionData {
+  return {
+    label: key,
+    description: '',
+    score: 0,
+    L2_categories: {},
+  };
+}
+
+function transformSecondaryMetrics(metrics: LangGraphDimension['secondary_metrics']): Record<string, { label: string; score: number; L3_items: Record<string, { score: number; evidence: string; confidence: 'high' | 'medium' | 'low' }> }> {
+  const categories: Record<string, { label: string; score: number; L3_items: Record<string, { score: number; evidence: string; confidence: 'high' | 'medium' | 'low' }> }> = {};
+
+  for (const metric of metrics) {
+    const l3Items: Record<string, { score: number; evidence: string; confidence: 'high' | 'medium' | 'low' }> = {};
+
+    for (const tertiary of metric.tertiary_metrics || []) {
+      const confidence = (tertiary.confidence === 'high' || tertiary.confidence === 'medium' || tertiary.confidence === 'low')
+        ? tertiary.confidence
+        : 'medium';
+      l3Items[tertiary.name] = {
+        score: tertiary.score,
+        evidence: tertiary.evidence || '',
+        confidence: confidence,
+      };
+    }
+
+    categories[metric.name] = {
+      label: metric.display_name || metric.name,
+      score: metric.avg_score,
+      L3_items: l3Items,
+    };
+  }
+
+  return categories;
+}
 
 export default function ResultPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get('project_id');
   const [data, setData] = useState<FiveDimensionsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedToProject, setSavedToProject] = useState(false);
 
-  // 从 Render 后端 API 获取数据
+  // 从 LangGraph API 获取数据
   useEffect(() => {
     const fetchData = async () => {
-      const sessionId = params.id as string;
+      const taskId = params.id as string;
 
       setIsLoading(true);
       setError(null);
 
-      const result = await getDiagnosis(sessionId);
+      try {
+        // First check task status
+        const status = await getTaskStatus(taskId);
 
-      if (result.success && result.data) {
-        setData(result.data);
-      } else {
-        setError(result.error || '加载失败');
+        if (status.status === 'completed' && status.result) {
+          // Transform result to expected format
+          const transformed = transformLangGraphResult(status.result as unknown as LangGraphResult);
+          setData(transformed);
+        } else if (status.status === 'completed') {
+          // Fetch result separately and transform
+          const result = await getTaskResult(taskId);
+          const transformed = transformLangGraphResult(result as unknown as LangGraphResult);
+          setData(transformed);
+        } else if (status.status === 'failed') {
+          setError(status.error || '诊断失败');
+        } else {
+          setError('诊断尚未完成');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '加载失败');
       }
 
       setIsLoading(false);
@@ -44,18 +172,68 @@ export default function ResultPage() {
   const handleExportPDF = async () => {
     const sessionId = params.id as string;
     setIsExporting(true);
-    exportPDF(sessionId);
-    // 短暂延迟后恢复按钮状态
+    // Open PDF in new tab
+    window.open(`${API_BASE}/api/export/pdf/${sessionId}`, '_blank');
     setTimeout(() => setIsExporting(false), 2000);
+  };
+
+  // Save diagnosis PDF to project folder
+  const handleSaveToProject = async () => {
+    if (!projectId) return;
+
+    const sessionId = params.id as string;
+    setIsSaving(true);
+
+    try {
+      // Get PDF blob from export API
+      const response = await fetch(`${API_BASE}/api/export/pdf/${sessionId}`);
+      if (!response.ok) throw new Error('Failed to generate PDF');
+
+      const pdfBlob = await response.blob();
+      const filename = `诊断报告_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+      // Upload to project folder
+      const formData = new FormData();
+      formData.append('file', pdfBlob, filename);
+      formData.append('project_id', projectId);
+      formData.append('folder_type', 'root'); // Save to project root
+
+      const uploadResponse = await fetch(`${API_BASE}/api/knowledge/files/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) throw new Error('Failed to save to project');
+
+      setSavedToProject(true);
+    } catch (err) {
+      console.error('Save to project failed:', err);
+      alert('保存失败，请重试');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // 加载状态
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-500">加载诊断结果...</p>
+      <div className="space-y-6">
+        <div>
+          <div className="h-7 w-48 rounded bg-gray-200 animate-pulse mb-2"></div>
+          <div className="h-4 w-32 rounded bg-gray-200 animate-pulse"></div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <SkeletonRadar />
+          </div>
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <SkeletonScoreBar />
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <SkeletonScoreBar />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -95,6 +273,21 @@ export default function ResultPage() {
           >
             ← 新建诊断
           </button>
+          {projectId && (
+            <button
+              onClick={handleSaveToProject}
+              disabled={isSaving || savedToProject}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                savedToProject
+                  ? 'bg-green-100 text-green-700 cursor-default'
+                  : isSaving
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : 'bg-emerald-500 text-white hover:bg-emerald-600'
+              }`}
+            >
+              {savedToProject ? '✓ 已保存到项目' : isSaving ? '保存中...' : '💾 保存到项目'}
+            </button>
+          )}
           <button
             onClick={handleExportPDF}
             disabled={isExporting}

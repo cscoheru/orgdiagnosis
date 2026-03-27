@@ -1,114 +1,39 @@
 """
 Report AI Service
 
-使用已配置的 LLM API (DashScope/通义千问) 生成报告模块、页面标题和幻灯片内容。
+使用统一 AI 客户端生成报告模块、页面标题和幻灯片内容。
 """
 
-import httpx
-import json
 import logging
-import os
 from typing import Dict, Any, List, Optional
-from tenacity import retry, stop_after_attempt, wait_exponential
+
+from app.services.ai_client import ai_client
 
 logger = logging.getLogger(__name__)
 
 
 class ReportAIService:
-    """报告AI生成服务 - 使用 DashScope (通义千问) API"""
+    """报告AI生成服务 - 使用统一 AI 客户端"""
 
     def __init__(self):
-        # 优先使用 DashScope/Anthropic 配置
-        self.api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
-        self.api_url = os.getenv("ANTHROPIC_BASE_URL") or "https://api.deepseek.com/v1/chat/completions"
         self.timeout = 90  # 90秒超时
-        self.max_tokens = 4096
-
-        # Debug logging
-        logger.info(f"ReportAIService initialized:")
-        logger.info(f"  API URL: {self.api_url}")
-        logger.info(f"  API Key: {self.api_key[:10]}..." if self.api_key else "  API Key: NOT SET")
 
     def is_configured(self) -> bool:
-        """检查API是否配置"""
-        return bool(self.api_key) and self.api_key != "your-api-key"
+        return ai_client.is_configured()
 
     async def _call_api(self, system_prompt: str, user_prompt: str) -> str:
-        """调用LLM API (DashScope/DeepSeek兼容格式)"""
-        if not self.is_configured():
-            raise ValueError("LLM API 未配置")
-
-        # 判断使用哪个模型
-        if "dashscope" in self.api_url.lower():
-            model = "qwen-plus"  # 通义千问
-        else:
-            model = "deepseek-chat"  # DeepSeek
-
-        # Configure proxy - bypass for API calls to avoid URL rewriting issues
-        # trust_env=False prevents httpx from using system proxy settings
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            response = await client.post(
-                self.api_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}"
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": self.max_tokens
-                }
-            )
-
-            if response.status_code == 429:
-                raise Exception("API 限流")
-            if response.status_code == 402:
-                raise Exception("API 余额不足")
-
-            response.raise_for_status()
-
-            result = response.json()
-            logger.debug(f"API Response: {result}")
-
-            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-            if not content:
-                logger.error(f"Empty content from API. Response: {result}")
-                raise ValueError("API 返回内容为空")
-
-            logger.debug(f"API content length: {len(content)}")
-            return content
+        """调用统一 AI 客户端"""
+        return await ai_client.chat(
+            system_prompt,
+            user_prompt,
+            temperature=0.7,
+            max_tokens=4096,
+            timeout=self.timeout,
+        )
 
     def _extract_json(self, content: str) -> Dict[str, Any]:
-        """从响应中提取JSON"""
-        import re
-
-        # 尝试提取 ```json ... ``` 块
-        json_match = content
-        if "```json" in content:
-            match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
-            if match:
-                json_match = match.group(1)
-        elif "```" in content:
-            match = re.search(r'```\s*([\s\S]*?)\s*```', content)
-            if match:
-                json_match = match.group(1)
-
-        # 尝试找到JSON对象
-        if not json_match.strip().startswith('{') and not json_match.strip().startswith('['):
-            match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', content)
-            if match:
-                json_match = match.group(1)
-
-        try:
-            return json.loads(json_match)
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON解析失败: {e}\n内容: {json_match[:500]}")
-            raise ValueError(f"JSON解析失败: {str(e)}")
+        """从响应中提取 JSON（委托给统一客户端）"""
+        return ai_client.extract_json(content)
 
     # ============================================================
     # Step 1: Generate Modules

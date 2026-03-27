@@ -17,6 +17,10 @@ interface RequirementFormProps {
   initialData?: Partial<ClientRequirement>;
   /** Project-based auto-save callback (saves to database instead of localStorage) */
   onAutoSave?: (data: ClientRequirement, step: number) => Promise<void>;
+  /** Whether project already has generated content */
+  hasGeneratedContent?: boolean;
+  /** Callback for continuing to edit existing content */
+  onContinueEdit?: () => void;
 }
 
 const STORAGE_KEY = 'requirement_form_draft';
@@ -65,7 +69,14 @@ const DEFAULT_FORM_DATA: ClientRequirement = {
   five_d_diagnosis: undefined,
 };
 
-export default function RequirementForm({ onSubmit, isLoading, initialData, onAutoSave }: RequirementFormProps) {
+export default function RequirementForm({
+  onSubmit,
+  isLoading,
+  initialData,
+  onAutoSave,
+  hasGeneratedContent = false,
+  onContinueEdit,
+}: RequirementFormProps) {
   const [step, setStep] = useState(1);
 
   // Track if draft was auto-restored
@@ -1027,20 +1038,36 @@ export default function RequirementForm({ onSubmit, isLoading, initialData, onAu
             下一步
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => {
-              console.log('[Form] 生成报告 button clicked, step:', step, 'isLoading:', isLoading);
-              handleSubmit();
-            }}
-            disabled={isLoading}
-            className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isLoading && (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center gap-3">
+            {/* Continue editing button - shown if content already exists */}
+            {hasGeneratedContent && onContinueEdit && (
+              <button
+                type="button"
+                onClick={onContinueEdit}
+                disabled={isLoading}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                继续编辑
+              </button>
             )}
-            {isLoading ? '生成中...' : '生成报告'}
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                console.log('[Form] 生成报告 button clicked, step:', step, 'isLoading:', isLoading);
+                handleSubmit();
+              }}
+              disabled={isLoading}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isLoading && (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              )}
+              {isLoading ? '生成中...' : (hasGeneratedContent ? '重新生成' : '生成报告')}
+            </button>
+          </div>
         )}
       </div>
     </div>

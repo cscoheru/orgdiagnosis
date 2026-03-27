@@ -540,25 +540,38 @@ class KnowledgeBaseStore:
 
         stats = {}
 
-        # 项目数
-        cursor = conn.execute("SELECT COUNT(*) FROM projects")
-        stats["total_projects"] = cursor.fetchone()[0]
+        # 项目数 - 从 unified_store 获取或返回 0
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM projects")
+            stats["total_projects"] = cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            # projects table doesn't exist in this database
+            stats["total_projects"] = 0
 
         # 文档数
-        cursor = conn.execute("SELECT COUNT(*) FROM documents")
-        stats["total_documents"] = cursor.fetchone()[0]
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM documents")
+            stats["total_documents"] = cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            stats["total_documents"] = 0
 
         # 页面数
-        cursor = conn.execute("SELECT COUNT(*) FROM document_pages")
-        stats["total_pages"] = cursor.fetchone()[0]
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM document_pages")
+            stats["total_pages"] = cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            stats["total_pages"] = 0
 
         # 按维度分布
-        cursor = conn.execute("""
-            SELECT dimension_l1, COUNT(*) as count
-            FROM document_classifications
-            GROUP BY dimension_l1
-        """)
-        stats["by_dimension"] = {row["dimension_l1"]: row["count"] for row in cursor.fetchall()}
+        try:
+            cursor = conn.execute("""
+                SELECT dimension_l1, COUNT(*) as count
+                FROM document_classifications
+                GROUP BY dimension_l1
+            """)
+            stats["by_dimension"] = {row["dimension_l1"]: row["count"] for row in cursor.fetchall()}
+        except sqlite3.OperationalError:
+            stats["by_dimension"] = {}
 
         conn.close()
         return stats

@@ -9,13 +9,53 @@ import {
   getPageTitles,
   getSlides,
   exportPptx,
+  getAllLayouts,
   TaskStatus,
   Module,
   PageTitle,
   SlideDraft,
+  LayoutInfo,
+  LayoutCategory,
 } from '@/lib/report-api';
-import { SYSTEM_LAYOUTS } from '@/lib/layout-api';
-import { LayoutCategory, LAYOUT_CATEGORY_LABELS, LAYOUT_CATEGORY_ICONS, LayoutDefinition } from '@/lib/layout-types';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// Category labels and icons
+const LAYOUT_CATEGORY_LABELS: Record<string, string> = {
+  KEY_INSIGHT: '核心观点',
+  PARALLEL: '并列布局',
+  MATRIX: '矩阵布局',
+  PROCESS: '流程布局',
+  TIMELINE: '时间线',
+  TABLE: '表格/对比',
+  DATA_VIZ: '数据可视化',
+  HIERARCHY: '层级结构',
+  SECTION: '章节分隔',
+  TITLE: '封面/标题',
+  PYRAMID: '金字塔',
+  COMPARISON: '对比',
+  RADAR: '雷达图',
+  ORG_CHART: '组织架构',
+  CUSTOM: '自定义',
+};
+
+const LAYOUT_CATEGORY_ICONS: Record<string, string> = {
+  KEY_INSIGHT: '💡',
+  PARALLEL: '⬛',
+  MATRIX: '▦',
+  PROCESS: '➡️',
+  TIMELINE: '📅',
+  TABLE: '📊',
+  DATA_VIZ: '📈',
+  HIERARCHY: '🔺',
+  SECTION: '📑',
+  TITLE: '📄',
+  PYRAMID: '🔺',
+  COMPARISON: '↔️',
+  RADAR: '🎯',
+  ORG_CHART: '🏢',
+  CUSTOM: '⚙️',
+};
 
 interface Template {
   id: string;
@@ -28,10 +68,24 @@ interface Template {
   };
 }
 
-// System templates
-const SYSTEM_TEMPLATES: Template[] = [
+// Backend theme to Template converter
+function themeToTemplate(theme: { theme_id: string; theme_name: string; primary_color: string; secondary_color: string; background_color?: string; text_color?: string }): Template {
+  return {
+    id: theme.theme_id,
+    name: theme.theme_name,
+    style: {
+      primaryColor: theme.primary_color || '#2563eb',
+      secondaryColor: theme.secondary_color || '#3b82f6',
+      backgroundColor: theme.background_color || '#ffffff',
+      textColor: theme.text_color || '#1e293b',
+    },
+  };
+}
+
+// Fallback templates if API fails
+const FALLBACK_TEMPLATES: Template[] = [
   {
-    id: 'template-blue-professional',
+    id: 'blue_professional',
     name: '蓝色商务',
     style: {
       primaryColor: '#2563eb',
@@ -41,7 +95,7 @@ const SYSTEM_TEMPLATES: Template[] = [
     },
   },
   {
-    id: 'template-green-nature',
+    id: 'green_nature',
     name: '绿色自然',
     style: {
       primaryColor: '#16a34a',
@@ -51,7 +105,7 @@ const SYSTEM_TEMPLATES: Template[] = [
     },
   },
   {
-    id: 'template-purple-creative',
+    id: 'purple_creative',
     name: '紫色创意',
     style: {
       primaryColor: '#9333ea',
@@ -61,7 +115,7 @@ const SYSTEM_TEMPLATES: Template[] = [
     },
   },
   {
-    id: 'template-orange-energy',
+    id: 'orange_energy',
     name: '橙色活力',
     style: {
       primaryColor: '#ea580c',
@@ -81,11 +135,14 @@ function PreviewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const taskId = searchParams.get('task_id');
+  const projectId = searchParams.get('project_id');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedToProject, setSavedToProject] = useState(false);
 
   // Data
   const [modules, setModules] = useState<Module[]>([]);
@@ -93,30 +150,56 @@ function PreviewContent() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
   // Style state
-  const [selectedTemplate, setSelectedTemplate] = useState<Template>(SYSTEM_TEMPLATES[0]);
-  const [availableTemplates, setAvailableTemplates] = useState<Template[]>(SYSTEM_TEMPLATES);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template>(FALLBACK_TEMPLATES[0]);
+  const [availableTemplates, setAvailableTemplates] = useState<Template[]>(FALLBACK_TEMPLATES);
   const [slideLayouts, setSlideLayouts] = useState<SlideLayout[]>([]);
-  const [availableLayouts, setAvailableLayouts] = useState<LayoutDefinition[]>(SYSTEM_LAYOUTS);
+  const [availableLayouts, setAvailableLayouts] = useState<LayoutInfo[]>([]);
+  const [layoutsByCategory, setLayoutsByCategory] = useState<Record<string, LayoutInfo[]>>({});
 
-  // Load custom layouts and templates from localStorage (same as /layouts and /templates pages)
+  // Load layouts and themes from backend API
   useEffect(() => {
-    try {
-      // Load custom layouts
-      const customLayouts = JSON.parse(localStorage.getItem('customLayouts') || '[]');
-      setAvailableLayouts([...SYSTEM_LAYOUTS, ...customLayouts]);
+    const loadLayoutData = async () => {
+      try {
+        // Load layouts from backend
+        const layoutsResponse = await getAllLayouts();
+        console.log('[Preview] Loaded layouts from API:', layoutsResponse.total_layouts);
 
-      // Load custom templates
-      const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]');
-      const allTemplates = [...SYSTEM_TEMPLATES, ...customTemplates];
-      setAvailableTemplates(allTemplates);
+        // Flatten layouts and organize by category
+        const allLayouts: LayoutInfo[] = [];
+        const byCategory: Record<string, LayoutInfo[]> = {};
 
-      // Set default template to first one
-      if (allTemplates.length > 0) {
-        setSelectedTemplate(allTemplates[0]);
+        for (const category of layoutsResponse.categories) {
+          byCategory[category.category_id] = category.layouts;
+          allLayouts.push(...category.layouts);
+        }
+
+        setAvailableLayouts(allLayouts);
+        setLayoutsByCategory(byCategory);
+      } catch (e) {
+        console.warn('[Preview] Failed to load layouts from API, using fallback:', e);
       }
-    } catch (e) {
-      console.warn('[Preview] Failed to load custom data:', e);
-    }
+    };
+
+    const loadThemes = async () => {
+      try {
+        // Load themes from backend
+        const response = await fetch(`${API_BASE}/api/layout/themes`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[Preview] Loaded themes from API:', data.total);
+          const templates = data.themes.map(themeToTemplate);
+          setAvailableTemplates(templates);
+          if (templates.length > 0) {
+            setSelectedTemplate(templates[0]);
+          }
+        }
+      } catch (e) {
+        console.warn('[Preview] Failed to load themes from API, using fallback:', e);
+      }
+    };
+
+    loadLayoutData();
+    loadThemes();
   }, []);
 
   // Load data
@@ -176,24 +259,29 @@ function PreviewContent() {
   const recommendLayout = (slide: SlideDraft): string => {
     const bulletCount = slide.bullets?.length || 0;
 
-    if (bulletCount === 4) return 'swot-matrix';
-    if (bulletCount === 3) return 'process-3-step';
-    if (bulletCount === 2) return 'comparison-before-after';
-    if (bulletCount >= 5) return 'pyramid-3-level';
+    // Map to backend layout IDs
+    if (bulletCount === 1) return 'KEY_INSIGHT_01';
+    if (bulletCount === 4) return 'MATRIX_2x2';
+    if (bulletCount === 3) return 'PROCESS_03_H';
+    if (bulletCount === 2) return 'PARALLEL_02_CARDS';
+    if (bulletCount === 5) return 'PYRAMID_5_LEVEL';
+    if (bulletCount === 6) return 'PARALLEL_06_CARDS';
+    if (bulletCount >= 7) return 'BULLET_12';
 
-    return 'swot-matrix'; // Default
+    // Default to parallel cards
+    return 'PARALLEL_04_CARDS';
   };
 
   // Get current slide
   const currentSlide = slides[currentSlideIndex];
   const currentLayoutId = slideLayouts.find(l => l.slide_id === currentSlide?.slide_id)?.layout_id;
-  const currentLayout = availableLayouts.find(l => l.id === currentLayoutId);
+  const currentLayout = availableLayouts.find(l => l.layout_id === currentLayoutId);
 
   // Get similar layouts for recommendation
-  const getSimilarLayouts = (): LayoutDefinition[] => {
+  const getSimilarLayouts = (): LayoutInfo[] => {
     if (!currentLayout) return [];
     return availableLayouts.filter(l =>
-      l.category === currentLayout.category && l.id !== currentLayout.id
+      l.category === currentLayout.category && l.layout_id !== currentLayout.layout_id
     ).slice(0, 3);
   };
 
@@ -218,6 +306,41 @@ function PreviewContent() {
       setError(err instanceof Error ? err.message : '导出失败');
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Save PPTX to project folder
+  const handleSaveToProject = async () => {
+    if (!projectId || !downloadUrl) return;
+
+    setIsSaving(true);
+    try {
+      // Fetch the PPTX file
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error('Failed to download PPTX');
+
+      const pptxBlob = await response.blob();
+      const filename = `报告_${new Date().toISOString().slice(0, 10)}.pptx`;
+
+      // Upload to project folder
+      const formData = new FormData();
+      formData.append('file', pptxBlob, filename);
+      formData.append('project_id', projectId);
+      formData.append('folder_type', 'root');
+
+      const uploadResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/knowledge/files/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) throw new Error('Failed to save to project');
+
+      setSavedToProject(true);
+    } catch (err) {
+      console.error('Save to project failed:', err);
+      alert('保存失败，请重试');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -282,15 +405,32 @@ function PreviewContent() {
             <p className="text-gray-600 mb-6">
               您的项目建议书已生成完成，可以下载 PPTX 文件进行编辑
             </p>
-            <a
-              href={downloadUrl}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              下载 PPTX
-            </a>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              {projectId && (
+                <button
+                  onClick={handleSaveToProject}
+                  disabled={isSaving || savedToProject}
+                  className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
+                    savedToProject
+                      ? 'bg-green-100 text-green-700 cursor-default'
+                      : isSaving
+                        ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+                >
+                  {savedToProject ? '✓ 已保存到项目' : isSaving ? '保存中...' : '💾 保存到项目'}
+                </button>
+              )}
+              <a
+                href={downloadUrl}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                下载 PPTX
+              </a>
+            </div>
             <div className="mt-6">
               <button
                 onClick={() => router.push('/report')}
@@ -446,7 +586,7 @@ function PreviewContent() {
               <div className="mb-4">
                 <span className="text-xs text-gray-500">当前 Layout</span>
                 <div className="mt-1 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <span className="font-medium text-blue-700">{currentLayout.name}</span>
+                  <span className="font-medium text-blue-700">{currentLayout.layout_name}</span>
                   <p className="text-xs text-blue-600 mt-1">{currentLayout.description}</p>
                 </div>
               </div>
@@ -459,11 +599,11 @@ function PreviewContent() {
                 <div className="mt-2 space-y-2">
                   {getSimilarLayouts().map(layout => (
                     <button
-                      key={layout.id}
-                      onClick={() => currentSlide && handleLayoutChange(currentSlide.slide_id, layout.id)}
+                      key={layout.layout_id}
+                      onClick={() => currentSlide && handleLayoutChange(currentSlide.slide_id, layout.layout_id)}
                       className="w-full p-2 text-left bg-gray-50 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors"
                     >
-                      <span className="text-sm text-gray-700">{layout.name}</span>
+                      <span className="text-sm text-gray-700">{layout.layout_name}</span>
                     </button>
                   ))}
                 </div>
@@ -473,27 +613,28 @@ function PreviewContent() {
             {/* All layouts by category */}
             <div className="mt-4 pt-4 border-t border-gray-100">
               <span className="text-xs text-gray-500">全部 Layout</span>
-              <div className="mt-2 space-y-2">
-                {Object.entries(LAYOUT_CATEGORY_LABELS).map(([cat, label]) => {
-                  const layoutsInCategory = availableLayouts.filter(l => l.category === cat);
-                  if (layoutsInCategory.length === 0) return null;
+              <div className="mt-2 space-y-2 max-h-[300px] overflow-y-auto">
+                {Object.entries(layoutsByCategory).map(([cat, layouts]) => {
+                  if (layouts.length === 0) return null;
+                  const label = LAYOUT_CATEGORY_LABELS[cat] || cat;
+                  const icon = LAYOUT_CATEGORY_ICONS[cat] || '📋';
                   return (
                     <div key={cat}>
                       <span className="text-xs text-gray-400 flex items-center gap-1">
-                        {LAYOUT_CATEGORY_ICONS[cat as LayoutCategory]} {label}
+                        {icon} {label}
                       </span>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {layoutsInCategory.map(layout => (
+                        {layouts.map(layout => (
                           <button
-                            key={layout.id}
-                            onClick={() => currentSlide && handleLayoutChange(currentSlide.slide_id, layout.id)}
+                            key={layout.layout_id}
+                            onClick={() => currentSlide && handleLayoutChange(currentSlide.slide_id, layout.layout_id)}
                             className={`px-2 py-1 text-xs rounded border transition-colors ${
-                              currentLayoutId === layout.id
+                              currentLayoutId === layout.layout_id
                                 ? 'bg-blue-600 text-white border-blue-600'
                                 : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
                             }`}
                           >
-                            {layout.name}
+                            {layout.layout_name}
                           </button>
                         ))}
                       </div>
@@ -516,9 +657,12 @@ function SlidePreview({
   template,
 }: {
   slide: SlideDraft;
-  layout?: LayoutDefinition;
+  layout?: LayoutInfo;
   template: Template;
 }) {
+  // Map backend category to display
+  const category = layout?.category || 'PARALLEL';
+
   return (
     <div className="w-full h-full flex flex-col items-center justify-center">
       {/* Title */}
@@ -541,33 +685,52 @@ function SlidePreview({
 
       {/* Content based on layout */}
       <div className="w-full max-w-4xl">
-        {layout?.category === 'MATRIX' && (
+        {category === 'MATRIX' && (
           <MatrixView bullets={slide.bullets || []} template={template} />
         )}
-        {layout?.category === 'PROCESS' && (
+        {category === 'PROCESS' && (
           <ProcessView bullets={slide.bullets || []} template={template} />
         )}
-        {layout?.category === 'PYRAMID' && (
+        {category === 'HIERARCHY' && (
           <PyramidView bullets={slide.bullets || []} template={template} />
         )}
-        {layout?.category === 'COMPARISON' && (
+        {category === 'TABLE' && (
           <ComparisonView bullets={slide.bullets || []} template={template} />
         )}
-        {layout?.category === 'TIMELINE' && (
+        {category === 'TIMELINE' && (
           <ProcessView bullets={slide.bullets || []} template={template} />
         )}
-        {layout?.category === 'RADAR' && (
+        {category === 'DATA_VIZ' && (
           <MatrixView bullets={slide.bullets || []} template={template} />
         )}
-        {layout?.category === 'ORG_CHART' && (
-          <PyramidView bullets={slide.bullets || []} template={template} />
+        {category === 'KEY_INSIGHT' && (
+          <KeyInsightView message={slide.key_message || slide.title} template={template} />
         )}
-        {layout?.category === 'CUSTOM' && (
+        {(category === 'PARALLEL' || !layout) && (
           <ParallelView bullets={slide.bullets || []} template={template} />
         )}
-        {!layout && (
-          <ParallelView bullets={slide.bullets || []} template={template} />
-        )}
+      </div>
+    </div>
+  );
+}
+
+// Key Insight View (for single important message)
+function KeyInsightView({ message, template }: { message: string; template: Template }) {
+  return (
+    <div className="flex items-center justify-center p-8">
+      <div
+        className="text-center p-8 rounded-2xl"
+        style={{
+          backgroundColor: `${template.style.primaryColor}10`,
+          borderLeft: `4px solid ${template.style.primaryColor}`,
+        }}
+      >
+        <p
+          className="text-3xl font-bold"
+          style={{ color: template.style.primaryColor }}
+        >
+          {message}
+        </p>
       </div>
     </div>
   );

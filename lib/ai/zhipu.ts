@@ -1,28 +1,20 @@
 /**
  * AI API 封装
- * 支持 DeepSeek (主要) 和 智谱 AI (备用)
+ *
+ * 所有 AI 调用通过后端 API 代理，前端不直接访问任何 AI 服务。
+ * 后端端点: POST /api/analyze → app/services/ai_extractor.py
+ *
+ * 当后端不可达时，自动降级到 Mock 模式。
  */
 
-import { SYSTEM_PROMPT, generateUserPrompt } from './prompts/five-dimensions';
 import type { FiveDimensionsData, ExtractionResult } from '@/types/diagnosis';
 
-// API 配置
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
-const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
-
-const ZHIPU_API_KEY = process.env.ZHIPUAI_API_KEY;
-const ZHIPU_API_URL = process.env.ZHIPU_API_URL || 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-
-// 优先使用 DeepSeek
-const PRIMARY_API_KEY = DEEPSEEK_API_KEY;
-const PRIMARY_API_URL = DEEPSEEK_API_URL;
-const PRIMARY_MODEL = 'deepseek-chat';
-
-// Mock 模式
-const USE_MOCK = !PRIMARY_API_KEY;
+// 后端 API 地址
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const ANALYZE_ENDPOINT = `${API_BASE_URL}/api/analyze`;
 
 // 超时控制
-const API_TIMEOUT = 55000; // 55秒超时（留5秒给Vercel）
+const API_TIMEOUT = 60000; // 60秒
 
 /**
  * 带超时的 fetch
@@ -44,129 +36,74 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeout: numb
 
 /**
  * 从原始文本中抽取五维诊断数据
+ *
+ * 调用后端 POST /api/analyze，由后端的 ai_extractor 处理 AI 调用。
+ * 后端不可达时自动降级到 Mock 数据。
  */
 export async function extractDiagnosisData(rawText: string): Promise<ExtractionResult> {
   const startTime = Date.now();
 
-  // Mock 模式
-  if (USE_MOCK) {
-    console.log('[Mock Mode] Using mock data');
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const mockData = generateMockData(rawText);
-    return {
-      success: true,
-      data: mockData,
-      processing_time: Date.now() - startTime
-    };
-  }
-
   try {
-    // 对于超长文本，先截取关键部分
-    const truncatedText = rawText.length > 20000
-      ? rawText.substring(0, 20000) + '\n...[文本已截断，保留前20000字符]'
-      : rawText;
-
     const response = await fetchWithTimeout(
-      PRIMARY_API_URL,
+      ANALYZE_ENDPOINT,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${PRIMARY_API_KEY}`,
         },
-        body: JSON.stringify({
-          model: PRIMARY_MODEL,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: generateUserPrompt(truncatedText) }
-          ],
-          temperature: 0.3,
-          max_tokens: 4096
-        }),
+        body: JSON.stringify({ text: rawText }),
       },
       API_TIMEOUT
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('API error response:', errorText);
+      console.error('[Backend API] Error response:', response.status, errorText);
 
-      // 自动切换到 Mock 模式
-      if (response.status === 429 || response.status === 402 ||
-          errorText.includes('余额不足') || errorText.includes('insufficient') ||
-          errorText.includes('无可用资源包') || errorText.includes('请充值')) {
-        console.log('[Auto Mock] API quota exceeded, using mock data');
-        const mockData = generateMockData(rawText);
-        return {
-          success: true,
-          data: mockData,
-          processing_time: Date.now() - startTime
-        };
-      }
-
+      // 后端不可用时降级到 Mock
+      console.log('[Fallback] Backend unavailable, using mock data');
+      const mockData = generateMockData(rawText);
       return {
-        success: false,
-        error: `${response.status} ${errorText}`,
+        success: true,
+        data: mockData,
         processing_time: Date.now() - startTime
       };
     }
 
     const result = await response.json();
-    const content = result.choices?.[0]?.message?.content;
 
-    if (!content) {
-      return {
-        success: false,
-        error: 'No response content from AI',
-        processing_time: Date.now() - startTime
-      };
-    }
-
-    // 解析 JSON 响应
-    const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/);
-    const jsonStr = jsonMatch ? jsonMatch[1] : content;
-
-    try {
-      const data = JSON.parse(jsonStr) as FiveDimensionsData;
-
-      if (!validateDiagnosisData(data)) {
-        return {
-          success: false,
-          error: 'Invalid diagnosis data structure',
-          processing_time: Date.now() - startTime
-        };
-      }
-
-      calculateAggregatedScores(data);
-
+    if (!result.success) {
+      // 后端返回失败，降级到 Mock
+      console.log('[Fallback] Backend analysis failed, using mock data:', result.error);
+      const mockData = generateMockData(rawText);
       return {
         success: true,
-        data,
-        processing_time: Date.now() - startTime
-      };
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      return {
-        success: false,
-        error: `Failed to parse AI response as JSON: ${parseError}`,
-        processing_time: Date.now() - startTime
-      };
-    }
-  } catch (error) {
-    console.error('API error:', error);
-
-    // 超时错误特殊处理
-    if (error instanceof Error && error.name === 'AbortError') {
-      return {
-        success: false,
-        error: 'AI 处理超时，请尝试缩短文本或稍后重试',
+        data: mockData,
         processing_time: Date.now() - startTime
       };
     }
 
+    // 后端返回的数据已经过验证
     return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      success: true,
+      data: result.data as FiveDimensionsData,
+      processing_time: result.processing_time || (Date.now() - startTime)
+    };
+
+  } catch (error) {
+    console.error('[Backend API] Request failed:', error);
+
+    // 超时或网络错误，降级到 Mock
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log('[Fallback] Backend timeout, using mock data');
+    } else {
+      console.log('[Fallback] Backend unreachable, using mock data');
+    }
+
+    const mockData = generateMockData(rawText);
+    return {
+      success: true,
+      data: mockData,
       processing_time: Date.now() - startTime
     };
   }
@@ -459,121 +396,52 @@ function generateMockData(rawText: string): FiveDimensionsData {
 
 /**
  * 流式响应 (用于长文本)
+ *
+ * 注意: 后端 /api/analyze 是同步端点，不支持流式。
+ * 此函数保留接口兼容性，实际通过同步调用实现。
  */
 export async function* extractDiagnosisDataStream(
   rawText: string
 ): AsyncGenerator<string, ExtractionResult, unknown> {
   const startTime = Date.now();
 
-  if (USE_MOCK) {
+  try {
+    const response = await fetchWithTimeout(
+      ANALYZE_ENDPOINT,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: rawText }),
+      },
+      API_TIMEOUT
+    );
+
+    if (!response.ok || !(await response.clone().json()).success) {
+      const mockData = generateMockData(rawText);
+      yield JSON.stringify(mockData);
+      return {
+        success: true,
+        data: mockData,
+        processing_time: Date.now() - startTime
+      };
+    }
+
+    const result = await response.json();
+    yield JSON.stringify(result.data);
+
+    return {
+      success: true,
+      data: result.data as FiveDimensionsData,
+      processing_time: result.processing_time || (Date.now() - startTime)
+    };
+  } catch (error) {
     const mockData = generateMockData(rawText);
     yield JSON.stringify(mockData);
     return {
       success: true,
       data: mockData,
-      processing_time: Date.now() - startTime
-    };
-  }
-
-  try {
-    const response = await fetch(PRIMARY_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${PRIMARY_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: PRIMARY_MODEL,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: generateUserPrompt(rawText) }
-        ],
-        temperature: 0.3,
-        max_tokens: 4096,
-        stream: true
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      const mockData = generateMockData(rawText);
-      return {
-        success: true,
-        data: mockData,
-        processing_time: Date.now() - startTime
-      };
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      const mockData = generateMockData(rawText);
-      return {
-        success: true,
-        data: mockData,
-        processing_time: Date.now() - startTime
-      };
-    }
-
-    const decoder = new TextDecoder();
-    let fullContent = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content || '';
-            if (content) {
-              fullContent += content;
-              yield content;
-            }
-          } catch {
-            // Ignore parse errors
-          }
-        }
-      }
-    }
-
-    const jsonMatch = fullContent.match(/```json\n?([\s\S]*?)\n?```/);
-    const jsonStr = jsonMatch ? jsonMatch[1] : fullContent;
-
-    try {
-      const data = JSON.parse(jsonStr) as FiveDimensionsData;
-
-      if (validateDiagnosisData(data)) {
-        calculateAggregatedScores(data);
-        return {
-          success: true,
-          data,
-          processing_time: Date.now() - startTime
-        };
-      }
-
-      return {
-        success: false,
-        error: 'Invalid diagnosis data structure',
-        processing_time: Date.now() - startTime
-      };
-    } catch {
-      return {
-        success: false,
-        error: 'Failed to parse JSON response',
-        processing_time: Date.now() - startTime
-      };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
       processing_time: Date.now() - startTime
     };
   }

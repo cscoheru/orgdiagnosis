@@ -8,11 +8,6 @@ Uses UnifiedProjectStore for data persistence.
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-import sys
-import os
-
-# Add lib to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from lib.projects.unified_store import UnifiedProjectStore
 
 router = APIRouter(prefix="/knowledge/folders", tags=["folders"])

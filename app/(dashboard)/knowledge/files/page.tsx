@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useRouter, from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Upload,
@@ -11,12 +11,11 @@ import {
   File,
   ArrowLeft,
   Loader2,
-  Trash2
+  Trash2,
+  FolderOpen
 } from 'lucide-react';
-import FolderTree, { type Folder } from '@/components/file-manager';
-import FileList from '@/components/file-manager';
-import FileUploadZone from '@/components/file-manager';
-import { Button } from '@/components/ui/button';
+import { FolderTree, FileList, FileUploadZone } from '@/components/file-manager';
+import type { Folder } from '@/components/file-manager/FolderTree';
 import {
   getProjects,
   type Project
@@ -40,10 +39,6 @@ export default function FileManagerPage() {
         setLoading(true);
         const data = await getProjects();
         setProjects(data);
-        // Auto-select first project if available
-        if (data.length > 0 && !selectedProject) {
-          setSelectedProject(data[0]);
-        }
       } catch (err) {
         console.error('Failed to fetch projects:', err);
       } finally {
@@ -52,6 +47,13 @@ export default function FileManagerPage() {
     }
     fetchProjectsData();
   }, []);
+
+  // Auto-select first project after projects are loaded
+  useEffect(() => {
+    if (projects.length > 0 && !selectedProject) {
+      setSelectedProject(projects[0]);
+    }
+  }, [projects, selectedProject]);
 
   // Handle folder selection
   const handleSelectFolder = useCallback((folder: Folder) => {
@@ -87,7 +89,7 @@ export default function FileManagerPage() {
   // Get breadcrumb path
   const getBreadcrumbPath = useCallback(() => {
     if (!selectedFolder) return [];
-    const parts = selectedFolder.path.split('/').filter(Boolean(p => p));
+    const parts = selectedFolder.path.split('/').filter(Boolean);
     return parts;
   }, [selectedFolder]);
 
@@ -170,13 +172,9 @@ export default function FileManagerPage() {
 
         {/* New Folder Button */}
         <div className="p-4 border-t border-gray-200 mt-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
+          <button
+            className="w-full flex items-center justify-center px-3 py-2 text-sm border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
             onClick={() => {
-              // This would need to be implemented at the component level
-              // For now, trigger refresh
               if (selectedProject) {
                 alert('New folder will be created in the root. You can also right-click a folder to create subfolders.');
               }
@@ -184,7 +182,7 @@ export default function FileManagerPage() {
           >
             <FolderPlus className="w-4 h-4 mr-2" />
             New Folder
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -223,21 +221,17 @@ export default function FileManagerPage() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              className="flex items-center px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={toggleUploadView}
               disabled={!selectedFolder}
             >
               <Upload className="w-4 h-4 mr-2" />
               Upload
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
+            </button>
+            <button
+              className="flex items-center px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
               onClick={() => {
-                // Trigger folder creation through FolderTree component
-                // by calling the global refresh
                 if (selectedProject) {
                   handleRefresh();
                 }
@@ -245,7 +239,7 @@ export default function FileManagerPage() {
             >
               <FolderPlus className="w-4 h-4 mr-2" />
               New Folder
-            </Button>
+            </button>
           </div>
         </div>
 
@@ -276,7 +270,7 @@ export default function FileManagerPage() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                <Folder className="w-8 h-8 text-gray-400" />
+                <FolderOpen className="w-8 h-8 text-gray-400" />
               </div>
               <p className="text-sm text-gray-500 mb-1">No folder selected</p>
               <p className="text-xs text-gray-400">Select a folder from the left sidebar to view its files</p>

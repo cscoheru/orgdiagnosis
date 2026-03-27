@@ -60,7 +60,7 @@ async function uploadFiles(
     formData.append('files', file);
   });
 
-  const response = await fetch(`${API_BASE}/knowledge/files/upload`, {
+  const response = await fetch(`${API_BASE}/api/knowledge/files/upload`, {
     method: 'POST',
     body: formData,
   });

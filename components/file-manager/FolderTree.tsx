@@ -39,7 +39,7 @@ interface FolderTreeProps {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function fetchFolders(projectId: string): Promise<Folder[]> {
-  const response = await fetch(`${API_BASE}/knowledge/folders?project_id=${projectId}`);
+  const response = await fetch(`${API_BASE}/api/knowledge/folders?project_id=${projectId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch folders');
   }
@@ -52,7 +52,7 @@ async function createFolder(
   name: string,
   parentId: string | null = null
 ): Promise<Folder> {
-  const response = await fetch(`${API_BASE}/knowledge/folders`, {
+  const response = await fetch(`${API_BASE}/api/knowledge/folders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -70,7 +70,7 @@ async function createFolder(
 }
 
 async function updateFolder(folderId: string, name: string): Promise<Folder> {
-  const response = await fetch(`${API_BASE}/knowledge/folders/${folderId}`, {
+  const response = await fetch(`${API_BASE}/api/knowledge/folders/${folderId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -84,7 +84,7 @@ async function updateFolder(folderId: string, name: string): Promise<Folder> {
 }
 
 async function deleteFolder(folderId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/knowledge/folders/${folderId}`, {
+  const response = await fetch(`${API_BASE}/api/knowledge/folders/${folderId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -529,12 +529,13 @@ export default function FolderTree({
   // Handle create folder
   const handleCreateFolder = useCallback(
     async (name: string) => {
-      const parentId = createModal.parentFolder?.id || null;
+      const parent = createModal.parentFolder;
+      const parentId = parent?.id || null;
       await createFolder(projectId, name, parentId);
       await loadFolders();
       // Expand parent folder
-      if (createModal.parentFolder) {
-        setExpandedIds((prev) => new Set(prev).add(createModal.parentFolder.id));
+      if (parent) {
+        setExpandedIds((prev) => new Set(prev).add(parent.id));
       }
     },
     [projectId, createModal.parentFolder, loadFolders]
