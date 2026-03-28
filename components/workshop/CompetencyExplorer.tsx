@@ -9,30 +9,41 @@ interface CompetencyExplorerProps {
 }
 
 const LEVEL_STYLES: Record<BehaviorLevel, { bg: string; text: string; label: string }> = {
-  '初级': { bg: 'bg-sky-50', text: 'text-sky-700', label: '初级 — 执行者' },
-  '中级': { bg: 'bg-amber-50', text: 'text-amber-700', label: '中级 — 管理者' },
-  '高级': { bg: 'bg-purple-50', text: 'text-purple-700', label: '高级 — 领导者' },
+  '初级': { bg: 'bg-sky-50', text: 'text-sky-700', label: '初级 · 在他人指导下工作' },
+  '中级': { bg: 'bg-amber-50', text: 'text-amber-700', label: '中级 · 独立工作' },
+  '高级': { bg: 'bg-purple-50', text: 'text-purple-700', label: '高级 · 赋能他人' },
+};
+
+const MODEL_CONFIG: Record<ModelType, { label: string; activeCls: string; countCls: string }> = {
+  delivery_management: {
+    label: '交付管理',
+    activeCls: 'border-indigo-500 bg-indigo-50 text-indigo-700',
+    countCls: 'bg-indigo-100 text-indigo-600',
+  },
+  business_management: {
+    label: '项目/业务管理',
+    activeCls: 'border-amber-500 bg-amber-50 text-amber-700',
+    countCls: 'bg-amber-100 text-amber-600',
+  },
 };
 
 export default function CompetencyExplorer({
   competencies,
   confirmedL1Terms,
 }: CompetencyExplorerProps) {
+  const [activeModel, setActiveModel] = useState<ModelType>('delivery_management');
   const [selectedL1, setSelectedL1] = useState<string | null>(null);
   const [selectedL2, setSelectedL2] = useState<string | null>(null);
   const [l2Notes, setL2Notes] = useState('');
   const [behaviorNotes, setBehaviorNotes] = useState('');
 
-  // Use confirmed terms if available, otherwise top 8 per model
-  const l1List = useMemo(() => {
-    const allConfirmed = Object.values(confirmedL1Terms).flat();
-    if (allConfirmed.length > 0) {
-      return allConfirmed
-        .map((term) => competencies.find((c) => c.term === term))
-        .filter(Boolean) as CompetencyTerm[];
-    }
-    return [...competencies].sort((a, b) => b.score - a.score).slice(0, 8);
-  }, [competencies, confirmedL1Terms]);
+  // Filter by model, show ALL items (seeds first, then discovered)
+  const modelComps = useMemo(() => {
+    const filtered = competencies.filter((c) => c.model === activeModel);
+    const seeds = filtered.filter((c) => c.origin === 'seed').sort((a, b) => b.score - a.score);
+    const discovered = filtered.filter((c) => c.origin === 'discovered').sort((a, b) => b.score - a.score);
+    return [...seeds, ...discovered];
+  }, [competencies, activeModel]);
 
   const selectedComp = useMemo(
     () => competencies.find((c) => c.term === selectedL1) || null,
@@ -58,20 +69,54 @@ export default function CompetencyExplorer({
   const totalBehaviors = selectedSec?.behaviors.length || 0;
   const totalL2 = selectedComp?.secondary_terms.length || 0;
 
+  // Reset selection when model changes
+  const switchModel = (model: ModelType) => {
+    setActiveModel(model);
+    setSelectedL1(null);
+    setSelectedL2(null);
+  };
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <h2 className="text-xl font-bold text-gray-900">二级能力项与关键行为探索</h2>
+      {/* Header + Model Switch */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-900">二级能力项与关键行为探索</h2>
+        <div className="flex gap-2">
+          {(Object.keys(MODEL_CONFIG) as ModelType[]).map((model) => {
+            const cfg = MODEL_CONFIG[model];
+            const count = competencies.filter((c) => c.model === model).length;
+            return (
+              <button
+                key={model}
+                onClick={() => switchModel(model)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                  activeModel === model
+                    ? cfg.activeCls
+                    : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {cfg.label}
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded text-xs font-semibold ${cfg.countCls}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* 3-Column Layout */}
       <div className="grid grid-cols-12 gap-4 h-[520px]">
         {/* Left: L1 List */}
         <div className="col-span-3 bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700">一级能力项</h3>
+            <h3 className="text-sm font-semibold text-gray-700">
+              一级能力项
+              <span className="font-normal text-gray-400 ml-2">({modelComps.length})</span>
+            </h3>
           </div>
           <div className="overflow-y-auto h-full max-h-[480px]">
-            {l1List.map((comp) => (
+            {modelComps.map((comp) => (
               <div
                 key={comp.id}
                 role="button"
@@ -92,9 +137,18 @@ export default function CompetencyExplorer({
                     {comp.secondary_terms.length}
                   </span>
                 </div>
-                {comp.origin === 'discovered' && (
-                  <span className="text-xs text-emerald-600">新发现</span>
-                )}
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                    comp.origin === 'seed'
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'bg-emerald-50 text-emerald-600'
+                  }`}>
+                    {comp.origin === 'seed' ? '种子' : '发现'}
+                  </span>
+                  <span className="text-xs text-gray-400 font-mono">
+                    {comp.score.toFixed(2)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

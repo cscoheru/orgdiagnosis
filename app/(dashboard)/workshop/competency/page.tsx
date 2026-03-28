@@ -6,17 +6,19 @@ import type { CompetencyOutput, ModelType } from '@/lib/workshop/competency-type
 import CompetencyRadarView from '@/components/workshop/CompetencyRadarView';
 import CompetencyExplorer from '@/components/workshop/CompetencyExplorer';
 import ResourceInventory from '@/components/workshop/ResourceInventory';
+import DataFlowDiagram from '@/components/workshop/DataFlowDiagram';
 
-type TabId = 'l1' | 'explorer' | 'resources';
+type TabId = 'flow' | 'l1' | 'explorer' | 'resources';
 
 const TABS: { id: TabId; name: string }[] = [
+  { id: 'flow', name: '分析流程' },
   { id: 'l1', name: '一级能力项研讨' },
   { id: 'explorer', name: '二级与行为探索' },
   { id: 'resources', name: '学习资源盘点' },
 ];
 
 export default function CompetencyWorkshopPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('l1');
+  const [activeTab, setActiveTab] = useState<TabId>('flow');
   const [data, setData] = useState<CompetencyOutput | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +133,10 @@ export default function CompetencyWorkshopPage() {
       </div>
 
       {/* Tab Content */}
+      {activeTab === 'flow' && (
+        <DataFlowDiagram meta={data.meta} />
+      )}
+
       {activeTab === 'l1' && (
         <CompetencyRadarView
           competencies={competencies}

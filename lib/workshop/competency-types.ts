@@ -7,12 +7,21 @@
 export type OriginType = 'seed' | 'discovered';
 export type BehaviorLevel = '初级' | '中级' | '高级';
 export type ModelType = 'delivery_management' | 'business_management';
+export type ResourceType = '书籍' | '视频' | '在线课程' | '案例库' | '工具' | '模板';
 
 /** 模型定义 */
 export interface ModelDef {
   label: string;
   order: number;
   seeds: string[];
+}
+
+/** 学习资源 */
+export interface LearningResource {
+  title: string;
+  type: ResourceType;
+  target_level: BehaviorLevel;
+  rationale: string;
 }
 
 /** 关键行为 */
@@ -38,6 +47,7 @@ export interface CompetencyTerm {
   model: ModelType;
   sources: string[];
   secondary_terms: SecondaryTerm[];
+  resources?: LearningResource[];
 }
 
 /** 预计算输出结构 */
