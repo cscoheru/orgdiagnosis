@@ -56,6 +56,9 @@ class DiagnosticState(TypedDict, total=False):
     error: Optional[str]
     error_step: Optional[str]
 
+    # === 内核集成 ===
+    kernel_context: Dict[str, Any]  # 内核数据引用 (objects_created, relations_created, meta_models_used)
+
     # === 元数据 ===
     created_at: Optional[str]
     updated_at: Optional[str]
@@ -99,6 +102,11 @@ def create_initial_state(
         overall_score=0.0,
         error=None,
         error_step=None,
+        kernel_context={
+            "objects_created": [],
+            "relations_created": [],
+            "meta_models_used": [],
+        },
         created_at=now,
         updated_at=now,
         retry_count=0,

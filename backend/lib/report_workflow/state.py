@@ -83,6 +83,10 @@ class ReportState(TypedDict):
     # === LlamaIndex 上下文 ===
     retrieved_evidence: Optional[List[Dict[str, Any]]]  # 检索到的证据
 
+    # === 内核集成 ===
+    kernel_context: Optional[Dict[str, Any]]            # 内核数据引用 (objects_created, relations_created)
+    kernel_data: Optional[Dict[str, Any]]               # 内核图谱数据 (按维度索引的结构化数据)
+
 
 def create_initial_state(
     task_id: str,
@@ -124,6 +128,13 @@ def create_initial_state(
         error_message=None,
         error_step=None,
         retrieved_evidence=None,
+        # 内核集成
+        kernel_context={
+            "objects_created": [],
+            "relations_created": [],
+            "meta_models_used": [],
+        },
+        kernel_data=None,
     )
 
 

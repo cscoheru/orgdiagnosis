@@ -706,8 +706,20 @@ function WorkspaceLoading() {
 // Export with Suspense wrapper
 export default function ReportWorkspacePage() {
   return (
-    <Suspense fallback={<WorkspaceLoading />}>
-      <WorkspaceContent />
-    </Suspense>
+    <>
+      <div className="max-w-7xl mx-auto px-4 lg:px-8 pt-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 flex items-center justify-between">
+          <span className="text-sm text-amber-700">
+            报告工坊已整合至项目工作流
+          </span>
+          <Link href="/projects" className="text-sm text-amber-700 underline hover:text-amber-800">
+            前往项目列表 →
+          </Link>
+        </div>
+      </div>
+      <Suspense fallback={<WorkspaceLoading />}>
+        <WorkspaceContent />
+      </Suspense>
+    </>
   );
 }

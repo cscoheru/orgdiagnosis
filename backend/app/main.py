@@ -36,7 +36,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} starting...")
     logger.info(f"Supabase: {'configured' if settings.SUPABASE_URL else 'not configured'}")
     logger.info(f"Auth: {'ENABLED' if os.getenv('AUTH_ENABLED', 'false').lower() == 'true' else 'DISABLED (set AUTH_ENABLED=true to enable)'}")
+
+    # 初始化内核数据库
+    from app.kernel.database import init_kernel_db, close_kernel_db
+    from app.kernel.config import kernel_settings
+    logger.info(f"Kernel: mode={kernel_settings.KERNEL_MODE}, database={kernel_settings.ARANGO_DATABASE}")
+    init_kernel_db()
+
     yield
+
+    close_kernel_db()
     logger.info("👋 应用关闭")
 
 

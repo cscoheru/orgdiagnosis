@@ -2,6 +2,7 @@
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { DimensionRadarChart } from '@/components/charts/radar-chart';
 import { WarningCards } from '@/components/charts/warning-cards';
 import { DimensionDetailChart } from '@/components/charts/dimension-detail-chart';
@@ -9,6 +10,12 @@ import { SkeletonRadar, SkeletonScoreBar } from '@/components/ui/skeleton';
 import type { FiveDimensionsData, DimensionData } from '@/types/diagnosis';
 import { DIMENSION_KEYS } from '@/types/diagnosis';
 import { getTaskStatus, getTaskResult } from '@/lib/langgraph-client';
+import dynamic from 'next/dynamic';
+import { listObjects, type KernelObject } from '@/lib/api/kernel-client';
+
+const GraphViewer = dynamic(() => import('@/components/kernel/GraphViewer'), {
+  ssr: false,
+});
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -130,6 +137,8 @@ export default function ResultPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [savedToProject, setSavedToProject] = useState(false);
+  const [kernelObjects, setKernelObjects] = useState<KernelObject[]>([]);
+  const [showKernelGraph, setShowKernelGraph] = useState(false);
 
   // 从 LangGraph API 获取数据
   useEffect(() => {
@@ -168,6 +177,15 @@ export default function ResultPage() {
       fetchData();
     }
   }, [params.id]);
+
+  // 加载内核对象数据
+  useEffect(() => {
+    listObjects(50).then((res) => {
+      if (res.success && res.data) {
+        setKernelObjects(res.data);
+      }
+    });
+  }, []);
 
   const handleExportPDF = async () => {
     const sessionId = params.id as string;
@@ -258,6 +276,16 @@ export default function ResultPage() {
 
   return (
     <div className="space-y-6">
+      {/* Deprecation banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+        <span className="text-sm text-amber-700">
+          诊断结果已整合至项目工作流
+        </span>
+        <Link href="/data" className="text-sm text-amber-700 underline hover:text-amber-800">
+          前往数据探索 →
+        </Link>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -333,6 +361,55 @@ export default function ResultPage() {
           ))}
         </div>
       </div>
+
+      {/* Kernel Graph Section */}
+      {kernelObjects.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">内核数据图谱</h2>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">
+                {kernelObjects.length} 个对象
+              </span>
+              <button
+                onClick={() => setShowKernelGraph(!showKernelGraph)}
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                {showKernelGraph ? '收起' : '展开图谱'}
+              </button>
+            </div>
+          </div>
+
+          {showKernelGraph && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Object summary */}
+              <div className="border border-gray-200 rounded-lg p-4 max-h-96 overflow-y-auto">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">对象概览</h3>
+                {Object.entries(
+                  kernelObjects.reduce<Record<string, number>>((acc, obj) => {
+                    acc[obj.model_key] = (acc[obj.model_key] || 0) + 1;
+                    return acc;
+                  }, {})
+                ).map(([model, count]) => (
+                  <div key={model} className="flex justify-between text-sm py-1">
+                    <span className="text-gray-600">{model}</span>
+                    <span className="font-mono text-gray-900">{count}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Graph viewer */}
+              <div className="lg:col-span-2">
+                <GraphViewer
+                  startObjId={kernelObjects[0]._id}
+                  depth={2}
+                  height="400px"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

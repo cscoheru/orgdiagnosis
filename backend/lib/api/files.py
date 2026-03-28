@@ -109,6 +109,24 @@ async def get_files(folder_id: str):
     return {"files": files, "count": len(files)}
 
 
+@router.get("/search")
+async def search_files(
+    query: str,
+    project_id: Optional[str] = None,
+    limit: int = 50
+):
+    """Search files using FTS5 with LIKE fallback for Chinese"""
+    if not query:
+        raise HTTPException(status_code=400, detail="Query parameter required")
+
+    results = store.search_files(query, project_id=project_id, limit=limit)
+    return {
+        "query": query,
+        "results": results,
+        "count": len(results)
+    }
+
+
 @router.get("/{file_id}")
 async def get_file(file_id: str):
     """Get a specific file"""
@@ -157,21 +175,3 @@ async def delete_file_endpoint(file_id: str):
         raise HTTPException(status_code=500, detail="Failed to delete file record")
 
     return {"success": True, "message": f"File {file_id} deleted"}
-
-
-@router.get("/search")
-async def search_files(
-    query: str,
-    project_id: Optional[str] = None,
-    limit: int = 50
-):
-    """Search files using FTS5 with LIKE fallback for Chinese"""
-    if not query:
-        raise HTTPException(status_code=400, detail="Query parameter required")
-
-    results = store.search_files(query, project_id=project_id, limit=limit)
-    return {
-        "query": query,
-        "results": results,
-        "count": len(results)
-    }

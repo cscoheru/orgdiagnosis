@@ -52,6 +52,11 @@ venv/
 
 # generated output
 backend/output/
+backend/data/file_storage/
+backend/data/competency_output/
+
+# checkpoints
+backend/checkpoints/
 
 # test artifacts
 playwright-report/
@@ -60,3 +65,4 @@ test-results/
 # binaries
 npx
 tail
+echo

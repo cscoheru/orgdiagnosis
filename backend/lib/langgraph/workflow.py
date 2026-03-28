@@ -2,6 +2,8 @@
 LangGraph Workflow for Five-Dimensional Diagnosis
 
 This module defines the state machine workflow for processing diagnostic reports.
+Analysis results are written to the kernel via KernelBridge, making them
+queryable as structured objects and graph data.
 """
 
 import asyncio
@@ -24,6 +26,48 @@ from .state import (
     mark_error,
     update_progress,
 )
+
+# ──────────────────────────────────────────────
+# 维度 → 内核元模型映射
+# ──────────────────────────────────────────────
+
+DIMENSION_META_MODELS: Dict[str, List[str]] = {
+    "strategy": ["Strategic_Goal", "Strategic_Initiative", "Market_Context"],
+    "structure": ["Org_Unit", "Job_Role", "Process_Flow"],
+    "performance": ["Performance_Metric", "Competency", "Review_Cycle"],
+    "compensation": ["Salary_Band", "Pay_Component", "Market_Benchmark"],
+    "talent": ["Employee", "Talent_Pipeline", "Learning_Development"],
+}
+
+# 维度 → AI prompt 中的结构化输出字段映射
+# 字段名与 seed_meta_models.py 中的元模型定义一致
+DIMENSION_OBJECT_SCHEMAS: Dict[str, Dict[str, str]] = {
+    "strategy": {
+        "Strategic_Goal": "goal_name, owner, priority, period, target_value, actual_value, status",
+        "Strategic_Initiative": "initiative_name, description, budget, status",
+        "Market_Context": "industry, market_position, competitor_landscape, growth_rate",
+    },
+    "structure": {
+        "Org_Unit": "unit_name, unit_type, level, budget, manager, headcount",
+        "Job_Role": "role_name, job_family, level_range, is_key_position",
+        "Process_Flow": "process_name, description, efficiency_score, status",
+    },
+    "performance": {
+        "Performance_Metric": "metric_name, formula, review_cycle, weight, target_value, unit",
+        "Competency": "competency_name, dimension, definition, behavioral_indicators",
+        "Review_Cycle": "cycle_name, cycle_type, start_date, end_date, completion_rate",
+    },
+    "compensation": {
+        "Salary_Band": "band_code, min_salary, mid_salary, max_salary, currency",
+        "Pay_Component": "component_name, fixed_variable_ratio, pay_frequency, is_taxable",
+        "Market_Benchmark": "benchmark_name, industry, region, percentile_50, data_year",
+    },
+    "talent": {
+        "Employee": "name, employee_id, education, experience_years, performance_grade, nine_box_position",
+        "Talent_Pipeline": "pipeline_name, readiness, development_plan, risk_of_loss",
+        "Learning_Development": "program_name, training_type, status",
+    },
+}
 
 
 def load_documents_node(state: DiagnosticState) -> DiagnosticState:
@@ -82,26 +126,44 @@ def analyze_dimension_node(state: DiagnosticState, dimension: str) -> Diagnostic
     """
     通用节点：分析指定维度
 
-    使用 RAG 检索相关文档，调用 AI 分析
+    1. 通过 KernelBridge 查询内核中已有的该维度数据
+    2. 将内核数据作为额外 context 传给 AI
+    3. AI 分析结果写回内核 (创建对应领域的对象)
     """
     logger.info(f"[{state['task_id']}] Analyzing dimension: {dimension}")
 
     try:
-        # 简化版：直接使用内存中的文档
         documents = state.get("documents", [])
-
-        # 构建上下文 (取前3个文档)
         context = "\n\n".join([doc.get("content", "")[:500] for doc in documents[:3]])
 
-        # 调用 AI 分析 (这里需要集成实际的 AI 服务)
-        # TODO: 集成 DeepSeek/GLM API
+        # ── Step 1: 查询内核已有数据 ──
+        kernel_context = _query_kernel_for_dimension(dimension)
+        if kernel_context:
+            context += f"\n\n--- 已有内核数据 ({dimension}) ---\n{kernel_context}"
+            logger.info(f"[{state['task_id']}] Enriched context with kernel data for {dimension}")
+
+        # ── Step 2: 调用 AI 分析 ──
         result = _analyze_with_ai(state["task_id"], dimension, context)
+
+        # ── Step 3: 写回内核 ──
+        kernel_objects = _write_results_to_kernel(state["task_id"], dimension, result)
+        result["kernel_objects"] = kernel_objects
+
+        # 追踪到 kernel_context
+        kernel_ctx = dict(state.get("kernel_context") or {
+            "objects_created": [],
+            "relations_created": [],
+            "meta_models_used": list(DIMENSION_META_MODELS.get(dimension, [])),
+        })
+        for obj_id in kernel_objects:
+            if obj_id not in kernel_ctx["objects_created"]:
+                kernel_ctx["objects_created"].append(obj_id)
 
         # 标记完成
         completed = state.get("completed_dimensions", []) + [dimension]
         progress = len(completed) / 5 * 100
 
-        logger.info(f"[{state['task_id']}] Completed dimension: {dimension}")
+        logger.info(f"[{state['task_id']}] Completed dimension: {dimension}, kernel objects: {len(kernel_objects)}")
 
         return {
             **state,
@@ -109,6 +171,7 @@ def analyze_dimension_node(state: DiagnosticState, dimension: str) -> Diagnostic
             "completed_dimensions": completed,
             "current_dimension": dimension,
             "progress_percentage": progress,
+            "kernel_context": kernel_ctx,
         }
 
     except Exception as e:
@@ -122,6 +185,10 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
 
     使用统一 AI 客户端分析单个维度。
     由于 LangGraph 节点是同步函数，使用 asyncio.run() 调用异步客户端。
+
+    AI 返回结果包含:
+    - 诊断评分 (total_score, secondary_metrics)
+    - 结构化对象列表 (extracted_objects) — 写入内核的原始数据
     """
     from app.services.ai_client import ai_client
 
@@ -131,7 +198,8 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
             "category": dimension,
             "total_score": 50.0,
             "summary_insight": f"AI 未配置，{dimension}维度使用模拟数据",
-            "secondary_metrics": []
+            "secondary_metrics": [],
+            "extracted_objects": [],
         }
 
     dimension_prompts = {
@@ -142,6 +210,15 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
         "talent": "人才 (Talent) - 评估人才规划、获取、培养和保留机制",
     }
 
+    # 构建 extracted_objects 的 JSON schema 描述
+    object_schema_desc = DIMENSION_OBJECT_SCHEMAS.get(dimension, {})
+    extracted_schema = ""
+    if object_schema_desc:
+        extracted_schema = ',\n    "extracted_objects": [\n'
+        for model_key, fields in object_schema_desc.items():
+            extracted_schema += f'        {{"_model": "{model_key}", {fields}}},\n'
+        extracted_schema += "    ]"
+
     system_prompt = f"""你是一位资深的组织诊断专家。请分析以下文本中关于【{dimension_prompts.get(dimension, dimension)}】的信息。
 
 请返回严格的 JSON 格式：
@@ -151,8 +228,13 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
     "summary_insight": "<50字以内的维度总结>",
     "secondary_metrics": [
         {{"name": "<子指标名称>", "score": <0-100>, "detail": "<简要说明>"}}
-    ]
-}}"""
+    ]{extracted_schema}
+}}
+
+注意:
+- extracted_objects 是从文本中提取的结构化数据，每个对象需包含 _model 字段标识元模型类型
+- 如果文本中没有相关信息，extracted_objects 返回空数组 []
+- 数值型字段 (如 salary, budget, score) 用数字类型，不要用字符串"""
 
     user_prompt = f"请分析以下组织相关文本，重点关注{dimension_prompts.get(dimension, dimension)}维度：\n\n{context}"
 
@@ -165,7 +247,6 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
             loop = None
 
         if loop and loop.is_running():
-            # 如果已在事件循环中，创建新线程运行
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 result_future = pool.submit(
@@ -181,8 +262,9 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
         result.setdefault("total_score", 50.0)
         result.setdefault("summary_insight", "")
         result.setdefault("secondary_metrics", [])
+        result.setdefault("extracted_objects", [])
 
-        logger.info(f"[{task_id}] AI analysis for {dimension}: score={result['total_score']}")
+        logger.info(f"[{task_id}] AI analysis for {dimension}: score={result['total_score']}, objects={len(result.get('extracted_objects', []))}")
         return result
 
     except Exception as e:
@@ -191,8 +273,123 @@ def _analyze_with_ai(task_id: str, dimension: str, context: str) -> Dict[str, An
             "category": dimension,
             "total_score": 50.0,
             "summary_insight": f"分析失败: {str(e)}",
-            "secondary_metrics": []
+            "secondary_metrics": [],
+            "extracted_objects": [],
         }
+
+
+def _query_kernel_for_dimension(dimension: str) -> str:
+    """
+    查询内核中该维度已有的对象数据，作为 AI 分析的补充上下文。
+
+    Returns:
+        格式化的已有数据文本，或空字符串
+    """
+    try:
+        from lib.workflow.kernel_bridge import KernelBridge
+
+        bridge = KernelBridge()
+        model_keys = DIMENSION_META_MODELS.get(dimension, [])
+
+        # 同步节点中需要用 asyncio.run() 调用 async bridge
+        all_objects = []
+        for model_key in model_keys:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, bridge.get_objects_by_model(model_key, limit=20))
+                    objects = future.result(timeout=10)
+            else:
+                objects = asyncio.run(bridge.get_objects_by_model(model_key, limit=20))
+
+            if objects:
+                all_objects.append(f"  [{model_key}]: {len(objects)} 个对象")
+                for obj in objects[:5]:  # 最多展示 5 个
+                    props = obj.get("properties", {})
+                    name = props.get("name", obj.get("_key", "?"))
+                    all_objects.append(f"    - {name}: {props}")
+
+        if not all_objects:
+            return ""
+
+        return "\n".join(all_objects)
+
+    except Exception as e:
+        logger.warning(f"查询内核数据失败 ({dimension}): {e}")
+        return ""
+
+
+def _write_results_to_kernel(
+    task_id: str,
+    dimension: str,
+    result: Dict[str, Any],
+) -> List[str]:
+    """
+    将 AI 分析结果中的 extracted_objects 写入内核。
+
+    Args:
+        task_id: 任务 ID (日志用)
+        dimension: 维度标识
+        result: AI 分析结果 (包含 extracted_objects)
+
+    Returns:
+        创建成功对象的 _id 列表
+    """
+    extracted = result.get("extracted_objects", [])
+    if not extracted:
+        logger.info(f"[{task_id}] No extracted objects to write for {dimension}")
+        return []
+
+    try:
+        from lib.workflow.kernel_bridge import KernelBridge
+
+        bridge = KernelBridge()
+        created_ids = []
+
+        for obj_data in extracted:
+            model_key = obj_data.pop("_model", None)
+            if not model_key:
+                logger.warning(f"[{task_id}] Skipping object without _model: {obj_data}")
+                continue
+
+            properties = {k: v for k, v in obj_data.items() if not k.startswith("_")}
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            try:
+                if loop and loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(
+                            asyncio.run,
+                            bridge.create_object(model_key, properties)
+                        )
+                        created = future.result(timeout=10)
+                else:
+                    created = asyncio.run(bridge.create_object(model_key, properties))
+
+                obj_id = created.get("_id") or created.get("_key", "")
+                if obj_id:
+                    created_ids.append(obj_id)
+                    logger.info(f"[{task_id}] Created kernel object: {model_key}/{obj_id}")
+
+            except Exception as e:
+                logger.warning(f"[{task_id}] Failed to create {model_key} object: {e}")
+                continue
+
+        return created_ids
+
+    except Exception as e:
+        logger.error(f"[{task_id}] Error writing to kernel ({dimension}): {e}")
+        return []
 
 
 def analyze_strategy_node(state: DiagnosticState) -> DiagnosticState:

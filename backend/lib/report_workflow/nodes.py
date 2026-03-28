@@ -25,6 +25,19 @@ from .state import (
 from .ai_service import report_ai_service
 
 
+# ──────────────────────────────────────────────
+# 内核集成：维度 → 元模型映射 (与诊断工作流一致)
+# ──────────────────────────────────────────────
+
+DIMENSION_KERNEL_MODELS = {
+    "strategy": ["Strategic_Goal", "Strategic_Initiative", "Market_Context"],
+    "structure": ["Org_Unit", "Job_Role", "Process_Flow"],
+    "performance": ["Performance_Metric", "Competency", "Review_Cycle"],
+    "compensation": ["Salary_Band", "Pay_Component", "Market_Benchmark"],
+    "talent": ["Employee", "Talent_Pipeline", "Learning_Development"],
+}
+
+
 # ============================================================
 # Multi-Level Expansion Step 1: Module Generation
 # ============================================================
@@ -754,6 +767,99 @@ def confirm_outline_node(state: ReportState) -> ReportState:
     )
 
 
+async def _load_kernel_data_for_report(
+    task_id: str,
+    modules: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    从内核查询图谱数据，为报告幻灯片生成提供结构化数据。
+
+    遍历 modules 中的 diagnosis_dimension，查询对应元模型的对象数据。
+
+    Returns:
+        {dimension: {"objects": [...], "summary": "..."}}
+    """
+    try:
+        from lib.workflow.kernel_bridge import KernelBridge
+
+        bridge = KernelBridge()
+        kernel_data = {}
+
+        # 收集所有需要查询的维度
+        dimensions_needed = set()
+        for module in modules:
+            dim = module.get("diagnosis_dimension")
+            if dim and dim in DIMENSION_KERNEL_MODELS:
+                dimensions_needed.add(dim)
+
+        if not dimensions_needed:
+            logger.info(f"[{task_id}] No diagnosis dimensions in modules, skipping kernel data load")
+            return kernel_data
+
+        # 并行查询各维度的内核数据
+        async def load_dimension(dim: str):
+            model_keys = DIMENSION_KERNEL_MODELS[dim]
+            all_objects = []
+            for model_key in model_keys:
+                try:
+                    objects = await bridge.get_objects_by_model(model_key, limit=50)
+                    if objects:
+                        all_objects.extend(objects)
+                except Exception as e:
+                    logger.warning(f"[{task_id}] Failed to query {model_key}: {e}")
+            return dim, all_objects
+
+        logger.info(f"[{task_id}] Loading kernel data for dimensions: {dimensions_needed}")
+        results = await asyncio.gather(*[load_dimension(d) for d in dimensions_needed])
+
+        for dim, objects in results:
+            if objects:
+                # 构建摘要文本 (用于 AI 上下文)
+                summary_parts = []
+                for obj in objects[:10]:
+                    props = obj.get("properties", {})
+                    name = props.get(
+                        list(props.keys())[0] if props else "_key",
+                        obj.get("_key", "?"),
+                    )
+                    summary_parts.append(f"- {name}: {props}")
+                kernel_data[dim] = {
+                    "objects": objects,
+                    "summary": "\n".join(summary_parts),
+                    "count": len(objects),
+                }
+                logger.info(f"[{task_id}] Loaded {len(objects)} kernel objects for {dim}")
+
+        return kernel_data
+
+    except Exception as e:
+        logger.warning(f"[{task_id}] Failed to load kernel data: {e}")
+        return {}
+
+
+def _enrich_bullets_with_kernel(
+    bullets: List[str],
+    kernel_summary: str,
+    max_additions: int = 2,
+) -> List[str]:
+    """
+    用内核数据增强幻灯片 bullets。
+
+    如果内核有相关数据，追加结构化信息到 bullets 末尾。
+    """
+    if not kernel_summary or not kernel_summary.strip():
+        return bullets
+
+    enriched = list(bullets)
+    lines = kernel_summary.strip().split("\n")[:max_additions]
+    for line in lines:
+        line = line.strip()
+        if line and line not in enriched:
+            enriched.append(line)
+
+    return enriched
+
+
 async def generate_slides_node(state: ReportState) -> ReportState:
     """
     节点：生成报告内容
@@ -779,6 +885,16 @@ async def generate_slides_node(state: ReportState) -> ReportState:
         slides = []
         completed_sections = []
 
+        # ── 从内核加载图谱数据 (如果可用) ──
+        kernel_data = {}
+        modules = state.get("modules", [])
+        if modules:
+            kernel_data = await _load_kernel_data_for_report(
+                state["task_id"], modules
+            )
+            if kernel_data:
+                logger.info(f"[{state['task_id']}] Loaded kernel data for {len(kernel_data)} dimensions")
+
         # Check if using multi-level expansion (page_titles exists)
         page_titles = state.get("page_titles", [])
 
@@ -790,7 +906,8 @@ async def generate_slides_node(state: ReportState) -> ReportState:
                 page_titles,
                 state.get("modules", []),
                 state.get("requirement", {}),
-                state.get("retrieved_evidence", [])
+                state.get("retrieved_evidence", []),
+                kernel_data=kernel_data,
             )
             completed_sections = list(set(pt.get("module_id", "unknown") for pt in page_titles))
 
@@ -851,6 +968,7 @@ async def generate_slides_node(state: ReportState) -> ReportState:
             slides=slides,
             completed_sections=completed_sections,
             progress_percentage=80.0,
+            kernel_data=kernel_data if kernel_data else None,
         )
 
     except Exception as e:
@@ -871,7 +989,7 @@ def _generate_slides_from_page_titles(
     """
     # 使用异步函数生成所有幻灯片
     return asyncio.run(_generate_slides_from_page_titles_async(
-        task_id, page_titles, modules, requirement, evidence
+        task_id, page_titles, modules, requirement, evidence, kernel_data={}
     ))
 
 
@@ -880,13 +998,23 @@ async def _generate_slides_from_page_titles_async(
     page_titles: List[Dict[str, Any]],
     modules: List[Dict[str, Any]],
     requirement: Dict[str, Any],
-    evidence: list
+    evidence: list,
+    kernel_data: Dict[str, Any] = None,
 ) -> list:
     """
     异步生成幻灯片内容 - 并行执行
     """
     # Build module lookup
     module_map = {m["module_id"]: m for m in modules}
+
+    # Build dimension → module_id lookup for kernel data matching
+    dim_to_module = {}
+    for m in modules:
+        dim = m.get("diagnosis_dimension")
+        if dim:
+            dim_to_module[dim] = m["module_id"]
+
+    kernel_data = kernel_data or {}
 
     client_name = requirement.get("client_name", "客户")
     industry = str(requirement.get("industry", "通用"))
@@ -905,6 +1033,12 @@ async def _generate_slides_from_page_titles_async(
         page_title_text = page_title.get("page_title", "")
         key_direction = page_title.get("key_direction", "")
         suggested_layout = page_title.get("suggested_layout", "bullet_points")
+
+        # 查找该模块关联的内核数据
+        dimension = module.get("diagnosis_dimension")
+        dim_kernel_summary = ""
+        if dimension and dimension in kernel_data:
+            dim_kernel_summary = kernel_data[dimension].get("summary", "")
 
         try:
             # 使用AI生成内容
@@ -930,6 +1064,10 @@ async def _generate_slides_from_page_titles_async(
                 key_direction, requirement, evidence, 3
             )
 
+        # 用内核数据增强 bullets (诊断维度的页面)
+        if dim_kernel_summary:
+            bullets = _enrich_bullets_with_kernel(bullets, dim_kernel_summary)
+
         return {
             "slide_id": f"{task_id}_{page_id}",
             "module_id": module_id,
@@ -942,7 +1080,8 @@ async def _generate_slides_from_page_titles_async(
             "key_message": key_message,
             "bullets": bullets,
             "retrieved_evidence": knowledge_context[:500] if knowledge_context else None,
-            "source_ref": "AI生成",
+            "source_ref": "AI生成 + 内核数据" if dim_kernel_summary else "AI生成",
+            "kernel_objects_count": kernel_data[dimension]["count"] if dimension and dimension in kernel_data else 0,
         }
 
     # 准备任务列表

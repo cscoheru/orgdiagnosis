@@ -5,6 +5,20 @@ import Link from 'next/link';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+/** Deprecation banner — this page moved to /data */
+function DeprecationBanner({ newHref, label }: { newHref: string; label: string }) {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 flex items-center justify-between">
+      <span className="text-sm text-amber-700">
+        此页面已迁移至新位置
+      </span>
+      <Link href={newHref} className="text-sm text-amber-700 underline hover:text-amber-800">
+        前往 {label} →
+      </Link>
+    </div>
+  );
+}
+
 interface DiagnosisRecord {
   id: string;
   created_at: string;
@@ -47,6 +61,8 @@ export default function ResultListPage() {
 
   return (
     <div className="space-y-6">
+      <DeprecationBanner newHref="/data" label="数据探索" />
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>

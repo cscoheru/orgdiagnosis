@@ -24,47 +24,40 @@ interface NavGroup {
 
 const navigationGroups: NavGroup[] = [
   {
+    title: '工作台',
+    icon: '',
+    items: [
+      { name: '总览', href: '/overview', icon: '📊' },
+    ],
+  },
+  {
     title: '项目管理',
-    icon: '🗂️',
+    icon: '',
     items: [
-      { name: '我的项目', href: '/projects', icon: '📋' },
-      { name: '新建项目', href: '/projects?new=true', icon: '➕' },
+      { name: '项目列表', href: '/projects', icon: '📂' },
     ],
   },
   {
-    title: '诊断中心',
-    icon: '📊',
+    title: '研讨会工具',
+    icon: '',
     items: [
-      { name: '新建诊断', href: '/input', icon: '📝' },
-      { name: '诊断结果', href: '/result', icon: '📈' },
+      { name: '能力模型研讨', href: '/workshop/competency', icon: '🧠' },
     ],
   },
   {
-    title: '知识库',
-    icon: '📚',
+    title: '数据',
+    icon: '',
     items: [
-      { name: '仪表盘', href: '/knowledge/dashboard', icon: '📊' },
-      { name: '文件管理', href: '/knowledge/files', icon: '📁' },
-      { name: '智能检索', href: '/knowledge/search', icon: '🔍' },
-      { name: '文档管理', href: '/knowledge/documents', icon: '📄' },
-      { name: '上传中心', href: '/knowledge/upload', icon: '⬆️' },
+      { name: '数据探索', href: '/data', icon: '🔍' },
     ],
   },
   {
-    title: '报告工坊',
-    icon: '📑',
+    title: '系统',
+    icon: '',
     items: [
-      { name: '需求录入', href: '/report', icon: '📋' },
-      { name: '内容编辑', href: '/report/workspace', icon: '✏️' },
+      { name: '内核管理', href: '/settings/kernel', icon: '⚙️' },
+      { name: '知识库', href: '/knowledge/dashboard', icon: '📚' },
       { name: '报告历史', href: '/history', icon: '📁' },
-    ],
-  },
-  {
-    title: '资源管理',
-    icon: '🎨',
-    items: [
-      { name: 'Layout 图形库', href: '/layouts', icon: '⊞' },
-      { name: '母版管理', href: '/templates', icon: '📄' },
     ],
   },
 ];
@@ -186,9 +179,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <span className="text-sm font-medium">登录 / 注册</span>
               </Link>
             )}
-            <p className="text-xs text-gray-400 mt-3 px-2">
-              Powered by 智谱 GLM-4
-            </p>
           </div>
         </div>
       </aside>

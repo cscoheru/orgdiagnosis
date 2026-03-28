@@ -301,13 +301,16 @@ export default function FileUploadZone({
           Supports all file types
         </p>
 
-        {/* Hidden file inputs */}
+        {/* Visually hidden inputs — sr-only uses clip instead of display:none
+            so .click() works in all browsers */}
         <input
           ref={fileInputRef}
           type="file"
           multiple
           onChange={handleFileInputChange}
-          className="hidden"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
           disabled={uploading}
         />
         <input
@@ -317,7 +320,9 @@ export default function FileUploadZone({
           // @ts-expect-error webkitdirectory is not in the type definition
           webkitdirectory=""
           onChange={handleFileInputChange}
-          className="hidden"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
           disabled={uploading}
         />
       </div>

@@ -9,11 +9,27 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from enum import Enum
 import uuid
 import json
 from lib.projects.store import project_store
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+# ============================================================
+# Enums
+# ============================================================
+
+class ProjectStatus(str, Enum):
+    DRAFT = "draft"
+    REQUIREMENT = "requirement"
+    DIAGNOSING = "diagnosing"
+    DELIVERING = "delivering"
+    COMPLETED = "completed"
+
+
+VALID_DIMENSIONS = {"战略", "组织", "绩效", "薪酬", "人才"}
 
 
 # ============================================================
@@ -26,6 +42,9 @@ class CreateProjectRequest(BaseModel):
     client_name: Optional[str] = None
     client_industry: Optional[str] = None
     client_id: Optional[str] = None
+    selected_modules: Optional[List[str]] = Field(
+        None, description="选中的维度模块: 战略/组织/绩效/薪酬/人才"
+    )
 
 
 class UpdateProjectRequest(BaseModel):
@@ -33,7 +52,8 @@ class UpdateProjectRequest(BaseModel):
     description: Optional[str] = None
     client_name: Optional[str] = None
     client_industry: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[ProjectStatus] = None
+    selected_modules: Optional[List[str]] = None
     current_step: Optional[str] = None
 
 
@@ -129,17 +149,29 @@ async def create_project(request: CreateProjectRequest):
     try:
         user_id = await get_current_user_id()
 
+        # Validate selected_modules
+        if request.selected_modules:
+            invalid = set(request.selected_modules) - VALID_DIMENSIONS
+            if invalid:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"无效的维度模块: {invalid}. 可选: {sorted(VALID_DIMENSIONS)}"
+                )
+
         project = project_store.create_project({
             "name": request.name,
             "description": request.description,
             "client_name": request.client_name,
             "client_industry": request.client_industry,
             "client_id": request.client_id,
+            "selected_modules": request.selected_modules,
             "created_by": user_id,
         })
 
         return {"success": True, "project": project}
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -313,5 +345,206 @@ async def check_draft_projects():
             "draft": draft,
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Kernel-Integrated Endpoints (Project Plan, Deliverables, Phases)
+# ============================================================
+
+def _get_kernel_services():
+    """Lazy-load kernel services to avoid circular imports."""
+    from app.kernel.database import get_db
+    from app.services.kernel.object_service import ObjectService
+    from app.services.kernel.meta_service import MetaModelService
+    db = get_db()
+    return db, ObjectService(db), MetaModelService(db)
+
+
+@router.get("/{project_id}/plan")
+async def get_project_plan(project_id: str):
+    """Get project phases from kernel (Project_Plan objects)."""
+    try:
+        project = project_store.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        _, obj_service, _ = _get_kernel_services()
+        phases = obj_service.list_objects("Project_Plan")
+        # Filter by project_id reference
+        project_phases = [
+            p for p in phases
+            if p.get("properties", {}).get("project_id") == project_id
+        ]
+        # Sort by phase_order
+        project_phases.sort(key=lambda p: p.get("properties", {}).get("phase_order", 0))
+
+        return {"success": True, "phases": project_phases}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CreatePhaseRequest(BaseModel):
+    phase_name: str = Field(..., min_length=1)
+    phase_order: int = Field(..., ge=1)
+    goals: str = Field(..., min_length=1)
+    deliverables: Optional[List[str]] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+@router.post("/{project_id}/plan")
+async def create_project_phase(project_id: str, request: CreatePhaseRequest):
+    """Create a phase in the project plan via kernel."""
+    try:
+        project = project_store.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        _, obj_service, _ = _get_kernel_services()
+        phase = obj_service.create_object("Project_Plan", {
+            "project_id": project_id,
+            "phase_name": request.phase_name,
+            "phase_order": request.phase_order,
+            "goals": request.goals,
+            "deliverables": request.deliverables or [],
+            "start_date": request.start_date,
+            "end_date": request.end_date,
+            "status": "planned",
+        })
+
+        return {"success": True, "phase": phase}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/deliverables")
+async def get_project_deliverables(project_id: str):
+    """Get all deliverables for a project from kernel."""
+    try:
+        project = project_store.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        _, obj_service, _ = _get_kernel_services()
+        deliverables = obj_service.list_objects("Deliverable")
+        project_deliverables = [
+            d for d in deliverables
+            if d.get("properties", {}).get("project_id") == project_id
+        ]
+
+        return {"success": True, "deliverables": project_deliverables}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CreateDeliverableRequest(BaseModel):
+    title: str = Field(..., min_length=1)
+    phase_id: Optional[str] = None
+    deliverable_type: Optional[str] = None
+    content: Optional[str] = None
+    file_path: Optional[str] = None
+
+
+@router.post("/{project_id}/deliverables")
+async def create_project_deliverable(
+    project_id: str, request: CreateDeliverableRequest
+):
+    """Create a deliverable for a project via kernel."""
+    try:
+        project = project_store.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        user_id = await get_current_user_id()
+        _, obj_service, _ = _get_kernel_services()
+        deliverable = obj_service.create_object("Deliverable", {
+            "title": request.title,
+            "phase_id": request.phase_id,
+            "project_id": project_id,
+            "deliverable_type": request.deliverable_type,
+            "content": request.content,
+            "file_path": request.file_path,
+            "created_by": user_id,
+            "created_at": datetime.utcnow().isoformat(),
+        })
+
+        return {"success": True, "deliverable": deliverable}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/phases")
+async def get_project_phases_summary(project_id: str):
+    """Get phase progress summary for a project."""
+    try:
+        project = project_store.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        _, obj_service, _ = _get_kernel_services()
+
+        # Get phases
+        phases = obj_service.list_objects("Project_Plan")
+        project_phases = [
+            p for p in phases
+            if p.get("properties", {}).get("project_id") == project_id
+        ]
+        project_phases.sort(key=lambda p: p.get("properties", {}).get("phase_order", 0))
+
+        # Get deliverables per phase
+        all_deliverables = obj_service.list_objects("Deliverable")
+        project_deliverables = [
+            d for d in all_deliverables
+            if d.get("properties", {}).get("project_id") == project_id
+        ]
+
+        # Build summary
+        phase_summaries = []
+        for phase in project_phases:
+            props = phase.get("properties", {})
+            phase_id = phase.get("_id", phase.get("id", ""))
+            phase_deliverables = [
+                d for d in project_deliverables
+                if d.get("properties", {}).get("phase_id") == phase_id
+            ]
+            phase_summaries.append({
+                "phase_id": phase_id,
+                "phase_name": props.get("phase_name", ""),
+                "phase_order": props.get("phase_order", 0),
+                "goals": props.get("goals", ""),
+                "status": props.get("status", "planned"),
+                "deliverables_count": len(phase_deliverables),
+                "deliverables": phase_deliverables,
+            })
+
+        total_phases = len(phase_summaries)
+        completed = sum(1 for p in phase_summaries if p["status"] == "completed")
+        progress = (completed / total_phases * 100) if total_phases > 0 else 0
+
+        return {
+            "success": True,
+            "project_status": project.get("status", "draft"),
+            "total_phases": total_phases,
+            "completed_phases": completed,
+            "progress_percent": round(progress, 1),
+            "phases": phase_summaries,
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

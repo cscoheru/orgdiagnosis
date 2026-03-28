@@ -40,6 +40,7 @@ def init_db():
                 client_name TEXT,
                 client_industry TEXT,
                 client_id TEXT,
+                selected_modules TEXT,
                 status TEXT DEFAULT 'draft',
                 current_step TEXT DEFAULT 'requirement',
                 langgraph_thread_id TEXT,
@@ -143,6 +144,28 @@ def init_db():
         """)
 
         conn.commit()
+
+        # Migration: add selected_modules column if missing
+        try:
+            cursor.execute("SELECT selected_modules FROM projects LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE projects ADD COLUMN selected_modules TEXT")
+            conn.commit()
+
+        # Migration: add workflow_data column if missing
+        try:
+            cursor.execute("SELECT workflow_data FROM projects LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE projects ADD COLUMN workflow_data TEXT")
+            conn.commit()
+
+        # Migration: add workflow_session_id column if missing
+        try:
+            cursor.execute("SELECT workflow_session_id FROM projects LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE projects ADD COLUMN workflow_session_id TEXT")
+            conn.commit()
+
         print("✅ Project tables initialized")
 
 
@@ -157,16 +180,21 @@ class ProjectStore:
         project_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat()
 
+        selected_modules = data.get('selected_modules')
+        if isinstance(selected_modules, list):
+            selected_modules = json.dumps(selected_modules)
+
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO projects (id, name, description, client_name, client_industry,
-                                      client_id, status, current_step, created_by, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                      client_id, selected_modules, status, current_step, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 project_id, data.get('name'), data.get('description'),
                 data.get('client_name'), data.get('client_industry'),
-                data.get('client_id'), 'draft', 'requirement',
+                data.get('client_id'), selected_modules,
+                'draft', 'requirement',
                 data.get('created_by', 'anonymous'), now, now
             ))
 
@@ -193,6 +221,15 @@ class ProjectStore:
 
             project = dict(row)
             project['id'] = str(project['id'])
+
+            # Parse selected_modules JSON
+            if project.get('selected_modules'):
+                try:
+                    project['selected_modules'] = json.loads(project['selected_modules'])
+                except (json.JSONDecodeError, TypeError):
+                    project['selected_modules'] = []
+            else:
+                project['selected_modules'] = []
 
             # Get requirement
             cursor.execute("SELECT * FROM project_requirements WHERE project_id = ?", (project_id,))
@@ -401,6 +438,42 @@ class ProjectStore:
             cursor.execute("SELECT * FROM project_requirements WHERE project_id = ?", (project_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
+
+
+    def save_workflow_data(self, project_id: str, session_id: str, workflow_data: Dict[str, Any]) -> bool:
+        """Save workflow session data to project record."""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE projects
+                SET workflow_session_id = ?, workflow_data = ?, updated_at = ?
+                WHERE id = ?
+            """, (
+                session_id,
+                json.dumps(workflow_data, ensure_ascii=False),
+                datetime.utcnow().isoformat(),
+                project_id,
+            ))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_workflow_data(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Load saved workflow session data from project record."""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT workflow_session_id, workflow_data FROM projects
+                WHERE id = ? AND workflow_data IS NOT NULL
+            """, (project_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            try:
+                data = json.loads(row['workflow_data'])
+                data['_session_id'] = row['workflow_session_id']
+                return data
+            except (json.JSONDecodeError, TypeError):
+                return None
 
 
 # Global instance

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { reliableFileUpload, isFileSupported, getSupportedFileTypes, type UploadResult } from '@/lib/reliable-upload';
 import { AudioRecorder, isSpeechRecognitionSupported, RecordingStatus } from '@/lib/audio-transcriber';
 import { submitAnalysis, submitFileAnalysis, pollUntilComplete, type TaskStatus } from '@/lib/langgraph-client';
@@ -184,6 +185,16 @@ export default function InputPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* Deprecation banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 flex items-center justify-between">
+        <span className="text-sm text-amber-700">
+          诊断输入已整合至项目工作流
+        </span>
+        <Link href="/projects" className="text-sm text-amber-700 underline hover:text-amber-800">
+          前往项目列表 →
+        </Link>
+      </div>
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">新建诊断</h1>

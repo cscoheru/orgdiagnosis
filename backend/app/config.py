@@ -54,4 +54,12 @@ class Settings:
     AI_TIMEOUT: int = 120  # 秒
     AI_MAX_TOKENS: int = 4096
 
+    # 内核配置 (ConsultingOS)
+    KERNEL_MODE: str = os.getenv("KERNEL_MODE", "demo")  # demo | production
+    ARANGO_HOST: str = os.getenv("ARANGO_HOST", "localhost")
+    ARANGO_PORT: int = int(os.getenv("ARANGO_PORT", "8529"))
+    ARANGO_USER: str = os.getenv("ARANGO_USER", "root")
+    ARANGO_PASSWORD: str = os.getenv("ARANGO_PASSWORD", "")
+    ARANGO_DATABASE: str = os.getenv("ARANGO_DATABASE", "org_diagnosis")
+
 settings = Settings()

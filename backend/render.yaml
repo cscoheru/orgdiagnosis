@@ -17,6 +17,27 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: "*"
+      - key: KERNEL_MODE
+        value: "demo"
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_BUCKET
+        value: "knowledge"
+      # ARANGO_* 仅在 KERNEL_MODE=production 时设置
+      # - key: ARANGO_HOST
+      #   sync: false
+      # - key: ARANGO_PORT
+      #   value: "8529"
+      # - key: ARANGO_USER
+      #   sync: false
+      # - key: ARANGO_PASSWORD
+      #   sync: false
+      # - key: ARANGO_DATABASE
+      #   value: "org_diagnosis"
     healthCheckPath: /health
     # 免费层启动时间较长
     numReplicas: 1

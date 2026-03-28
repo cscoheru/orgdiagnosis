@@ -161,6 +161,16 @@ export default function TemplatesPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
+      {/* Deprecation banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 flex items-center justify-between">
+        <span className="text-sm text-amber-700">
+          模板管理已迁移至设置
+        </span>
+        <Link href="/settings/export" className="text-sm text-amber-700 underline hover:text-amber-800">
+          前往设置 →
+        </Link>
+      </div>
+
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">

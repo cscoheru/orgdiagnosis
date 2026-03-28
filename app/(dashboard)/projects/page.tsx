@@ -1,12 +1,13 @@
 'use client'
 
 /**
- * Project Management Dashboard - Simplified with direct fetching
+ * Project Management Dashboard
+ * 咨询师视角的项目列表，支持维度模块选择。
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -20,37 +21,58 @@ type Project = {
   current_step: string
   created_at: string
   updated_at: string
+  selected_modules?: string[]
 }
 
 const statusLabels: Record<string, string> = {
   draft: '草稿',
-  requirement: '需求',
-  outline: '大纲',
-  slides: '幻灯片',
-  export: '导出中',
+  requirement: '需求分析',
+  diagnosing: '调研诊断',
+  delivering: '交付中',
   completed: '已完成',
 }
 
-const stepLabels: Record<string, string> = {
-  requirement: '需求录入',
-  outline: '大纲审核',
-  slides: '内容编辑',
-  export: '导出报告',
+const statusColors: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-600',
+  requirement: 'bg-blue-100 text-blue-700',
+  diagnosing: 'bg-amber-100 text-amber-700',
+  delivering: 'bg-green-100 text-green-700',
+  completed: 'bg-purple-100 text-purple-700',
 }
 
+const dimensionColors: Record<string, string> = {
+  '战略': 'bg-blue-50 text-blue-700 border-blue-200',
+  '组织': 'bg-green-50 text-green-700 border-green-200',
+  '绩效': 'bg-amber-50 text-amber-700 border-amber-200',
+  '薪酬': 'bg-rose-50 text-rose-700 border-rose-200',
+  '人才': 'bg-violet-50 text-violet-700 border-violet-200',
+}
+
+const ALL_DIMENSIONS = ['战略', '组织', '绩效', '薪酬', '人才']
+
 export default function ProjectsPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-12 text-gray-400">加载中...</div>}>
+      <ProjectsPageContent />
+    </Suspense>
+  )
+}
+
+function ProjectsPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // New project form
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(searchParams.get('new') === 'true')
   const [newProject, setNewProject] = useState({
     name: '',
     client_name: '',
     client_industry: '',
   })
+  const [selectedModules, setSelectedModules] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
 
   // Fetch function
@@ -70,7 +92,15 @@ export default function ProjectsPage() {
       }
 
       const data = await response.json()
-      setProjects(data.projects || [])
+      // Normalize selected_modules: API may return JSON string instead of array
+      const rawProjects = data.projects || []
+      const normalized = rawProjects.map((p: Project) => ({
+        ...p,
+        selected_modules: typeof p.selected_modules === 'string'
+          ? (() => { try { return JSON.parse(p.selected_modules); } catch { return []; } })()
+          : p.selected_modules || [],
+      }))
+      setProjects(normalized)
       setLoading(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败')
@@ -95,15 +125,22 @@ export default function ProjectsPage() {
       const response = await fetch(`${API_BASE}/api/projects/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProject),
+        body: JSON.stringify({
+          ...newProject,
+          selected_modules: selectedModules.length > 0 ? selectedModules : undefined,
+        }),
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        const errData = await response.json().catch(() => ({}))
+        throw new Error(errData.detail || `HTTP ${response.status}`)
       }
 
       const data = await response.json()
-      router.push(`/report?project=${data.project.id}`)
+      setDialogOpen(false)
+      setNewProject({ name: '', client_name: '', client_industry: '' })
+      setSelectedModules([])
+      router.push(`/projects/${data.project.id}/proposal`)
     } catch (err) {
       alert('创建失败: ' + (err instanceof Error ? err.message : '未知错误'))
     } finally {
@@ -118,9 +155,18 @@ export default function ProjectsPage() {
     try {
       await fetch(`${API_BASE}/api/projects/${id}`, { method: 'DELETE' })
       setProjects(projects.filter(p => p.id !== id))
-    } catch (err) {
+    } catch {
       alert('删除失败')
     }
+  }
+
+  // Toggle dimension module
+  const toggleModule = (dim: string) => {
+    setSelectedModules(prev =>
+      prev.includes(dim)
+        ? prev.filter(d => d !== dim)
+        : [...prev, dim]
+    )
   }
 
   // Format time
@@ -133,10 +179,17 @@ export default function ProjectsPage() {
     const diffDays = Math.floor(diffHours / 24)
 
     if (diffMins < 1) return '刚刚'
-    if (diffMins < 60) return `${diffMins} 分钟前`
-    if (diffHours < 24) return `${diffHours} 小时前`
-    if (diffDays < 7) return `${diffDays} 天前`
+    if (diffMins < 60) return `${diffMins}m`
+    if (diffHours < 24) return `${diffHours}h`
+    if (diffDays < 7) return `${diffDays}d`
     return date.toLocaleDateString('zh-CN')
+  }
+
+  // Get project link based on status
+  const getProjectLink = (project: Project) => {
+    if (project.status === 'delivering') return `/projects/${project.id}/delivery`
+    if (project.status === 'diagnosing') return `/projects/${project.id}/diagnosis`
+    return `/projects/${project.id}/proposal`
   }
 
   return (
@@ -144,7 +197,7 @@ export default function ProjectsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">项目管理</h1>
+          <h1 className="text-2xl font-bold">项目列表</h1>
           <p className="text-gray-500 mt-1">共 {projects.length} 个项目</p>
         </div>
         <button
@@ -159,7 +212,7 @@ export default function ProjectsPage() {
       {/* Error */}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center justify-between">
-          <span>⚠️ {error}</span>
+          <span>{error}</span>
           <button onClick={fetchProjects} className="text-red-600 hover:underline">
             重试
           </button>
@@ -180,50 +233,50 @@ export default function ProjectsPage() {
       {!loading && projects.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map(project => (
-            <div
+            <Link
               key={project.id}
-              className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow"
+              href={getProjectLink(project)}
+              className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow block"
             >
               <div className="flex items-start justify-between mb-2">
                 <h3 className="font-medium text-gray-900 line-clamp-1">
                   {project.name}
                 </h3>
-                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                <span className={`px-2 py-0.5 rounded-full text-xs flex-shrink-0 ml-2 ${statusColors[project.status] || 'bg-gray-100 text-gray-600'}`}>
                   {statusLabels[project.status] || project.status}
                 </span>
               </div>
 
               {project.client_name && (
                 <p className="text-sm text-gray-500 mb-2">
-                  🏢 {project.client_name}
+                  {project.client_name}
                   {project.client_industry && ` · ${project.client_industry}`}
                 </p>
               )}
 
-              <p className="text-xs text-gray-400 mb-3">
-                当前步骤: {stepLabels[project.current_step] || project.current_step}
-              </p>
+              {/* Dimension tags */}
+              {project.selected_modules && project.selected_modules.length > 0 && (
+                <div className="flex gap-1 mb-3">
+                  {project.selected_modules.map(m => (
+                    <span
+                      key={m}
+                      className={`px-1.5 py-0.5 rounded text-xs border ${dimensionColors[m] || 'bg-gray-50 text-gray-600 border-gray-200'}`}
+                    >
+                      {m}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                 <span className="text-xs text-gray-400">
                   {formatTime(project.updated_at)}
                 </span>
-                <div className="flex gap-2">
-                  <Link
-                    href={`/report?project=${project.id}`}
-                    className="text-sm text-blue-500 hover:text-blue-700"
-                  >
-                    继续 →
-                  </Link>
-                  <button
-                    onClick={() => handleDelete(project.id)}
-                    className="text-sm text-red-400 hover:text-red-600"
-                  >
-                    删除
-                  </button>
-                </div>
+                <span className="text-sm text-blue-500">
+                  进入 →
+                </span>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
@@ -286,6 +339,32 @@ export default function ProjectsPage() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="例如: 制造业、互联网、金融"
                 />
+              </div>
+
+              {/* Dimension Module Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  诊断维度
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_DIMENSIONS.map(dim => (
+                    <button
+                      key={dim}
+                      type="button"
+                      onClick={() => toggleModule(dim)}
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                        selectedModules.includes(dim)
+                          ? dimensionColors[dim]
+                          : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {selectedModules.includes(dim) ? '✓ ' : ''}{dim}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  选择需要诊断的维度模块（可多选）
+                </p>
               </div>
             </div>
 
