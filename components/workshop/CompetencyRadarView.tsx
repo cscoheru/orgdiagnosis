@@ -19,8 +19,6 @@ const COLORS = {
   discovered: { stroke: '#10b981', fill: '#10b981', pill: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
 };
 
-const RADAR_SIZE = 8;
-
 const MODEL_CONFIG: Record<ModelType, { label: string; color: string; radarStroke: string; radarFill: string }> = {
   delivery_management: {
     label: '交付管理',
@@ -90,8 +88,9 @@ function ModelRadarSection({
   const [hoveredTerm, setHoveredTerm] = useState<string | null>(null);
 
   const sorted = useMemo(() => [...items].sort((a, b) => b.score - a.score), [items]);
-  const radarItems = sorted.slice(0, RADAR_SIZE);
-  const pillItems = sorted.slice(RADAR_SIZE);
+  const seedCount = sorted.filter((c) => c.origin === 'seed').length;
+  const radarItems = sorted.slice(0, seedCount);
+  const pillItems = sorted.slice(seedCount);
 
   const radarData = radarItems.map((item) => ({
     term: item.term,

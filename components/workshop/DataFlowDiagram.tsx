@@ -152,9 +152,9 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
             <p className="text-sm font-semibold text-gray-800 mb-1">二级展开</p>
             <p className="text-xs text-gray-500 leading-relaxed">为每个一级项<br/>生成 3-5 个子项</p>
             <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-100 text-sky-700 text-xs font-bold">
-              50 × 5
+              49 × 5
             </div>
-            <div className="mt-2 text-xl font-extrabold text-sky-600">= 250</div>
+            <div className="mt-2 text-xl font-extrabold text-sky-600">= 245</div>
           </div>
 
           {/* Chevron */}
@@ -172,9 +172,9 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
             <p className="text-sm font-semibold text-gray-800 mb-1">行为展开</p>
             <p className="text-xs text-gray-500 leading-relaxed">为每个二级项<br/>生成 3-6 个行为</p>
             <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">
-              250 × ~5
+              245 × ~5
             </div>
-            <div className="mt-2 text-xl font-extrabold text-emerald-600">= 1,285</div>
+            <div className="mt-2 text-xl font-extrabold text-emerald-600">= 1,260</div>
           </div>
         </div>
       </div>
@@ -269,7 +269,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
         <div className="grid grid-cols-3 gap-3">
           {[
             { icon: '📊', title: '一级能力项研讨', desc: '雷达图 + 胶囊备选池', tags: [{ text: '交付 25', cls: 'bg-indigo-50 text-indigo-600' }, { text: '业务 24', cls: 'bg-amber-50 text-amber-600' }] },
-            { icon: '🔍', title: '二级与行为探索', desc: '三栏联动浏览器', tags: [{ text: '250 二级', cls: 'bg-sky-50 text-sky-600' }, { text: '1,285 行为', cls: 'bg-emerald-50 text-emerald-600' }] },
+            { icon: '🔍', title: '二级与行为探索', desc: '三栏联动浏览器', tags: [{ text: '245 二级', cls: 'bg-sky-50 text-sky-600' }, { text: '1,260 行为', cls: 'bg-emerald-50 text-emerald-600' }] },
             { icon: '📚', title: '学习资源盘点', desc: '完整模型树 + 资源清单', tags: [{ text: '3 层级', cls: 'bg-purple-50 text-purple-600' }] },
           ].map((item) => (
             <div key={item.title} className="rounded-xl bg-gradient-to-br from-gray-50 to-white border border-gray-200 p-4 text-center">

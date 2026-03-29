@@ -67,6 +67,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+
+  // Press H to toggle sidebar (presentation mode)
+  useState(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        setSidebarHidden((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 
   const handleSignOut = async () => {
     await signOut();
@@ -83,10 +96,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <span className="text-xl">{sidebarOpen ? '✕' : '☰'}</span>
       </button>
 
+      {/* Desktop sidebar toggle (presentation mode) */}
+      <button
+        onClick={() => setSidebarHidden(!sidebarHidden)}
+        className="hidden lg:flex fixed top-4 z-50 p-2 bg-white rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 transition-colors"
+        style={{ left: sidebarHidden ? '16px' : '272px' }}
+        title="按 H 切换侧边栏"
+      >
+        <span className="text-gray-500 text-sm">{sidebarHidden ? '☰' : '✕'}</span>
+      </button>
+
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out ${
+          sidebarHidden ? '-translate-x-full' : 'translate-x-0'
+        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${
+          sidebarHidden ? '!-translate-x-full' : ''
         }`}
       >
         <div className="flex flex-col h-full">
@@ -192,7 +217,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       )}
 
       {/* Main content */}
-      <main className="lg:ml-64 min-h-screen">
+      <main className={`min-h-screen transition-[margin] duration-200 ease-in-out ${sidebarHidden ? '' : 'lg:ml-64'}`}>
         <div className="p-4 lg:p-8">
           {children}
         </div>
