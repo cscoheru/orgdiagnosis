@@ -52,6 +52,9 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
       <div className="text-xs text-gray-500 mb-1">
         证据强度: <span className="font-medium text-gray-900">{(data.score * 100).toFixed(0)}%</span>
       </div>
+      {data.description && (
+        <div className="text-xs text-gray-600 mt-1 leading-relaxed">{data.description}</div>
+      )}
       {data.sources?.length > 0 && (
         <div className="mt-2 border-t border-gray-100 pt-2">
           <div className="text-xs text-gray-500 mb-1">来源:</div>
@@ -97,6 +100,7 @@ function ModelRadarSection({
     score: item.score,
     origin: item.origin,
     sources: item.sources,
+    description: item.description,
     fullMark: 1,
   }));
 
@@ -167,6 +171,9 @@ function ModelRadarSection({
               <div className="text-sm text-gray-600">
                 证据强度: <span className="font-semibold">{(hoveredCompetency.score * 100).toFixed(0)}%</span>
               </div>
+              {hoveredCompetency.description && (
+                <div className="text-sm text-gray-600 mt-2 leading-relaxed">{hoveredCompetency.description}</div>
+              )}
               <ul className="space-y-1 mt-2">
                 {hoveredCompetency.sources.map((s, i) => (
                   <li key={i} className="text-xs text-gray-600 flex items-center gap-1.5">
