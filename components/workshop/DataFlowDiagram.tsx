@@ -22,7 +22,7 @@ const FORMAT_COLORS: Record<string, { bg: string; text: string; border: string }
   pptx: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
 };
 
-const SEEDS_DM = ['技术架构能力', '全栈实现能力', '工程化交付实施', '系统稳定性保障', '业务需求转化', '技术创新驱动', '技术团队管理', '跨方技术协同'];
+const SEEDS_DM = ['技术架构能力', '全栈实现能力', '工程化交付实施', '系统稳定性保障', '业务需求转化', '技术创新驱动', '技术团队管理', '跨方技术协同', 'AI技术理解与应用'];
 const SEEDS_BM = ['业务领域精通', '业务持续性保障', '整合项目交付', '解决方案设计', '数据驱动决策', '需求与价值实现', '团队管理与赋能', '协同与影响'];
 
 function FlowArrow() {
@@ -90,7 +90,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
             <div className="flex items-center gap-2 mb-3">
               <span className="w-3 h-3 rounded-full bg-indigo-500" />
               <span className="text-sm font-bold text-indigo-900">交付管理</span>
-              <span className="text-xs text-indigo-500 font-semibold ml-auto">8 项</span>
+              <span className="text-xs text-indigo-500 font-semibold ml-auto">9 项</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {SEEDS_DM.map((t) => (
@@ -132,7 +132,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
             <p className="text-sm font-semibold text-gray-800 mb-1">验证 + 发现</p>
             <p className="text-xs text-gray-500 leading-relaxed">验证种子项证据强度<br/>发现新能力概念</p>
             <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-100 text-violet-700 text-xs font-bold">
-              16 种子 + 34 新发现
+              17 种子 + 33 新发现
             </div>
             <div className="mt-2 text-xl font-extrabold text-violet-600">= 50</div>
           </div>
@@ -268,7 +268,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
 
         <div className="grid grid-cols-3 gap-3">
           {[
-            { icon: '📊', title: '一级能力项研讨', desc: '雷达图 + 胶囊备选池', tags: [{ text: '交付 25', cls: 'bg-indigo-50 text-indigo-600' }, { text: '业务 25', cls: 'bg-amber-50 text-amber-600' }] },
+            { icon: '📊', title: '一级能力项研讨', desc: '雷达图 + 胶囊备选池', tags: [{ text: '交付 25', cls: 'bg-indigo-50 text-indigo-600' }, { text: '业务 24', cls: 'bg-amber-50 text-amber-600' }] },
             { icon: '🔍', title: '二级与行为探索', desc: '三栏联动浏览器', tags: [{ text: '250 二级', cls: 'bg-sky-50 text-sky-600' }, { text: '1,285 行为', cls: 'bg-emerald-50 text-emerald-600' }] },
             { icon: '📚', title: '学习资源盘点', desc: '完整模型树 + 资源清单', tags: [{ text: '3 层级', cls: 'bg-purple-50 text-purple-600' }] },
           ].map((item) => (
