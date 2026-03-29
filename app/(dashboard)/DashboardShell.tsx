@@ -108,10 +108,12 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out ${
-          sidebarHidden ? '-translate-x-full' : 'translate-x-0'
-        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${
-          sidebarHidden ? '!-translate-x-full' : ''
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transition-transform duration-200 ease-in-out ${
+          // Mobile: hidden by default, visible when sidebarOpen
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${
+          // Desktop: visible by default, hidden when sidebarHidden
+          !sidebarHidden ? 'lg:translate-x-0' : ''
         }`}
       >
         <div className="flex flex-col h-full">
