@@ -1,5 +1,9 @@
 "use client";
 
+export async function generateStaticParams() {
+  return [];
+}
+
 /**
  * 交互式图谱查看器
  *
