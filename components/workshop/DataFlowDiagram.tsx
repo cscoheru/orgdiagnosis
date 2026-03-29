@@ -132,9 +132,9 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
             <p className="text-sm font-semibold text-gray-800 mb-1">验证 + 发现</p>
             <p className="text-xs text-gray-500 leading-relaxed">验证种子项证据强度<br/>发现新能力概念</p>
             <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-100 text-violet-700 text-xs font-bold">
-              17 种子 + 33 新发现
+              17 种子 + 32 新发现
             </div>
-            <div className="mt-2 text-xl font-extrabold text-violet-600">= 50</div>
+            <div className="mt-2 text-xl font-extrabold text-violet-600">= 49</div>
           </div>
 
           {/* Chevron */}
