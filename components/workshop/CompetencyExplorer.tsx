@@ -123,6 +123,7 @@ export default function CompetencyExplorer({
                 tabIndex={0}
                 onClick={() => { setSelectedL1(comp.term); setSelectedL2(null); }}
                 onKeyDown={(e) => e.key === 'Enter' && setSelectedL1(comp.term)}
+                title={comp.description}
                 className={`px-4 py-3 cursor-pointer border-b border-gray-100 transition-colors ${
                   selectedL1 === comp.term
                     ? 'bg-indigo-50 border-l-3 border-l-indigo-500'
@@ -193,6 +194,11 @@ export default function CompetencyExplorer({
                       {sec.behaviors.length} 行为
                     </span>
                   </div>
+                  {sec.description && (
+                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                      {sec.description}
+                    </p>
+                  )}
                 </div>
               ))
             )}

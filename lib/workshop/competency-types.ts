@@ -35,6 +35,7 @@ export interface Behavior {
 export interface SecondaryTerm {
   id: string;
   term: string;
+  description?: string;
   behaviors: Behavior[];
 }
 
@@ -42,6 +43,7 @@ export interface SecondaryTerm {
 export interface CompetencyTerm {
   id: string;
   term: string;
+  description?: string;
   score: number;
   origin: OriginType;
   model: ModelType;
