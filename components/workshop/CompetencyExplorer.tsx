@@ -79,7 +79,7 @@ export default function CompetencyExplorer({
   return (
     <div className="space-y-4">
       {/* Header + Model Switch */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-xl font-bold text-gray-900">二级能力项与关键行为探索</h2>
         <div className="flex gap-2">
           {(Object.keys(MODEL_CONFIG) as ModelType[]).map((model) => {
@@ -105,17 +105,17 @@ export default function CompetencyExplorer({
         </div>
       </div>
 
-      {/* 3-Column Layout */}
-      <div className="grid grid-cols-12 gap-4 h-[520px]">
+      {/* 3-Column Layout — mobile: stacked, desktop: 3-column */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:h-[520px]">
         {/* Left: L1 List */}
-        <div className="col-span-3 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="md:col-span-3 bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700">
               一级能力项
               <span className="font-normal text-gray-400 ml-2">({modelComps.length})</span>
             </h3>
           </div>
-          <div className="overflow-y-auto h-full max-h-[480px]">
+          <div className="overflow-y-auto max-h-[280px] md:max-h-[480px]">
             {modelComps.map((comp) => (
               <div
                 key={comp.id}
@@ -155,7 +155,7 @@ export default function CompetencyExplorer({
         </div>
 
         {/* Middle: L2 Terms */}
-        <div className="col-span-4 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="md:col-span-4 bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700">
               二级能力项
@@ -166,10 +166,10 @@ export default function CompetencyExplorer({
               )}
             </h3>
           </div>
-          <div className="overflow-y-auto max-h-[480px]">
+          <div className="overflow-y-auto max-h-[280px] md:max-h-[480px]">
             {!selectedComp ? (
-              <div className="flex items-center justify-center h-64 text-sm text-gray-400">
-                请在左侧选择一个一级能力项
+              <div className="flex items-center justify-center h-32 md:h-64 text-sm text-gray-400">
+                请在上方选择一个一级能力项
               </div>
             ) : (
               selectedComp.secondary_terms.map((sec) => (
@@ -200,7 +200,7 @@ export default function CompetencyExplorer({
         </div>
 
         {/* Right: Behaviors */}
-        <div className="col-span-5 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="md:col-span-5 bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700">
               关键行为
@@ -211,10 +211,10 @@ export default function CompetencyExplorer({
               )}
             </h3>
           </div>
-          <div className="overflow-y-auto max-h-[480px] p-4 space-y-4">
+          <div className="overflow-y-auto max-h-[280px] md:max-h-[480px] p-4 space-y-4">
             {!selectedSec ? (
-              <div className="flex items-center justify-center h-64 text-sm text-gray-400">
-                请在中间选择一个二级能力项
+              <div className="flex items-center justify-center h-32 md:h-64 text-sm text-gray-400">
+                请在上方选择一个二级能力项
               </div>
             ) : (
               (['初级', '中级', '高级'] as BehaviorLevel[]).map((level) => {

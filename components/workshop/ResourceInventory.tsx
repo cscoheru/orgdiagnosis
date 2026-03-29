@@ -84,7 +84,7 @@ export default function ResourceInventory({ competencies }: ResourceInventoryPro
   return (
     <div className="space-y-4">
       {/* Header + Model Switch */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-xl font-bold text-gray-900">学习资源盘点</h2>
         <div className="flex items-center gap-3">
           <div className="text-xs text-gray-400">
@@ -116,13 +116,13 @@ export default function ResourceInventory({ competencies }: ResourceInventoryPro
       </div>
 
       {/* Two-column layout */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Left: Competency Tree with resource indicators */}
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700">能力模型</h3>
           </div>
-          <div className="overflow-y-auto max-h-[520px]">
+          <div className="overflow-y-auto max-h-[300px] md:max-h-[520px]">
             {modelComps.map((comp) => {
               const isExpanded = expandedL1.has(comp.id);
               const resCount = comp.resources?.length || 0;
@@ -203,7 +203,7 @@ export default function ResourceInventory({ competencies }: ResourceInventoryPro
               )}
             </h3>
           </div>
-          <div className="overflow-y-auto max-h-[520px] p-4">
+          <div className="overflow-y-auto max-h-[300px] md:max-h-[520px] p-4">
             {!selectedComp ? (
               <div className="text-sm text-gray-400 text-center py-12">
                 <div className="text-3xl mb-2">📚</div>

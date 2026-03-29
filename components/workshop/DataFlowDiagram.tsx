@@ -57,7 +57,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
           <h3 className="text-base font-semibold text-gray-800">源材料输入</h3>
           <span className="ml-auto text-sm text-gray-400 font-medium">{meta.source_count} 份文件 · 45,792 字</span>
         </div>
-        <div className="grid grid-cols-7 gap-2.5">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
           {SOURCES.map((s, i) => {
             const colors = FORMAT_COLORS[s.format] || FORMAT_COLORS.docx;
             return (
@@ -85,7 +85,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
           <h3 className="text-base font-semibold text-gray-800">种子能力列表</h3>
           <span className="ml-auto text-sm text-gray-400 font-medium">{meta.seed_count} 项 · 专家预设</span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200/60 p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="w-3 h-3 rounded-full bg-indigo-500" />
@@ -123,9 +123,9 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
           <span className="ml-auto text-sm text-gray-400 font-medium">DashScope qwen-plus</span>
         </div>
 
-        <div className="flex items-stretch gap-0">
+        <div className="flex flex-col sm:flex-row items-stretch gap-0">
           {/* FR-1.2 */}
-          <div className="flex-1 rounded-l-2xl bg-gradient-to-b from-violet-50 to-white border border-violet-100 p-5 text-center">
+          <div className="flex-1 rounded-t-2xl sm:rounded-t-2xl sm:rounded-l-2xl sm:rounded-tr-none bg-gradient-to-b from-violet-50 to-white border border-violet-100 p-5 text-center">
             <div className="inline-flex items-center px-3 py-1 rounded-lg bg-violet-100 text-violet-700 text-xs font-bold mb-3">
               FR-1.2
             </div>
@@ -165,7 +165,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
           </div>
 
           {/* FR-1.4 */}
-          <div className="flex-1 rounded-r-2xl bg-gradient-to-b from-emerald-50 to-white border border-emerald-100 p-5 text-center">
+          <div className="flex-1 rounded-b-2xl sm:rounded-b-2xl sm:rounded-r-2xl sm:rounded-bl-none bg-gradient-to-b from-emerald-50 to-white border border-emerald-100 p-5 text-center">
             <div className="inline-flex items-center px-3 py-1 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-bold mb-3">
               FR-1.4
             </div>
@@ -204,7 +204,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
         </div>
 
         {/* Three weight sources */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           {[
             { icon: '🏢', title: '公司与部门需求', desc: '岗位核心职责界定\n能力项与岗位匹配度', color: 'from-blue-50 to-indigo-50 border-blue-200/60', iconBg: 'bg-blue-100', iconText: 'text-blue-600' },
             { icon: '🎓', title: '培训中心意见', desc: '可培训性评估\n课程覆盖与资源匹配', color: 'from-amber-50 to-yellow-50 border-amber-200/60', iconBg: 'bg-amber-100', iconText: 'text-amber-600' },
@@ -266,7 +266,7 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
           <span className="ml-auto text-sm text-gray-400 font-medium">{meta.generated_at ? new Date(meta.generated_at).toLocaleString('zh-CN') : ''}</span>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { icon: '📊', title: '一级能力项研讨', desc: '雷达图 + 胶囊备选池', tags: [{ text: '交付 25', cls: 'bg-indigo-50 text-indigo-600' }, { text: '业务 24', cls: 'bg-amber-50 text-amber-600' }] },
             { icon: '🔍', title: '二级与行为探索', desc: '三栏联动浏览器', tags: [{ text: '245 二级', cls: 'bg-sky-50 text-sky-600' }, { text: '1,260 行为', cls: 'bg-emerald-50 text-emerald-600' }] },
