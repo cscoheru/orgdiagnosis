@@ -42,6 +42,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 max-w-xs">
       <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs text-gray-400 font-mono">{data.code}</span>
         <span className="font-semibold text-gray-900 text-sm">{data.term}</span>
         <span className={`text-xs px-2 py-0.5 rounded-full ${
           data.origin === 'seed' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
@@ -96,7 +97,7 @@ function ModelRadarSection({
   const pillItems = sorted.slice(seedCount);
 
   const radarData = radarItems.map((item) => ({
-    term: item.term,
+    term: `${item.code} ${item.term}`,
     score: item.score,
     origin: item.origin,
     sources: item.sources,
@@ -161,6 +162,7 @@ function ModelRadarSection({
           {hoveredCompetency ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 font-mono">{hoveredCompetency.code}</span>
                 <span className="font-semibold text-gray-900 text-sm">{hoveredCompetency.term}</span>
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                   hoveredCompetency.origin === 'seed' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
@@ -203,6 +205,7 @@ function ModelRadarSection({
                 onMouseEnter={() => setHoveredTerm(item.term)}
                 onMouseLeave={() => setHoveredTerm(null)}
               >
+                {item.code && <span className="mr-1 text-xs font-mono opacity-60">{item.code}</span>}
                 {item.term}
                 <span className="ml-1.5 text-xs opacity-60">{(item.score * 100).toFixed(0)}</span>
               </div>

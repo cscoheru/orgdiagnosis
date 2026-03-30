@@ -144,7 +144,10 @@ export default function ResourceInventory({ competencies }: ResourceInventoryPro
                     <span className={`text-gray-400 transition-transform text-xs ${isExpanded ? 'rotate-90' : ''}`}>
                       ▸
                     </span>
-                    <span className="text-sm font-medium text-gray-900">{comp.term}</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {comp.code && <span className="font-mono text-xs text-gray-400 mr-1">{comp.code}</span>}
+                      {comp.term}
+                    </span>
                     <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${
                       comp.origin === 'seed'
                         ? 'bg-blue-50 text-blue-600'
@@ -166,6 +169,7 @@ export default function ResourceInventory({ competencies }: ResourceInventoryPro
                         <div key={sec.id} className="mt-1.5">
                           <div className="text-sm text-gray-700">
                             <span className="text-gray-400 mr-1">·</span>
+                            {sec.code && <span className="font-mono text-xs text-gray-400 mr-1">{sec.code}</span>}
                             {sec.term}
                             <span className="text-xs text-gray-400 ml-1">
                               ({sec.behaviors.length})
@@ -177,6 +181,7 @@ export default function ResourceInventory({ competencies }: ResourceInventoryPro
                                 <div key={b.id} className="text-xs text-gray-500 flex items-start gap-1">
                                   <span className="text-gray-300">-</span>
                                   <span>
+                                    {b.code && <span className="font-mono text-gray-400">{b.code} </span>}
                                     [{b.level} · {LEVEL_LABELS[b.level] || b.level}] {b.description}
                                   </span>
                                 </div>
@@ -227,6 +232,7 @@ export default function ResourceInventory({ competencies }: ResourceInventoryPro
                         <span className="text-lg">{typeCfg.icon}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
+                            {res.code && <span className="text-xs font-mono text-gray-400 flex-shrink-0">{res.code}</span>}
                             <span className="text-sm font-medium text-gray-900">{res.title}</span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-1">

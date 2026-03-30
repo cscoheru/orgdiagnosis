@@ -132,6 +132,7 @@ export default function CompetencyExplorer({
               >
                 <div className="flex items-center justify-between">
                   <span className={`text-sm font-medium ${selectedL1 === comp.term ? 'text-indigo-700' : 'text-gray-800'}`}>
+                    {comp.code && <span className="font-mono text-xs opacity-60 mr-1">{comp.code}</span>}
                     {comp.term}
                   </span>
                   <span className="text-xs text-gray-400">
@@ -188,6 +189,7 @@ export default function CompetencyExplorer({
                 >
                   <div className="flex items-center justify-between">
                     <span className={`text-sm ${selectedL2 === sec.term ? 'font-medium text-indigo-700' : 'text-gray-800'}`}>
+                      {sec.code && <span className="font-mono text-xs opacity-60 mr-1">{sec.code}</span>}
                       {sec.term}
                     </span>
                     <span className="text-xs text-gray-400">
@@ -236,6 +238,7 @@ export default function CompetencyExplorer({
                       {behaviors.map((b) => (
                         <li key={b.id} className="text-sm text-gray-700 flex items-start gap-2">
                           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0 mt-1.5" />
+                          {b.code && <span className="font-mono text-xs text-gray-400 flex-shrink-0">{b.code}</span>}
                           {b.description}
                         </li>
                       ))}

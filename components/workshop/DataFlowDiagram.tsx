@@ -22,8 +22,27 @@ const FORMAT_COLORS: Record<string, { bg: string; text: string; border: string }
   pptx: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
 };
 
-const SEEDS_DM = ['技术架构能力', '全栈实现能力', '工程化交付实施', '系统稳定性保障', '业务需求转化', '技术创新驱动', '技术团队管理', '跨方技术协同', 'AI技术理解与应用'];
-const SEEDS_BM = ['业务领域精通', '业务持续性保障', '整合项目交付', '解决方案设计', '数据驱动决策', '需求与价值实现', '团队管理与赋能', '协同与影响'];
+const SEEDS_DM = [
+  { n: 'DM-01', t: '技术架构能力' },
+  { n: 'DM-02', t: '全栈实现能力' },
+  { n: 'DM-03', t: '工程化交付实施' },
+  { n: 'DM-04', t: '系统稳定性保障' },
+  { n: 'DM-05', t: '业务需求转化' },
+  { n: 'DM-06', t: '技术创新驱动' },
+  { n: 'DM-07', t: '技术团队管理' },
+  { n: 'DM-08', t: '跨方技术协同' },
+  { n: 'DM-09', t: 'AI技术理解与应用' },
+];
+const SEEDS_BM = [
+  { n: 'BM-01', t: '业务领域精通' },
+  { n: 'BM-02', t: '业务持续性保障' },
+  { n: 'BM-03', t: '整合项目交付' },
+  { n: 'BM-04', t: '解决方案设计' },
+  { n: 'BM-05', t: '数据驱动决策' },
+  { n: 'BM-06', t: '需求与价值实现' },
+  { n: 'BM-07', t: '团队管理与赋能' },
+  { n: 'BM-08', t: '协同与影响' },
+];
 
 function FlowArrow() {
   return (
@@ -93,8 +112,8 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
               <span className="text-xs text-indigo-500 font-semibold ml-auto">9 项</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {SEEDS_DM.map((t) => (
-                <span key={t} className="px-2.5 py-1 rounded-lg bg-white/80 text-xs text-indigo-700 border border-indigo-200/50 font-medium">{t}</span>
+              {SEEDS_DM.map((s) => (
+                <span key={s.n} className="px-2.5 py-1 rounded-lg bg-white/80 text-xs text-indigo-700 border border-indigo-200/50 font-medium">{s.n} {s.t}</span>
               ))}
             </div>
           </div>
@@ -105,8 +124,8 @@ export default function DataFlowDiagram({ meta }: DataFlowDiagramProps) {
               <span className="text-xs text-amber-500 font-semibold ml-auto">8 项</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {SEEDS_BM.map((t) => (
-                <span key={t} className="px-2.5 py-1 rounded-lg bg-white/80 text-xs text-amber-700 border border-amber-200/50 font-medium">{t}</span>
+              {SEEDS_BM.map((s) => (
+                <span key={s.n} className="px-2.5 py-1 rounded-lg bg-white/80 text-xs text-amber-700 border border-amber-200/50 font-medium">{s.n} {s.t}</span>
               ))}
             </div>
           </div>

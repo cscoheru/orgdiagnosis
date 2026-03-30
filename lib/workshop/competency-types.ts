@@ -22,11 +22,13 @@ export interface LearningResource {
   type: ResourceType;
   target_level: BehaviorLevel;
   rationale: string;
+  code?: string;
 }
 
 /** 关键行为 */
 export interface Behavior {
   id: string;
+  code?: string;
   description: string;
   level: BehaviorLevel;
 }
@@ -34,6 +36,7 @@ export interface Behavior {
 /** 二级能力项 */
 export interface SecondaryTerm {
   id: string;
+  code?: string;
   term: string;
   description?: string;
   behaviors: Behavior[];
@@ -42,6 +45,7 @@ export interface SecondaryTerm {
 /** 一级能力项 */
 export interface CompetencyTerm {
   id: string;
+  code?: string;
   term: string;
   description?: string;
   score: number;
