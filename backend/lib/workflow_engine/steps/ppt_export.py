@@ -23,11 +23,29 @@ class PPTExportHandler(BaseStepHandler):
         input_data: Dict[str, Any],
         context: Dict[str, Any],
     ) -> StepResult:
-        step_config = context.get("step_config", {})
-        scope = step_config.get("scope", "full")
+        # ── Extract data: prioritize frontend's latest input (nested in step_id) ──
+        # engine.py puts frontend input_data into merged_input[step_id]
+        step_input = input_data.get(step_id) if isinstance(input_data.get(step_id), dict) else {}
 
-        # Collect slide data from previous steps
-        slides = self._collect_slides(input_data, step_id, scope)
+        # impl_outline: frontend's latest > session's saved
+        outline = (step_input.get("impl_outline")
+                   or input_data.get("impl_outline")
+                   or {})
+
+        # template_select: frontend's latest > session's saved
+        template_select = (step_input.get("template_select")
+                           or input_data.get("template_select")
+                           or {})
+
+        # smart_extract: for client_name
+        extract = (step_input.get("smart_extract")
+                   or input_data.get("smart_extract")
+                   or {})
+
+        logger.info(f"[ppt_export] outline sections={len(outline.get('sections', []))}, "
+                     f"template={template_select.get('theme_id', '?')}")
+
+        slides = self._collect_slides_from_outline(outline)
 
         if not slides:
             return StepResult(
@@ -35,8 +53,7 @@ class PPTExportHandler(BaseStepHandler):
                 error="没有可用的幻灯片数据，请先生成内容",
             )
 
-        # Get theme and layout selection from template_select step
-        template_select = input_data.get("template_select", {})
+        # Layout selection
         theme_id = template_select.get("theme_id", "blue_professional")
         slide_layouts = template_select.get("slide_layouts", [])
 
@@ -53,7 +70,7 @@ class PPTExportHandler(BaseStepHandler):
 
         # Get client name
         client_name = "客户"
-        extract = input_data.get("smart_extract", {})
+        extract = input_data.get("smart_extract") or {}
         if isinstance(extract, dict):
             client_name = extract.get("client_name", "客户") or "客户"
 
@@ -99,79 +116,79 @@ class PPTExportHandler(BaseStepHandler):
             )
 
     async def validate_input(self, step_id: str, input_data: Dict[str, Any]) -> Optional[str]:
-        slides = self._collect_slides(input_data, step_id)
-        if not slides:
+        step_input = input_data.get(step_id) if isinstance(input_data.get(step_id), dict) else {}
+        outline = step_input.get("impl_outline") or input_data.get("impl_outline") or {}
+        if not outline.get("sections"):
             return "没有幻灯片数据，请先完成前置步骤"
         return None
 
     def get_description(self, step_id: str) -> str:
         return "PPT 渲染导出：将幻灯片数据渲染为 PPTX 文件"
 
-    def _collect_slides(
-        self,
-        input_data: Dict[str, Any],
-        step_id: str,
-        scope: str = "full",
-    ) -> list:
-        """Collect slide data from previous step outputs"""
-        slides = []
+    def _collect_slides_from_outline(self, outline: Dict[str, Any]) -> list:
+        """
+        Build slide list from an impl_outline dict (same structure as frontend preview).
 
-        # W1: impl_outline (3-level format: sections → activities → slides)
-        outline = input_data.get("impl_outline", {})
-        if outline and outline.get("sections"):
-            for section in outline["sections"]:
-                # New 3-level: activities → slides
-                if section.get("activities"):
-                    for activity in section["activities"]:
-                        for s in activity.get("slides", []):
-                            slides.append({
-                                "title": s.get("title", ""),
-                                "key_message": s.get("storyline", ""),
-                                "bullets": s.get("arguments", []),
-                                "evidence": s.get("evidence", []),
-                                "supporting_materials": s.get("supporting_materials", []),
-                                "context": {"section": section.get("section_name", ""), "activity": activity.get("activity_name", ""), "slide_type": s.get("slide_type", "content")},
-                            })
-                # Legacy 2-level: sections → slides (backward compat)
-                elif section.get("slides"):
-                    for s in section["slides"]:
+        This is the single source of truth — the data comes directly from
+        the frontend's outlineData (DetailedOutlineData), which is what
+        the preview renderer also uses.
+        """
+        slides = []
+        sections = outline.get("sections", []) if isinstance(outline, dict) else []
+
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            # 3-level: sections → activities → slides
+            if section.get("activities"):
+                for activity in section["activities"]:
+                    if not isinstance(activity, dict):
+                        continue
+                    for s in activity.get("slides", []):
+                        if not isinstance(s, dict):
+                            continue
                         slides.append({
                             "title": s.get("title", ""),
                             "key_message": s.get("storyline", ""),
-                            "bullets": s.get("arguments", []),
-                            "evidence": s.get("evidence", []),
-                            "supporting_materials": s.get("supporting_materials", []),
-                            "context": {"section": section.get("section_name", "")},
+                            "bullets": self._merge_slide_content(s),
+                            "context": {
+                                "section": section.get("section_name", ""),
+                                "activity": activity.get("activity_name", ""),
+                                "slide_type": s.get("slide_type", "content"),
+                            },
                         })
-            return slides
+            # Legacy 2-level: sections → slides
+            elif section.get("slides"):
+                for s in section["slides"]:
+                    if not isinstance(s, dict):
+                        continue
+                    slides.append({
+                        "title": s.get("title", ""),
+                        "key_message": s.get("storyline", ""),
+                        "bullets": self._merge_slide_content(s),
+                        "context": {"section": section.get("section_name", "")},
+                    })
 
-        # W1: impl_outline (legacy flat slides format)
-        if outline and outline.get("slides"):
-            for s in outline["slides"]:
-                slides.append({
-                    "title": s.get("title", ""),
-                    "key_message": s.get("storyline", ""),
-                    "bullets": s.get("arguments", []),
-                    "evidence": s.get("evidence", []),
-                })
-            return slides
-
-        # W2: diagnosis dashboard data
-        if input_data.get("dashboard"):
-            dashboard = input_data["dashboard"]
-            for dim_data in dashboard.get("dimensions", []):
-                slides.append({
-                    "title": f"{dim_data.get('name', '')} 诊断",
-                    "key_message": dim_data.get("summary", ""),
-                    "bullets": dim_data.get("findings", []),
-                    "score": dim_data.get("score", 0),
-                })
-
-        # Direct slides data
-        if input_data.get("slides"):
-            slides = input_data["slides"]
-
+        logger.info(f"[ppt_export] {len(slides)} slides collected from outline")
         return slides
+
+    @staticmethod
+    def _merge_slide_content(slide_data: Dict[str, Any]) -> list:
+        """
+        Merge arguments + evidence + supporting_materials into a single bullets list.
+
+        LayoutRenderer only reads content["bullets"], so we must combine all
+        content sources here. Arguments come first as primary points, then
+        evidence and materials as supporting details.
+        """
+        bullets = []
+        for arg in slide_data.get("arguments", []):
+            bullets.append(arg)
+        for ev in slide_data.get("evidence", []):
+            bullets.append(ev)
+        for mat in slide_data.get("supporting_materials", []):
+            bullets.append(mat)
+        return bullets
 
 
 @register_step("ppt_export_by_dimension")

@@ -84,6 +84,10 @@ class ObjectService:
                 field_def = field_definitions[field_name]
                 field_type = FieldTypeEnum(field_def["field_type"])
 
+                # Skip validation for None values (optional fields)
+                if value is None:
+                    continue
+
                 if not self._validate_property_type(value, field_type):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,

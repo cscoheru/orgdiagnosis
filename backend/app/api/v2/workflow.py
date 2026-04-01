@@ -153,6 +153,8 @@ async def execute_workflow_step(session_id: str, request: ExecuteStepRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

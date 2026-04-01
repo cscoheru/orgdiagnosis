@@ -12,6 +12,7 @@ import { useParams } from 'next/navigation';
 import WorkflowStepNavigator from '@/components/workflow/WorkflowStepNavigator';
 import type { StepDef } from '@/components/workflow/WorkflowStepNavigator';
 import CreateOrderStep from '@/components/workflow/CreateOrderStep';
+import EditPlanStep from '@/components/workflow/EditPlanStep';
 import PhaseExecutionStep from '@/components/workflow/PhaseExecutionStep';
 import PhaseReportStep from '@/components/workflow/PhaseReportStep';
 import {
@@ -23,6 +24,8 @@ import {
   type PhaseData,
   type PhaseReportData,
 } from '@/lib/api/workflow-client';
+import type { CreateOrderFormData, TeamMemberInfo } from '@/lib/workflow/w3-types';
+import { saveProjectOrder, getProjectOrder } from '@/lib/api/workflow-client';
 
 const STEPS: StepDef[] = [
   { id: 'create_order', name: '创建订单' },
@@ -44,6 +47,7 @@ export default function DeliveryPage() {
   // W3 data
   const [planData, setPlanData] = useState<MilestonePlanResult | null>(null);
   const [phases, setPhases] = useState<PhaseData[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMemberInfo[]>([]);
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
   const [reportData, setReportData] = useState<PhaseReportData | null>(null);
   const [reportFilePath, setReportFilePath] = useState<string | null>(null);
@@ -51,6 +55,32 @@ export default function DeliveryPage() {
   // Start workflow + restore state
   useEffect(() => {
     const init = async () => {
+      // ── 1. Fetch W1 proposal data (milestone_plan) ──
+      const proposalRes = await startWorkflow(projectId, 'proposal');
+      if (proposalRes.success && proposalRes.data) {
+        const proposalData = proposalRes.data.all_step_data || {};
+        if (proposalData.milestone_plan) {
+          const plan = proposalData.milestone_plan as Record<string, unknown>;
+          setPlanData({
+            project_goal: (plan.project_goal as string) || '',
+            phases: ((plan.phases || []) as Array<Record<string, unknown>>).map((p, i) => ({
+              phase_name: (p.phase_name as string) || '',
+              phase_order: (p.phase_order as number) || i + 1,
+              duration_weeks: p.duration_weeks as number | undefined,
+              time_range: (p.time_range as string) || '',
+              description: p.description as string | undefined,
+              goals: (p.goals as string) || '',
+              key_activities: (p.key_activities as string[]) || [],
+              deliverables: (p.deliverables as string[]) || [],
+            })),
+            success_criteria: (plan.success_criteria as string[]) || [],
+            main_tasks: (plan.main_tasks as string[]) || [],
+            total_duration_weeks: plan.total_duration_weeks as number | undefined,
+          });
+        }
+      }
+
+      // ── 2. Start/restore delivery workflow ──
       const res = await startWorkflow(projectId, 'delivery');
       if (res.success && res.data) {
         const sid = res.data.session_id;
@@ -61,16 +91,24 @@ export default function DeliveryPage() {
         if (state.success && state.data) {
           const allData = state.data.all_step_data || {};
 
-          // Restore plan data if W1 was completed
+          // Restore plan data (override W1 data if we have saved order data)
           if (allData.create_order) {
             const orderData = allData.create_order as Record<string, unknown>;
             if (orderData.plan) {
               setPlanData(orderData.plan as unknown as MilestonePlanResult);
             }
+            if (orderData.team) {
+              setTeamMembers(orderData.team as TeamMemberInfo[]);
+            }
           }
 
-          // Restore phases
-          if (allData.phase_execute) {
+          // Restore phases (from edit_plan or phase_execute step)
+          if (allData.edit_plan) {
+            const editData = allData.edit_plan as Record<string, unknown>;
+            if (editData.phases) {
+              setPhases(editData.phases as unknown as PhaseData[]);
+            }
+          } else if (allData.phase_execute) {
             const execData = allData.phase_execute as Record<string, unknown>;
             if (execData.phases) {
               setPhases(execData.phases as unknown as PhaseData[]);
@@ -92,23 +130,62 @@ export default function DeliveryPage() {
           if (completed.size > 0) setCurrentStep(stepIdx || completed.size);
         }
       }
+
+      // Also try loading order for team members (if not restored from workflow state)
+      if (teamMembers.length === 0) {
+        const orderRes = await getProjectOrder(projectId);
+        if (orderRes.success && orderRes.data) {
+          const d = orderRes.data as Record<string, unknown>;
+          if (d.team) setTeamMembers(d.team as TeamMemberInfo[]);
+        }
+      }
     };
     init();
   }, [projectId]);
 
-  // Step 1: Create order — confirm inherited plan, project becomes delivering
-  const handleCreateOrder = useCallback(async () => {
+  // Derive phases from planData when phases is empty (for EditPlanStep)
+  useEffect(() => {
+    if (planData && planData.phases.length > 0 && phases.length === 0) {
+      setPhases(planData.phases.map((p, i) => ({
+        phase_id: `phase-${i}`,
+        phase_name: p.phase_name,
+        phase_order: p.phase_order || i + 1,
+        time_range: p.time_range || '',
+        goals: p.goals,
+        key_activities: p.key_activities || [],
+        deliverables: p.deliverables || [],
+        assignee_ids: [],
+        notes: '',
+        status: 'planned' as const,
+        tasks: [],
+      })));
+    }
+  }, [planData, phases.length]);
+
+  // Step 1: Create order — save contract/team/schedule, then advance workflow
+  const handleCreateOrder = useCallback(async (orderData: CreateOrderFormData) => {
     if (!sessionId || !planData) return;
     setLoading(true);
     try {
-      // Convert plan phases to PhaseData format
+      // Build milestone date lookup: phase_name → "start~end"
+      const milestoneMap: Record<string, string> = {};
+      for (const m of orderData.milestone_dates || []) {
+        if (m.planned_start || m.planned_end) {
+          milestoneMap[m.phase_name] = `${m.planned_start || ''}~${m.planned_end || ''}`;
+        }
+      }
+
+      // Convert plan phases to PhaseData, merging milestone dates + W1 key_activities
       const initialPhases: PhaseData[] = (planData.phases || []).map((p, i) => ({
         phase_id: `phase-${i}`,
         phase_name: p.phase_name,
         phase_order: p.phase_order || i + 1,
-        time_range: p.time_range,
+        time_range: milestoneMap[p.phase_name] || p.time_range || '',
         goals: p.goals,
-        deliverables: p.deliverables,
+        key_activities: p.key_activities || [],
+        deliverables: p.deliverables || [],
+        assignee_ids: [],
+        notes: '',
         status: 'planned' as const,
         tasks: [],
       }));
@@ -119,6 +196,7 @@ export default function DeliveryPage() {
       });
       if (res.success) {
         setPhases(initialPhases);
+        setTeamMembers(orderData.team || []);
         setCompletedSteps(prev => new Set([...prev, 'create_order']));
         setCurrentStep(1);
       }
@@ -275,15 +353,17 @@ export default function DeliveryPage() {
       {currentStep === 0 && (
         <CreateOrderStep
           planData={planData}
+          projectId={projectId}
           onConfirm={handleCreateOrder}
           loading={loading}
         />
       )}
 
       {currentStep === 1 && (
-        <EditPlanStepInline
+        <EditPlanStep
           phases={phases}
           onPhasesChange={setPhases}
+          teamMembers={teamMembers}
           onConfirm={handleConfirmPlan}
           loading={loading}
         />
@@ -292,6 +372,8 @@ export default function DeliveryPage() {
       {currentStep === 2 && (
         <PhaseExecutionStep
           phases={phases}
+          projectId={projectId}
+          teamMembers={teamMembers}
           onPhaseStatusChange={handlePhaseStatusChange}
           onTriggerTask={handleTriggerTask}
           onRequestReport={handleRequestReport}
@@ -311,78 +393,5 @@ export default function DeliveryPage() {
         />
       )}
     </WorkflowStepNavigator>
-  );
-}
-
-/**
- * Inline edit plan component (Step 2)
- * Allows editing phase goals and deliverables before starting execution.
- */
-function EditPlanStepInline({
-  phases,
-  onPhasesChange,
-  onConfirm,
-  loading,
-}: {
-  phases: PhaseData[];
-  onPhasesChange: (phases: PhaseData[]) => void;
-  onConfirm: () => void;
-  loading: boolean;
-}) {
-  const updatePhase = (index: number, field: string, value: string | string[]) => {
-    const updated = [...phases];
-    (updated[index] as any)[field] = value;
-    onPhasesChange(updated);
-  };
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900">编辑项目计划</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          确认各阶段目标和成果要求后，即可开始交付执行
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        {phases.map((phase, i) => (
-          <div key={phase.phase_id} className="border border-gray-200 rounded-lg p-4 space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-medium">
-                {phase.phase_order}
-              </span>
-              <span className="font-medium text-gray-900 text-sm">{phase.phase_name}</span>
-            </div>
-            <textarea
-              value={phase.goals || ''}
-              onChange={(e) => updatePhase(i, 'goals', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
-              rows={2}
-              placeholder="阶段目标"
-            />
-            <div>
-              <label className="text-xs text-gray-500">成果要求（每行一项）</label>
-              <textarea
-                value={Array.isArray(phase.deliverables) ? phase.deliverables!.join('\n') : ''}
-                onChange={(e) => updatePhase(i, 'deliverables', e.target.value.split('\n').filter(Boolean))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none mt-1"
-                rows={2}
-                placeholder="成果1&#10;成果2"
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          onClick={onConfirm}
-          disabled={loading}
-          className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
-        >
-          {loading ? '保存中...' : '确认计划，开始交付'}
-        </button>
-      </div>
-    </div>
   );
 }

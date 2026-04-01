@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -37,18 +37,22 @@ export default function WorkshopDetailPage() {
 
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const initialLoadDone = useRef(false);
   const [activeTab, setActiveTab] = useState<Tab>("canvas");
   const [evaluations, setEvaluations] = useState<EvaluationItem[]>([]);
   const [tagData, setTagData] = useState<Record<string, { category: any; tags: any[] }>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const loadSession = useCallback(async () => {
-    setLoading(true);
+    if (!initialLoadDone.current) {
+      setLoading(true);
+    }
     const res = await getSession(sessionId);
     if (res.success && res.data) {
       setSession(res.data);
     }
     setLoading(false);
+    initialLoadDone.current = true;
   }, [sessionId]);
 
   useEffect(() => {
@@ -71,17 +75,21 @@ export default function WorkshopDetailPage() {
   // Canvas handlers
   const handleAddNode = async (name: string, nodeType: string, description?: string, parentId?: string) => {
     const res = await createNode(sessionId, name, nodeType, description, parentId);
-    if (res.success) loadSession();
+    return res;
   };
 
+  /**
+   * handleUpdateNode: API-only, no reload.
+   * SmartNode does optimistic local update via useReactFlow().setNodes(),
+   * then calls this to persist to backend. We do NOT reload all nodes
+   * after a rename — that was the root cause of edits reverting.
+   */
   const handleUpdateNode = async (nodeId: string, patch: { name?: string; node_type?: string; description?: string }) => {
     await updateNode(sessionId, nodeId, patch);
-    loadSession();
   };
 
   const handleDeleteNode = async (nodeId: string) => {
     await deleteNode(sessionId, nodeId);
-    loadSession();
   };
 
   const handleSuggestNodes = async (data: Parameters<typeof suggestNodes>[1]) => {
@@ -213,6 +221,7 @@ export default function WorkshopDetailPage() {
             onAddNode={handleAddNode}
             onUpdateNode={handleUpdateNode}
             onDeleteNode={handleDeleteNode}
+            onReloadSession={loadSession}
             onSuggestNodes={handleSuggestNodes}
             onSelectNode={setSelectedNodeId}
           />

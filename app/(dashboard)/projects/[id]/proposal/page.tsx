@@ -274,6 +274,7 @@ export default function ProposalPage() {
   const handleExportPPT = useCallback(async () => {
     if (!sessionId) return;
     setLoading(true);
+    setPPTFilePath(null); // Reset so user always sees "Generate" button
     try {
       const res = await executeWorkflowStep(sessionId, 'ppt_output', {
         smart_extract: extractedData,
@@ -360,6 +361,7 @@ export default function ProposalPage() {
           outlineData={outlineData}
           templateData={templateData}
           onConfirm={handleConfirmTemplate}
+          onOutlineChange={setOutlineData}
         />
       )}
 

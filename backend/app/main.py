@@ -43,6 +43,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Kernel: mode={kernel_settings.KERNEL_MODE}, database={kernel_settings.ARANGO_DATABASE}")
     init_kernel_db()
 
+    # Demo 模式下自动 seed meta-models（内存数据库每次启动为空）
+    if kernel_settings.is_demo_mode:
+        from scripts.seed_meta_models import seed_all_meta_models
+        seed_all_meta_models()
+        logger.info("Kernel: meta-models seeded (demo mode)")
+
     yield
 
     close_kernel_db()

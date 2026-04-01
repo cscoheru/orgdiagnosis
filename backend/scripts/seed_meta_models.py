@@ -355,7 +355,7 @@ META_MODELS = [
         "name": "画布节点",
         "fields": [
             {"field_name": "name", "field_type": "string", "is_required": True, "description": "节点名称"},
-            {"field_name": "node_type", "field_type": "enum", "is_required": True, "enum_options": ["scene", "painpoint", "idea", "task"], "description": "节点类型"},
+            {"field_name": "node_type", "field_type": "string", "is_required": True, "description": "节点类型 (预设: scene/painpoint/idea/task，支持自定义)"},
             {"field_name": "description", "field_type": "text", "is_required": False, "description": "节点描述"},
             {"field_name": "workshop_id", "field_type": "string", "is_required": True, "description": "所属工作坊 ID"},
         ],

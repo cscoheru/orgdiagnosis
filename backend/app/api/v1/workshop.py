@@ -31,6 +31,38 @@ from app.models.kernel.relation import RelationCreate
 router = APIRouter(prefix="/workshop", tags=["工作坊共创"])
 
 
+def _to_key(obj_id: str) -> str:
+    """Normalize _id (sys_objects/1) to _key (1) for ObjectService calls."""
+    if obj_id.startswith("sys_objects/"):
+        return obj_id.split("/", 1)[1]
+    return obj_id
+
+
+def _to_id(key_or_id: str) -> str:
+    """Ensure value is in full _id format (sys_objects/1)."""
+    if key_or_id.startswith("sys_objects/"):
+        return key_or_id
+    return f"sys_objects/{key_or_id}"
+
+
+def _match_ws(obj: dict, session_id: str) -> bool:
+    """Check if obj's workshop_id matches session_id (handles _key, _id, and raw formats)."""
+    wid = obj.get("properties", {}).get("workshop_id", "")
+    key = _to_key(session_id)
+    return wid in (key, session_id, _to_id(key))
+
+
+def _transform_relation(rel: dict) -> dict:
+    """Transform ArangoDB edge doc (_from/_to) to API format (from_obj_id/to_obj_id)."""
+    return {
+        "_key": rel["_key"],
+        "_id": rel["_id"],
+        "from_obj_id": rel["_from"],
+        "to_obj_id": rel["_to"],
+        "relation_type": rel.get("relation_type", ""),
+    }
+
+
 # ─── Request / Response Models ───
 
 
@@ -123,7 +155,7 @@ def create_session(data: SessionCreate, db: Any = Depends(get_db)):
                 "name": cat["name"],
                 "color": cat["color"],
                 "display_order": cat["display_order"],
-                "workshop_id": obj["_id"],
+                "workshop_id": obj["_key"],
             },
         ))
     return obj
@@ -145,17 +177,18 @@ def list_sessions(
 @router.get("/sessions/{session_id}", summary="获取会话详情")
 def get_session(session_id: str, db: Any = Depends(get_db)):
     svc = ObjectService(db)
-    session = svc.get_object(session_id)
+    session = svc.get_object(_to_key(session_id))
     if not session:
         raise HTTPException(404, "会话不存在")
-    # 获取所有节点
+    # 获取所有节点 (匹配 workshop_id 的各种格式)
     all_nodes = svc.list_objects(model_key="Canvas_Node", limit=500)
-    nodes = [n for n in all_nodes if n.get("properties", {}).get("workshop_id") == session_id]
+    nodes = [n for n in all_nodes if _match_ws(n, session_id)]
     # 获取所有关系
     rel_svc = RelationService(db)
     all_rels = rel_svc.list_relations(limit=1000)
     node_ids = {n["_id"] for n in nodes}
-    rels = [r for r in all_rels if r["relation_type"] == "canvas_parent_child" and r["from_obj_id"] in node_ids]
+    rels = [_transform_relation(r) for r in all_rels
+            if r.get("relation_type") == "canvas_parent_child" and r["_from"] in node_ids]
     return {"session": session, "nodes": nodes, "relations": rels}
 
 
@@ -188,33 +221,40 @@ def create_node(session_id: str, data: NodeCreate, db: Any = Depends(get_db)):
 @router.patch("/sessions/{session_id}/nodes/{node_id}", summary="更新节点")
 def update_node(session_id: str, node_id: str, data: NodeUpdate, db: Any = Depends(get_db)):
     svc = ObjectService(db)
-    props = {k: v for k, v in data.model_dump().items() if v is not None}
-    return svc.update_object(node_id, ObjectUpdate(properties=props))
+    existing = svc.get_object(_to_key(node_id))
+    if not existing:
+        raise HTTPException(404, "节点不存在")
+    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    merged = {**existing["properties"], **patch}
+    return svc.update_object(_to_key(node_id), ObjectUpdate(properties=merged))
 
 
 @router.delete("/sessions/{session_id}/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除节点及子树")
 def delete_node(session_id: str, node_id: str, db: Any = Depends(get_db)):
     svc = ObjectService(db)
     rel_svc = RelationService(db)
-    # 找到所有子节点 (BFS)
-    to_delete = [node_id]
+    # BFS 找到所有子节点 — 使用 _id 格式比较（relations 存储的是 _id）
+    node_id_full = _to_id(_to_key(node_id))
+    to_visit = [node_id_full]
     visited = set()
-    while to_delete:
-        current = to_delete.pop()
+    while to_visit:
+        current = to_visit.pop()
         if current in visited:
             continue
         visited.add(current)
-        # 找子节点
         all_rels = rel_svc.list_relations(limit=1000)
-        children = [r["to_obj_id"] for r in all_rels
-                     if r["relation_type"] == "canvas_parent_child" and r["from_obj_id"] == current]
-        to_delete.extend(children)
-    # 删除所有关系和节点
-    for nid in visited:
-        for r in rel_svc.list_relations(limit=1000):
-            if r["from_obj_id"] == nid or r["to_obj_id"] == nid:
+        for r in all_rels:
+            if r.get("relation_type") == "canvas_parent_child" and r["_from"] == current:
+                if r["_to"] not in visited:
+                    to_visit.append(r["_to"])
+    # 删除所有关系和节点（用 _key 操作 ObjectService）
+    for obj_id in visited:
+        obj_key = _to_key(obj_id)
+        all_rels = rel_svc.list_relations(limit=1000)
+        for r in all_rels:
+            if r["_from"] == obj_id or r["_to"] == obj_id:
                 rel_svc.delete_relation(r["_key"])
-        svc.delete_object(nid)
+        svc.delete_object(obj_key)
 
 
 # ─── AI Suggest Nodes ───
@@ -227,16 +267,12 @@ async def suggest_nodes(session_id: str, data: SuggestRequest, db: Any = Depends
     if not ai_client.is_configured():
         raise HTTPException(503, "AI 服务未配置")
 
-    system_prompt = """你是一位顶级商业咨询顾问。根据给定的行业上下文和当前节点，发散出 3-5 个 MECE（相互独立完全穷尽）的子节点建议。
+    system_prompt = """你是一位顶级商业咨询顾问。根据给定的行业上下文和当前节点，推荐子节点。
+
+**规则：只生成与当前节点相同类型的子节点，恰好 3 个。**
 
 返回 JSON 格式:
-{"suggestions": [{"name": "节点名称", "type": "scene|painpoint|idea|task", "reason": "推荐理由"}]}
-
-节点类型说明:
-- scene: 业务场景/活动
-- painpoint: 痛点/问题
-- idea: 想法/机会
-- task: 任务/行动"""
+{"suggestions": [{"name": "节点名称", "type": "节点类型（与当前节点相同）", "reason": "推荐理由（一句话）"}]}"""
 
     existing_list = "\n".join(f"- {c}" for c in data.existing_children) if data.existing_children else "无"
     user_prompt = f"""行业背景: {data.industry_context}
@@ -244,7 +280,7 @@ async def suggest_nodes(session_id: str, data: SuggestRequest, db: Any = Depends
 已有子节点:
 {existing_list}
 
-请推荐 3-5 个子节点。"""
+请推荐恰好 3 个同类型的子节点，不要重复已有的。"""
 
     try:
         result = await ai_client.chat_json(
@@ -262,7 +298,7 @@ async def suggest_nodes(session_id: str, data: SuggestRequest, db: Any = Depends
 def list_evaluations(session_id: str, db: Any = Depends(get_db)):
     svc = ObjectService(db)
     all_items = svc.list_objects(model_key="Evaluation_Item", limit=500)
-    return [i for i in all_items if i.get("properties", {}).get("workshop_id") == session_id]
+    return [i for i in all_items if _match_ws(i, session_id)]
 
 
 @router.post("/sessions/{session_id}/evaluations", status_code=status.HTTP_201_CREATED, summary="创建评价项")
@@ -284,14 +320,18 @@ def create_evaluation(session_id: str, data: EvaluationCreate, db: Any = Depends
 @router.patch("/sessions/{session_id}/evaluations/{eval_id}", summary="更新评价项")
 def update_evaluation(session_id: str, eval_id: str, data: EvaluationUpdate, db: Any = Depends(get_db)):
     svc = ObjectService(db)
-    props = {k: v for k, v in data.model_dump().items() if v is not None}
-    return svc.update_object(eval_id, ObjectUpdate(properties=props))
+    existing = svc.get_object(_to_key(eval_id))
+    if not existing:
+        raise HTTPException(404, "评价项不存在")
+    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    merged = {**existing["properties"], **patch}
+    return svc.update_object(_to_key(eval_id), ObjectUpdate(properties=merged))
 
 
 @router.delete("/sessions/{session_id}/evaluations/{eval_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除评价项")
 def delete_evaluation(session_id: str, eval_id: str, db: Any = Depends(get_db)):
     svc = ObjectService(db)
-    svc.delete_object(eval_id)
+    svc.delete_object(_to_key(eval_id))
 
 
 # ─── Tag Endpoints ───
@@ -300,14 +340,11 @@ def delete_evaluation(session_id: str, eval_id: str, db: Any = Depends(get_db)):
 @router.get("/sessions/{session_id}/tags", summary="获取标签 (按 category 分组)")
 def list_tags(session_id: str, db: Any = Depends(get_db)):
     svc = ObjectService(db)
-    # 获取所有标签大类
     all_cats = svc.list_objects(model_key="Tag_Category", limit=500)
-    cats = [c for c in all_cats if c.get("properties", {}).get("workshop_id") == session_id]
+    cats = [c for c in all_cats if _match_ws(c, session_id)]
     cats.sort(key=lambda c: c.get("properties", {}).get("display_order", 0))
-    # 获取所有标签
     all_tags = svc.list_objects(model_key="Smart_Tag", limit=500)
-    tags = [t for t in all_tags if t.get("properties", {}).get("workshop_id") == session_id]
-    # 按大类分组
+    tags = [t for t in all_tags if _match_ws(t, session_id)]
     grouped = {}
     for cat in cats:
         cat_id = cat["_id"]
@@ -336,8 +373,12 @@ def create_tag(session_id: str, data: TagCreate, db: Any = Depends(get_db)):
 @router.patch("/sessions/{session_id}/tags/{tag_id}", summary="更新标签")
 def update_tag(session_id: str, tag_id: str, data: TagUpdate, db: Any = Depends(get_db)):
     svc = ObjectService(db)
-    props = {k: v for k, v in data.model_dump().items() if v is not None}
-    return svc.update_object(tag_id, ObjectUpdate(properties=props))
+    existing = svc.get_object(_to_key(tag_id))
+    if not existing:
+        raise HTTPException(404, "标签不存在")
+    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    merged = {**existing["properties"], **patch}
+    return svc.update_object(_to_key(tag_id), ObjectUpdate(properties=merged))
 
 
 # ─── AI Suggest Tags ───
@@ -353,7 +394,7 @@ async def suggest_tags(session_id: str, data: SuggestTagsRequest, db: Any = Depe
     # 获取已有标签字典
     svc = ObjectService(db)
     all_tags = svc.list_objects(model_key="Smart_Tag", limit=500)
-    workshop_tags = [t for t in all_tags if t.get("properties", {}).get("workshop_id") == session_id]
+    workshop_tags = [t for t in all_tags if _match_ws(t, session_id)]
     existing_tag_names = [t["properties"]["name"] for t in workshop_tags]
 
     existing_str = "\n".join(f"- [{t['category']}] {t['name']}" for t in data.existing_tags) if data.existing_tags else "无"
@@ -406,37 +447,37 @@ def export_session(session_id: str, db: Any = Depends(get_db)):
     rel_svc = RelationService(db)
 
     # 获取会话
-    session = svc.get_object(session_id)
+    session = svc.get_object(_to_key(session_id))
     if not session:
         raise HTTPException(404, "会话不存在")
 
     # 获取所有节点
     all_nodes = svc.list_objects(model_key="Canvas_Node", limit=500)
-    nodes = [n for n in all_nodes if n.get("properties", {}).get("workshop_id") == session_id]
+    nodes = [n for n in all_nodes if _match_ws(n, session_id)]
 
     # 获取所有关系
     all_rels = rel_svc.list_relations(limit=1000)
     node_ids = {n["_id"] for n in nodes}
     parent_map = {}  # node_id -> parent_id
     for r in all_rels:
-        if r["relation_type"] == "canvas_parent_child" and r["to_obj_id"] in node_ids:
-            parent_map[r["to_obj_id"]] = r["from_obj_id"]
+        if r.get("relation_type") == "canvas_parent_child" and r["_to"] in node_ids:
+            parent_map[r["_to"]] = r["_from"]
 
     # 获取所有标签和标签关系
     all_tag_rels = rel_svc.list_relations(limit=1000)
     tag_rels_map: dict[str, list[str]] = {}  # node_id -> [tag_names]
     for r in all_tag_rels:
-        if r["relation_type"] == "canvas_node_to_tag" and r["from_obj_id"] in node_ids:
-            tag_obj = svc.get_object(r["to_obj_id"])
+        if r.get("relation_type") == "canvas_node_to_tag" and r["_from"] in node_ids:
+            tag_obj = svc.get_object(_to_key(r["to_obj_id"]))
             if tag_obj:
                 tag_name = tag_obj["properties"].get("name", "")
-                tag_rels_map.setdefault(r["from_obj_id"], []).append(tag_name)
+                tag_rels_map.setdefault(r["_from"], []).append(tag_name)
 
     # 获取所有评价项
     all_evals = svc.list_objects(model_key="Evaluation_Item", limit=500)
     eval_map: dict[str, dict] = {}  # name -> {dim_x, dim_y, dim_z, dim_w}
     for e in all_evals:
-        if e.get("properties", {}).get("workshop_id") == session_id:
+        if _match_ws(e, session_id):
             eval_map[e["properties"].get("name", "")] = e["properties"]
 
     # 构建层级路径 (L1 > L2 > L3)

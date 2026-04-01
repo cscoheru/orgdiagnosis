@@ -138,7 +138,10 @@ export interface PhaseData {
   phase_order: number;
   time_range?: string;
   goals?: string;
+  key_activities?: string[];
   deliverables?: string[];
+  assignee_ids?: string[];
+  notes?: string;
   status: 'planned' | 'in_progress' | 'completed';
   tasks?: TaskData[];
 }
@@ -160,6 +163,46 @@ export interface PhaseReportData {
   evidence: string[];
   supporting_materials: string[];
   deliverables?: string[];
+}
+
+// ──────────────────────────────────────────────
+// W3 Task / Deliverable / Meeting Note types
+// ──────────────────────────────────────────────
+
+export interface TaskItem {
+  id: string;
+  name: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  priority: 'high' | 'medium' | 'low';
+  assignee?: string;
+  due_date?: string;
+  phase_id?: string;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DeliverableItem {
+  id: string;
+  title: string;
+  type: string;           // e.g. 'report', 'slides', 'dataset', 'code', 'other'
+  source_module?: string;  // which phase/module produced it
+  phase_id?: string;
+  file_url?: string;
+  description?: string;
+  created_at?: string;
+}
+
+export interface MeetingNote {
+  id: string;
+  title: string;
+  date: string;
+  phase_id?: string;
+  participants?: string[];
+  summary?: string;
+  decisions: string[];
+  action_items: Array<{ content: string; assignee?: string; due_date?: string }>;
+  created_at?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -373,5 +416,143 @@ export async function recommendLayout(content: string) {
   return templateApiRequest<{ layout_id: string }>('/recommend', {
     method: 'POST',
     body: JSON.stringify({ content }),
+  });
+}
+
+// ──────────────────────────────────────────────
+// Order API (Phase 3 — 合同 + 团队 + 排期)
+// ──────────────────────────────────────────────
+
+import type { CreateOrderFormData } from '@/lib/workflow/w3-types';
+
+const ORDER_BASE = (projectId: string) => `${API_BASE_URL}/api/projects/${projectId}/order`;
+
+export async function saveProjectOrder(projectId: string, data: CreateOrderFormData) {
+  const res = await fetch(ORDER_BASE(projectId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+  return res.json();
+}
+
+export async function getProjectOrder(projectId: string) {
+  const res = await fetch(ORDER_BASE(projectId));
+  if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+  return res.json();
+}
+
+// ──────────────────────────────────────────────
+// Task CRUD API
+// ──────────────────────────────────────────────
+
+const TASKS_BASE = (projectId: string) => `${API_BASE_URL}/api/projects/${projectId}/tasks`;
+
+export async function fetchTasks(projectId: string, phaseId?: string) {
+  const params = phaseId ? `?phase_id=${encodeURIComponent(phaseId)}` : '';
+  return apiRequest<TaskItem[]>(`${TASKS_BASE(projectId)}${params}`);
+}
+
+export async function createTask(
+  projectId: string,
+  task: Omit<TaskItem, 'id' | 'created_at' | 'updated_at'>,
+) {
+  return apiRequest<TaskItem>(TASKS_BASE(projectId), {
+    method: 'POST',
+    body: JSON.stringify(task),
+  });
+}
+
+export async function updateTask(
+  projectId: string,
+  taskId: string,
+  updates: Partial<Omit<TaskItem, 'id' | 'created_at'>>,
+) {
+  return apiRequest<TaskItem>(`${TASKS_BASE(projectId)}/${taskId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteTask(projectId: string, taskId: string) {
+  return apiRequest<null>(`${TASKS_BASE(projectId)}/${taskId}`, {
+    method: 'DELETE',
+  });
+}
+
+// ──────────────────────────────────────────────
+// Meeting Notes CRUD API
+// ──────────────────────────────────────────────
+
+const MEETINGS_BASE = (projectId: string) => `${API_BASE_URL}/api/projects/${projectId}/meetings`;
+
+export async function fetchMeetings(projectId: string, phaseId?: string) {
+  const params = phaseId ? `?phase_id=${encodeURIComponent(phaseId)}` : '';
+  return apiRequest<MeetingNote[]>(`${MEETINGS_BASE(projectId)}${params}`);
+}
+
+export async function createMeeting(
+  projectId: string,
+  meeting: Omit<MeetingNote, 'id' | 'created_at'>,
+) {
+  return apiRequest<MeetingNote>(MEETINGS_BASE(projectId), {
+    method: 'POST',
+    body: JSON.stringify(meeting),
+  });
+}
+
+export async function updateMeeting(
+  projectId: string,
+  meetingId: string,
+  updates: Partial<Omit<MeetingNote, 'id' | 'created_at'>>,
+) {
+  return apiRequest<MeetingNote>(`${MEETINGS_BASE(projectId)}/${meetingId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteMeeting(projectId: string, meetingId: string) {
+  return apiRequest<null>(`${MEETINGS_BASE(projectId)}/${meetingId}`, {
+    method: 'DELETE',
+  });
+}
+
+// ──────────────────────────────────────────────
+// Deliverables CRUD API
+// ──────────────────────────────────────────────
+
+const DELIVERABLES_BASE = (projectId: string) => `${API_BASE_URL}/api/projects/${projectId}/deliverables`;
+
+export async function fetchDeliverables(projectId: string, phaseId?: string) {
+  const params = phaseId ? `?phase_id=${encodeURIComponent(phaseId)}` : '';
+  return apiRequest<DeliverableItem[]>(`${DELIVERABLES_BASE(projectId)}${params}`);
+}
+
+export async function createDeliverable(
+  projectId: string,
+  deliverable: Omit<DeliverableItem, 'id' | 'created_at'>,
+) {
+  return apiRequest<DeliverableItem>(DELIVERABLES_BASE(projectId), {
+    method: 'POST',
+    body: JSON.stringify(deliverable),
+  });
+}
+
+export async function updateDeliverable(
+  projectId: string,
+  deliverableId: string,
+  updates: Partial<Omit<DeliverableItem, 'id' | 'created_at'>>,
+) {
+  return apiRequest<DeliverableItem>(`${DELIVERABLES_BASE(projectId)}/${deliverableId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteDeliverable(projectId: string, deliverableId: string) {
+  return apiRequest<null>(`${DELIVERABLES_BASE(projectId)}/${deliverableId}`, {
+    method: 'DELETE',
   });
 }

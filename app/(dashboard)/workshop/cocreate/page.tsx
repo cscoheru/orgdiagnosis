@@ -30,7 +30,7 @@ export default function CoCreatePage() {
     setCreating(true);
     const res = await createSession(newTitle.trim(), newIndustry.trim());
     if (res.success && res.data) {
-      router.push(`/workshop/cocreate/${res.data._id}`);
+      router.push(`/workshop/cocreate/${res.data._key}`);
     }
     setCreating(false);
   }
@@ -114,7 +114,7 @@ export default function CoCreatePage() {
           {sessions.map((s) => (
             <button
               key={s._id}
-              onClick={() => router.push(`/workshop/cocreate/${s._id}`)}
+              onClick={() => router.push(`/workshop/cocreate/${s._key}`)}
               className="flex items-center justify-between p-5 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-md transition-all text-left"
             >
               <div>
