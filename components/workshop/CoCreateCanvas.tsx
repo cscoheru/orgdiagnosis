@@ -268,13 +268,22 @@ function CoCreateCanvasInner({
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (showAddRoot) return;
 
-      // Delete: works with ReactFlow multi-selection (no need for selectedNodeId)
+      // Delete: works with ReactFlow multi-selection (nodes + edges)
       if (e.key === "Delete" || e.key === "Backspace") {
-        const rfSelected = reactFlowInstance.getNodes().filter(n => n.selected).map(n => n.id);
-        if (rfSelected.length > 0) {
+        const rfSelectedNodes = reactFlowInstance.getNodes().filter(n => n.selected).map(n => n.id);
+        const rfSelectedEdges = reactFlowInstance.getEdges().filter(e => e.selected).map(e => e.id);
+        if (rfSelectedNodes.length > 0 || rfSelectedEdges.length > 0) {
           e.preventDefault();
           e.stopPropagation();
-          deleteSelectedNodes(rfSelected);
+          if (rfSelectedNodes.length > 0) deleteSelectedNodes(rfSelectedNodes);
+          if (rfSelectedEdges.length > 0) {
+            setEdges((eds) => eds.filter((e) => !rfSelectedEdges.includes(e.id)));
+            // Fire-and-forget API delete for relations
+            for (const edgeId of rfSelectedEdges) {
+              const edge = reactFlowInstance.getEdges().find(e => e.id === edgeId);
+              if (edge) onDeleteNode(edge.target).catch(console.error);
+            }
+          }
         }
         return;
       }
@@ -669,7 +678,20 @@ function CoCreateCanvasInner({
             setNodes((nds) =>
               nds.map((n) => ({ ...n, selected: n.id === node.id }))
             );
+            setEdges((eds) => eds.map((e) => ({ ...e, selected: false })));
             setSelectedNodeId(node.id);
+          }
+        }}
+        onEdgeClick={(event, edge) => {
+          const isMultiSelect = event.metaKey || event.ctrlKey;
+          if (isMultiSelect) {
+            setEdges((eds) =>
+              eds.map((e) => (e.id === edge.id ? { ...e, selected: !e.selected } : e))
+            );
+          } else {
+            setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
+            setEdges((eds) => eds.map((e) => ({ ...e, selected: e.id === edge.id })));
+            setSelectedNodeId(null);
           }
         }}
         onPaneClick={onPaneClick}
@@ -683,13 +705,17 @@ function CoCreateCanvasInner({
         panOnDrag={true}
         selectionOnDrag={true}
         selectionKeyCode="Shift"
+        nodesFocusable={false}
+        edgesFocusable={false}
+        elementsSelectable={true}
+        selectNodesOnDrag={false}
       >
         <Background />
         <Controls />
         <MiniMap nodeColor={() => "#94a3b8"} />
       </ReactFlow>
 
-      {/* ReactFlow cursor overrides */}
+      {/* ReactFlow cursor and selection overrides */}
       <style jsx global>{`
         /* Canvas: default arrow cursor, grabbing only when actively panning */
         .react-flow__pane.draggable {
@@ -707,6 +733,19 @@ function CoCreateCanvasInner({
         }
         .react-flow__node.draggable.dragging {
           cursor: grabbing !important;
+        }
+        /* Edges: clickable for selection */
+        .react-flow__edge-path {
+          cursor: pointer !important;
+        }
+        .react-flow__edge.selected .react-flow__edge-path {
+          stroke: #3b82f6 !important;
+          stroke-width: 2.5 !important;
+        }
+        /* Selection box */
+        .react-flow__selection {
+          border: 1px dashed #3b82f6 !important;
+          background: rgba(59, 130, 246, 0.08) !important;
         }
       `}</style>
     </div>
