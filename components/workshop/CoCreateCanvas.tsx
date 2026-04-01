@@ -657,8 +657,8 @@ function CoCreateCanvasInner({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={(_, node) => {
-          const isMultiSelect = (window.navigator.platform.includes("Mac") ? window.event?.metaKey : window.event?.ctrlKey);
+        onNodeClick={(event, node) => {
+          const isMultiSelect = event.metaKey || event.ctrlKey;
           if (isMultiSelect) {
             // Toggle this node's selection
             setNodes((nds) =>
