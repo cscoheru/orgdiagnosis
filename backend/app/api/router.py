@@ -7,12 +7,16 @@ from fastapi.responses import FileResponse
 from app.api import (
     upload, analyze, diagnosis, export_pdf, langgraph_diagnosis,
     requirement, report, knowledge, projects, layout, knowledge_v2, folders,
-    templates,
+    templates, orders,
 )
 from lib.api import files as lib_files
 from app.api.v1.kernel import router as kernel_router
 from app.api.v1.competency import router as competency_router
+from app.api.v1.tasks import router as tasks_router
+from app.api.v1.meetings import router as meetings_router
+from app.api.v1.deliverables import router as deliverables_router
 from app.api.v2.workflow import router as workflow_router
+from app.api.v1.workshop import router as workshop_router
 
 api_router = APIRouter()
 
@@ -26,6 +30,7 @@ api_router.include_router(requirement.router, tags=["需求管理"])
 api_router.include_router(report.router, tags=["报告生成"])
 api_router.include_router(knowledge.router, tags=["知识库管理"])
 api_router.include_router(projects.router, tags=["项目管理"])
+api_router.include_router(orders.router, tags=["订单管理"])
 api_router.include_router(layout.router, tags=["布局推荐"])
 api_router.include_router(knowledge_v2.router, tags=["知识库V2"])
 api_router.include_router(folders.router, tags=["文件夹管理"])
@@ -38,8 +43,17 @@ api_router.include_router(kernel_router, prefix="/v1/kernel")
 # Competency Co-pilot API
 api_router.include_router(competency_router, prefix="/v1")
 
+# 项目管理 CRUD (Task / Meeting / Deliverable)
+# 路由自身已包含 /projects/{id}/... 路径，不加额外 prefix
+api_router.include_router(tasks_router)
+api_router.include_router(meetings_router)
+api_router.include_router(deliverables_router)
+
 # 工作流 API v2 (配置驱动)
 api_router.include_router(workflow_router)
+
+# 工作坊共创套件 API
+api_router.include_router(workshop_router, prefix="/v1")
 
 # PPTX 文件下载（本地 output 目录）
 @api_router.get("/output/pptx/{filename}")

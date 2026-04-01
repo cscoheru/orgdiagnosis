@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 
 interface DashboardShellProps {
@@ -42,6 +42,7 @@ const navigationGroups: NavGroup[] = [
     icon: '',
     items: [
       { name: '能力模型研讨', href: '/workshop/competency', icon: '🧠' },
+      { name: '智能共创', href: '/workshop/cocreate', icon: '✨' },
     ],
   },
   {
@@ -70,7 +71,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const [sidebarHidden, setSidebarHidden] = useState(false);
 
   // Press H to toggle sidebar (presentation mode)
-  useState(() => {
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey
           && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
@@ -79,7 +80,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  });
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();

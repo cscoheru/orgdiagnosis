@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-种子数据：创建 18 个咨询体系元模型 (5 大领域 + 项目管理)
+种子数据：创建 27 个咨询体系元模型 (5 大领域 + 项目管理 + 交付管理 + 智能共创套件)
 
 直接调用 service 层，无需 HTTP。
 
@@ -252,7 +252,7 @@ META_MODELS = [
         "model_key": "Project_Plan",
         "name": "项目计划",
         "fields": [
-            {"field_name": "project_id", "field_type": "reference", "reference_model": "Consulting_Engagement", "is_required": True, "description": "关联咨询项目"},
+            {"field_name": "project_id", "field_type": "string", "is_required": True, "description": "关联咨询项目 ID"},
             {"field_name": "phase_name", "field_type": "string", "is_required": True, "description": "阶段名称"},
             {"field_name": "phase_order", "field_type": "integer", "is_required": True, "description": "阶段顺序"},
             {"field_name": "goals", "field_type": "text", "is_required": True, "description": "阶段目标"},
@@ -268,22 +268,186 @@ META_MODELS = [
         "name": "交付成果",
         "fields": [
             {"field_name": "title", "field_type": "string", "is_required": True, "description": "成果标题"},
-            {"field_name": "phase_id", "field_type": "reference", "reference_model": "Project_Plan", "is_required": False, "description": "关联阶段"},
-            {"field_name": "project_id", "field_type": "reference", "reference_model": "Consulting_Engagement", "is_required": False, "description": "关联项目"},
-            {"field_name": "deliverable_type", "field_type": "enum", "is_required": False, "enum_options": ["analysis", "report", "comparison", "plan", "document"], "description": "成果类型"},
+            {"field_name": "phase_id", "field_type": "string", "is_required": False, "description": "关联阶段 ID"},
+            {"field_name": "project_id", "field_type": "string", "is_required": False, "description": "关联项目 ID"},
+            {"field_name": "deliverable_type", "field_type": "enum", "is_required": False, "enum_options": ["analysis", "report", "comparison", "plan", "document", "competency_model", "diagnosis_report", "workshop_output", "meeting_record", "presentation"], "description": "成果类型"},
+            {"field_name": "source_module", "field_type": "enum", "is_required": False, "enum_options": ["workflow_w1", "workflow_w2", "workflow_w3", "competency_workshop", "diagnosis", "manual"], "description": "来源模块"},
             {"field_name": "content", "field_type": "text", "is_required": False, "description": "成果内容摘要"},
             {"field_name": "file_path", "field_type": "string", "is_required": False, "description": "文件路径"},
             {"field_name": "created_by", "field_type": "string", "is_required": False, "description": "创建人"},
             {"field_name": "created_at", "field_type": "datetime", "is_required": False, "description": "创建时间"},
         ],
-        "description": "项目管理 — 交付成果记录",
+        "description": "项目管理 — 交付成果记录 (跨模块汇聚)",
+    },
+
+    # ========== 交付管理 Delivery Management (4) ==========
+    {
+        "model_key": "Contract",
+        "name": "合同",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": True, "description": "关联咨询项目 ID"},
+            {"field_name": "contract_number", "field_type": "string", "is_required": True, "description": "合同编号"},
+            {"field_name": "total_amount", "field_type": "money", "is_required": True, "description": "合同总金额"},
+            {"field_name": "currency", "field_type": "enum", "is_required": False, "enum_options": ["CNY", "USD", "EUR"], "default_value": "CNY", "description": "币种"},
+            {"field_name": "payment_schedule", "field_type": "array", "is_required": False, "description": "付款节点 [{percentage, trigger_event, expected_date}]"},
+            {"field_name": "signed_date", "field_type": "datetime", "is_required": False, "description": "签约日期"},
+            {"field_name": "client_signatory", "field_type": "string", "is_required": False, "description": "客户签约人"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "合同备注"},
+        ],
+        "description": "交付管理 — 项目合同",
+    },
+    {
+        "model_key": "Team_Member",
+        "name": "团队成员",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": True, "description": "关联咨询项目 ID"},
+            {"field_name": "name", "field_type": "string", "is_required": True, "description": "成员姓名"},
+            {"field_name": "role", "field_type": "enum", "is_required": False, "enum_options": ["lead", "member", "advisor"], "default_value": "member", "description": "角色"},
+            {"field_name": "specialization", "field_type": "string", "is_required": False, "description": "专业方向"},
+            {"field_name": "is_external", "field_type": "boolean", "is_required": False, "default_value": False, "description": "是否外部顾问"},
+        ],
+        "description": "交付管理 — 项目团队成员",
+    },
+    {
+        "model_key": "Task",
+        "name": "任务",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": True, "description": "关联咨询项目 ID"},
+            {"field_name": "phase_id", "field_type": "string", "is_required": True, "description": "关联阶段 ID"},
+            {"field_name": "name", "field_type": "string", "is_required": True, "description": "任务名称"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "任务描述"},
+            {"field_name": "assignee_id", "field_type": "string", "is_required": False, "description": "负责人 ID"},
+            {"field_name": "due_date", "field_type": "datetime", "is_required": False, "description": "截止日期"},
+            {"field_name": "status", "field_type": "enum", "is_required": False, "enum_options": ["pending", "in_progress", "completed"], "default_value": "pending", "description": "任务状态"},
+            {"field_name": "priority", "field_type": "enum", "is_required": False, "enum_options": ["high", "medium", "low"], "default_value": "medium", "description": "优先级"},
+        ],
+        "description": "交付管理 — 阶段任务",
+    },
+    {
+        "model_key": "Meeting_Note",
+        "name": "会议纪要",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": True, "description": "关联咨询项目 ID"},
+            {"field_name": "phase_id", "field_type": "string", "is_required": True, "description": "关联阶段 ID"},
+            {"field_name": "meeting_date", "field_type": "datetime", "is_required": True, "description": "会议日期"},
+            {"field_name": "title", "field_type": "string", "is_required": True, "description": "会议标题"},
+            {"field_name": "attendees", "field_type": "array", "is_required": False, "description": "参会人员列表"},
+            {"field_name": "decisions", "field_type": "array", "is_required": False, "description": "决策项列表"},
+            {"field_name": "action_items", "field_type": "array", "is_required": False, "description": "行动项 [{description, assignee, due_date}]"},
+            {"field_name": "notes", "field_type": "text", "is_required": False, "description": "会议纪要正文"},
+        ],
+        "description": "交付管理 — 客户会议纪要",
+    },
+
+    # ========== 智能共创套件 Workshop Suite (5) ==========
+    {
+        "model_key": "Workshop_Session",
+        "name": "工作坊会话",
+        "fields": [
+            {"field_name": "title", "field_type": "string", "is_required": True, "description": "工作坊标题"},
+            {"field_name": "industry_context", "field_type": "text", "is_required": True, "description": "行业上下文背景"},
+            {"field_name": "project_id", "field_type": "string", "is_required": False, "description": "关联项目 ID"},
+        ],
+        "description": "共创套件 — 工作坊会话基座",
+    },
+    {
+        "model_key": "Canvas_Node",
+        "name": "画布节点",
+        "fields": [
+            {"field_name": "name", "field_type": "string", "is_required": True, "description": "节点名称"},
+            {"field_name": "node_type", "field_type": "enum", "is_required": True, "enum_options": ["scene", "painpoint", "idea", "task"], "description": "节点类型"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "节点描述"},
+            {"field_name": "workshop_id", "field_type": "string", "is_required": True, "description": "所属工作坊 ID"},
+        ],
+        "description": "共创套件 — 画布思维导图节点",
+    },
+    {
+        "model_key": "Evaluation_Item",
+        "name": "评价项",
+        "fields": [
+            {"field_name": "name", "field_type": "string", "is_required": True, "description": "评价项名称"},
+            {"field_name": "dim_x", "field_type": "float", "is_required": False, "default_value": 3.0, "description": "维度 X 分数 (1-5)"},
+            {"field_name": "dim_y", "field_type": "float", "is_required": False, "default_value": 3.0, "description": "维度 Y 分数 (1-5)"},
+            {"field_name": "dim_z", "field_type": "float", "is_required": False, "default_value": 3.0, "description": "维度 Z 分数 (1-5)"},
+            {"field_name": "dim_w", "field_type": "float", "is_required": False, "default_value": 3.0, "description": "维度 W 分数 (1-5)"},
+            {"field_name": "workshop_id", "field_type": "string", "is_required": True, "description": "所属工作坊 ID"},
+        ],
+        "description": "共创套件 — 四维评价项",
+    },
+    {
+        "model_key": "Tag_Category",
+        "name": "标签大类",
+        "fields": [
+            {"field_name": "name", "field_type": "string", "is_required": True, "description": "大类名称 (场景维/痛点维/技能维/格式维)"},
+            {"field_name": "color", "field_type": "string", "is_required": False, "default_value": "#3b82f6", "description": "显示颜色"},
+            {"field_name": "display_order", "field_type": "integer", "is_required": False, "default_value": 0, "description": "排序顺序"},
+            {"field_name": "workshop_id", "field_type": "string", "is_required": True, "description": "所属工作坊 ID"},
+        ],
+        "description": "共创套件 — 标签分类",
+    },
+    {
+        "model_key": "Smart_Tag",
+        "name": "智能标签",
+        "fields": [
+            {"field_name": "name", "field_type": "string", "is_required": True, "description": "标签名称"},
+            {"field_name": "color", "field_type": "string", "is_required": False, "default_value": "#6b7280", "description": "标签颜色"},
+            {"field_name": "category_id", "field_type": "string", "is_required": False, "description": "所属标签大类 ID"},
+            {"field_name": "workshop_id", "field_type": "string", "is_required": True, "description": "所属工作坊 ID"},
+        ],
+        "description": "共创套件 — 具体标签",
     },
 ]
 
 
+def seed_all_meta_models(verbose: bool = False):
+    """Seed all meta-models into the kernel database.
+
+    Can be called from main.py startup (demo mode) or as a script.
+    When verbose=False, suppresses print output.
+    """
+    db = get_db()
+    service = MetaModelService(db)
+
+    success_count = 0
+    for meta_data in META_MODELS:
+        try:
+            from app.models.kernel.meta_model import MetaModelCreate, FieldDefinition, FieldTypeEnum
+
+            fields = []
+            for f in meta_data["fields"]:
+                field_kwargs = {
+                    "field_name": f["field_name"],
+                    "field_type": FieldTypeEnum(f["field_type"]),
+                    "is_required": f.get("is_required", False),
+                    "description": f.get("description"),
+                }
+                if "default_value" in f and f["default_value"] is not None:
+                    field_kwargs["default_value"] = f["default_value"]
+                if "enum_options" in f:
+                    field_kwargs["enum_options"] = f["enum_options"]
+                if "reference_model" in f:
+                    field_kwargs["reference_model"] = f["reference_model"]
+                fields.append(FieldDefinition(**field_kwargs))
+
+            create_data = MetaModelCreate(
+                model_key=meta_data["model_key"],
+                name=meta_data["name"],
+                fields=fields,
+                description=meta_data.get("description"),
+            )
+            service.create_meta_model(create_data)
+            success_count += 1
+        except Exception:
+            pass  # Already exists or other error — silently skip
+
+    if verbose:
+        print(f"Seeded {success_count}/{len(META_MODELS)} meta-models")
+    return success_count
+
+
 def main():
     print("=" * 60)
-    print("Seeding 18 Consulting Meta Models...")
+    print("Seeding 27 Consulting Meta Models...")
     print("=" * 60)
 
     init_kernel_db()
