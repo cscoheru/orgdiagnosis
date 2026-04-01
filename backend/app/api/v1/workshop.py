@@ -52,8 +52,11 @@ def _match_ws(obj: dict, session_id: str) -> bool:
     return wid in (key, session_id, _to_id(key))
 
 
-def _transform_relation(rel: dict) -> dict:
-    """Transform ArangoDB edge doc (_from/_to) to API format (from_obj_id/to_obj_id)."""
+def _transform_relation(rel: dict) -> dict | None:
+    """Transform ArangoDB edge doc (_from/_to) to API format (from_obj_id/to_obj_id).
+    Returns None if the edge doc is malformed (missing _from or _to)."""
+    if "_from" not in rel or "_to" not in rel:
+        return None
     return {
         "_key": rel["_key"],
         "_id": rel["_id"],
@@ -187,8 +190,10 @@ def get_session(session_id: str, db: Any = Depends(get_db)):
     rel_svc = RelationService(db)
     all_rels = rel_svc.list_relations(limit=1000)
     node_ids = {n["_id"] for n in nodes}
-    rels = [_transform_relation(r) for r in all_rels
-            if r.get("relation_type") == "canvas_parent_child" and r["_from"] in node_ids]
+    rels = [t for r in all_rels
+            if r.get("relation_type") == "canvas_parent_child"
+            and (t := _transform_relation(r)) is not None
+            and t["from_obj_id"] in node_ids]
     return {"session": session, "nodes": nodes, "relations": rels}
 
 
@@ -211,7 +216,7 @@ def create_node(session_id: str, data: NodeCreate, db: Any = Depends(get_db)):
     # 如果有父节点，创建关系
     if data.parent_node_id:
         rel_svc.create_relation(RelationCreate(
-            from_obj_id=data.parent_node_id,
+            from_obj_id=_to_id(data.parent_node_id),
             to_obj_id=node["_id"],
             relation_type="canvas_parent_child",
         ))

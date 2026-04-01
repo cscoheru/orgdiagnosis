@@ -18,6 +18,8 @@ import "reactflow/dist/style.css";
 import ELK, { ElkNode } from "elkjs/lib/elk.bundled.js";
 import SmartNode, { type SmartNodeData } from "./SmartNode";
 import { type SessionDetail, type AiSuggestion, createRelation } from "@/lib/api/workshop-api";
+import { buildTreeNodeMap, getSiblingsFlat } from "@/lib/workshop/tree-utils";
+import type { TreeNode } from "@/lib/workshop/tree-utils";
 import { Plus, X } from "lucide-react";
 
 const elk = new ELK();
@@ -31,71 +33,6 @@ interface CoCreateCanvasProps {
   onReloadSession: () => Promise<void>;
   onSuggestNodes: (data: { current_node_id: string; current_node_name: string; current_node_type: string; industry_context: string; existing_children: string[] }) => Promise<{ success: boolean; data?: { suggestions: AiSuggestion[] }; error?: string }>;
   onSelectNode: (nodeId: string | null) => void;
-}
-
-// ─── Tree helpers ───
-
-interface TreeNode {
-  id: string;
-  parentId: string | null;
-  children: TreeNode[];
-}
-
-function flattenAllNodes(roots: TreeNode[]): TreeNode[] {
-  const result: TreeNode[] = [];
-  for (const root of roots) {
-    const stack = [root];
-    while (stack.length > 0) {
-      const current = stack.pop()!;
-      result.push(current);
-      for (const child of current.children) {
-        stack.push(child);
-      }
-    }
-  }
-  return result;
-}
-
-function buildTreeNodeMap(
-  nodes: SessionDetail["nodes"],
-  relations: SessionDetail["relations"]
-): { rootNodes: TreeNode[]; nodeMap: Map<string, TreeNode>; parentMap: Map<string, string | null> } {
-  const nodeMap = new Map<string, TreeNode>();
-  const parentMap = new Map<string, string | null>();
-
-  for (const n of nodes) {
-    nodeMap.set(n._id, { id: n._id, parentId: null, children: [] });
-  }
-
-  for (const r of relations) {
-    if (r.relation_type === "canvas_parent_child") {
-      const child = nodeMap.get(r.to_obj_id);
-      const parent = nodeMap.get(r.from_obj_id);
-      if (child && parent) {
-        child.parentId = r.from_obj_id;
-        parent.children.push(child);
-        parentMap.set(r.to_obj_id, r.from_obj_id);
-      }
-    }
-  }
-
-  const rootNodes = Array.from(nodeMap.values()).filter((n) => n.parentId === null);
-  return { rootNodes, nodeMap, parentMap };
-}
-
-function getSiblingsFlat(treeNodes: TreeNode[], nodeId: string): string[] {
-  const allNodes = flattenAllNodes(treeNodes);
-  const childrenMap = new Map<string, string[]>();
-
-  for (const n of allNodes) {
-    const pid = n.parentId ?? "root";
-    if (!childrenMap.has(pid)) childrenMap.set(pid, []);
-    childrenMap.get(pid)!.push(n.id);
-  }
-
-  const node = allNodes.find((n) => n.id === nodeId);
-  if (!node || !node.parentId) return [nodeId]; // root
-  return childrenMap.get(node.parentId) || [];
 }
 
 // ─── Component ───
@@ -116,6 +53,7 @@ function CoCreateCanvasInner({
   const [newRootName, setNewRootName] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const pendingEditRef = useRef<string | null>(null);
+  const isInitialMount = useRef(true);
 
   // Keep a ref to latest session for callbacks (avoids stale closures)
   const sessionRef = useRef(session);
@@ -127,6 +65,88 @@ function CoCreateCanvasInner({
   const actionRefs = useRef<any>({});
   // actionRefs is updated below after function definitions
 
+  // ─── Build ReactFlow nodes/edges (before useNodesState so deps are ready) ───
+
+  const { initialNodes, initialEdges } = useMemo(() => {
+    const rfNodes: Node[] = [];
+    const rfEdges: Edge[] = [];
+
+    for (const node of session.nodes) {
+      const props = node.properties;
+      rfNodes.push({
+        id: node._id,
+        type: "smartNode",
+        position: { x: 0, y: 0 },
+        data: {
+          label: props.name,
+          onSyncUpdate: (patch: { name?: string }) => {
+            actionRefs.current.onUpdateNode(node._id, patch);
+          },
+          onSuggest: () => actionRefs.current.handleSuggest(node._id, props.name, props.node_type),
+          onEnterSave: () => {
+            const sid = selectedNodeIdRef.current;
+            if (sid) actionRefs.current.createSiblingNode(sid);
+          },
+          onTabSave: () => {
+            const sid = selectedNodeIdRef.current;
+            if (sid) actionRefs.current.createChildNode(sid);
+          },
+          onEditEnd: () => {},
+        } as SmartNodeData,
+      });
+    }
+
+    for (const rel of session.relations) {
+      if (rel.relation_type === "canvas_parent_child") {
+        rfEdges.push({
+          id: `${rel.from_obj_id}-${rel.to_obj_id}`,
+          source: rel.from_obj_id,
+          target: rel.to_obj_id,
+          type: "smoothstep",
+          style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+        });
+      }
+    }
+
+    return { initialNodes: rfNodes, initialEdges: rfEdges };
+  }, [session.nodes, session.relations]);
+
+  // Ghost nodes from suggestions
+  const allNodes = useMemo(() => {
+    const ns = [...initialNodes];
+    const es = [...initialEdges];
+    for (const [parentId, suggs] of suggestions) {
+      const parentIdx = ns.findIndex((n) => n.id === parentId);
+      const parentY = parentIdx >= 0 ? ns[parentIdx].position.y : 0;
+      suggs.forEach((s, i) => {
+        const ghostId = `ghost-${parentId}-${i}`;
+        ns.push({
+          id: ghostId,
+          type: "smartNode",
+          position: { x: 0, y: parentY + (i - suggs.length / 2) * 60 },
+          data: {
+            label: s.name,
+            reason: s.reason,
+            isGhost: true,
+            onAccept: () => handleAcceptGhost(parentId, s),
+          } as SmartNodeData,
+        });
+        es.push({
+          id: `${parentId}-${ghostId}`,
+          source: parentId,
+          target: ghostId,
+          type: "smoothstep",
+          style: { stroke: "#cbd5e1", strokeWidth: 1, strokeDasharray: "5 5" },
+        });
+      });
+    }
+    return { nodes: ns, edges: es };
+  }, [initialNodes, initialEdges, suggestions]);
+
+  // State hooks — MUST be before any useCallback that references nodes/edges
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
   const { rootNodes, nodeMap, parentMap } = useMemo(
     () => buildTreeNodeMap(session.nodes, session.relations),
     [session.nodes, session.relations]
@@ -137,11 +157,55 @@ function CoCreateCanvasInner({
   const createNodeWithFocus = useCallback(async (name: string, parentId?: string) => {
     const res = await onAddNode(name || "新节点", "scene", undefined, parentId);
     if (res?.success && res.data) {
-      pendingEditRef.current = res.data._id;
+      const newNode = res.data;
+      const newId = newNode._id;
+      // Determine position: offset from parent or default
+      const parentPos = parentId
+        ? nodes.find((n) => n.id === parentId)?.position
+        : undefined;
+      const pos = parentPos
+        ? { x: parentPos.x + 200, y: parentPos.y + 60 }
+        : { x: 100 + nodes.length * 50, y: 100 + nodes.length * 50 };
+
+      // Optimistically add node to ReactFlow
+      setNodes((nds) => [
+        ...nds,
+        {
+          id: newId,
+          type: "smartNode",
+          position: pos,
+          data: {
+            label: newNode.properties?.name || name || "新节点",
+            onSyncUpdate: (patch: { name?: string }) => actionRefs.current.onUpdateNode(newId, patch),
+            onSuggest: () => actionRefs.current.handleSuggest?.(newId, newNode.properties?.name || "", newNode.properties?.node_type || "scene"),
+            onEnterSave: () => {
+              const sid = selectedNodeIdRef.current;
+              if (sid) actionRefs.current.createSiblingNode(sid);
+            },
+            onTabSave: () => {
+              const sid = selectedNodeIdRef.current;
+              if (sid) actionRefs.current.createChildNode(sid);
+            },
+            onEditEnd: () => {},
+          } as SmartNodeData,
+        },
+      ]);
+      // Optimistically add edge if parent exists
+      if (parentId) {
+        setEdges((eds) => [
+          ...eds,
+          {
+            id: `${parentId}-${newId}`,
+            source: parentId,
+            target: newId,
+            type: "smoothstep",
+            style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+          },
+        ]);
+      }
+      pendingEditRef.current = newId;
     }
-    // Reload to get new node + relations
-    await onReloadSession();
-  }, [onAddNode, onReloadSession]);
+  }, [onAddNode, nodes, setNodes, setEdges]);
 
   const createSiblingNode = useCallback(async (nodeId: string) => {
     const parentId = parentMap.get(nodeId);
@@ -185,12 +249,16 @@ function CoCreateCanvasInner({
   // ─── Multi-delete helper ───
 
   const deleteSelectedNodes = useCallback(async (nodeIds: string[]) => {
-    for (const id of nodeIds) {
-      await onDeleteNode(id);
-    }
+    // Optimistically remove from ReactFlow (instant feedback)
+    const idSet = new Set(nodeIds);
+    setNodes((nds) => nds.filter((n) => !idSet.has(n.id)));
+    setEdges((eds) => eds.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)));
     setSelectedNodeId(null);
-    await onReloadSession();
-  }, [onDeleteNode, onReloadSession]);
+    // Fire-and-forget API deletes
+    for (const id of nodeIds) {
+      onDeleteNode(id).catch(console.error);
+    }
+  }, [onDeleteNode, setNodes, setEdges]);
 
   // ─── Keyboard handler (CAPTURE phase — fires before ReactFlow) ───
 
@@ -310,93 +378,11 @@ function CoCreateCanvasInner({
   // Update actionRefs with handleSuggest (defined above)
   actionRefs.current.handleSuggest = handleSuggest;
 
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const rfNodes: Node[] = [];
-    const rfEdges: Edge[] = [];
-
-    for (const node of session.nodes) {
-      const props = node.properties;
-      rfNodes.push({
-        id: node._id,
-        type: "smartNode",
-        position: { x: 0, y: 0 },
-        data: {
-          label: props.name,
-          /**
-           * onSyncUpdate: Fire-and-forget API call for name changes.
-           * SmartNode does optimistic local update via useReactFlow().setNodes,
-           * then calls this to persist to backend. We do NOT reload all nodes
-           * after a rename — that was the root cause of edits reverting.
-           */
-          onSyncUpdate: (patch: { name?: string }) => {
-            actionRefs.current.onUpdateNode(node._id, patch);
-          },
-          onSuggest: () => actionRefs.current.handleSuggest(node._id, props.name, props.node_type),
-          onEnterSave: () => {
-            const sid = selectedNodeIdRef.current;
-            if (sid) actionRefs.current.createSiblingNode(sid);
-          },
-          onTabSave: () => {
-            const sid = selectedNodeIdRef.current;
-            if (sid) actionRefs.current.createChildNode(sid);
-          },
-          onEditEnd: () => {},
-        } as SmartNodeData,
-      });
-    }
-
-    for (const rel of session.relations) {
-      if (rel.relation_type === "canvas_parent_child") {
-        rfEdges.push({
-          id: `${rel.from_obj_id}-${rel.to_obj_id}`,
-          source: rel.from_obj_id,
-          target: rel.to_obj_id,
-          type: "smoothstep",
-          style: { stroke: "#94a3b8", strokeWidth: 1.5 },
-        });
-      }
-    }
-
-    return { initialNodes: rfNodes, initialEdges: rfEdges };
-  }, [session.nodes, session.relations]);
-
-  // Ghost nodes from suggestions
-  const allNodes = useMemo(() => {
-    const ns = [...initialNodes];
-    const es = [...initialEdges];
-    for (const [parentId, suggs] of suggestions) {
-      const parentIdx = ns.findIndex((n) => n.id === parentId);
-      const parentY = parentIdx >= 0 ? ns[parentIdx].position.y : 0;
-      suggs.forEach((s, i) => {
-        const ghostId = `ghost-${parentId}-${i}`;
-        ns.push({
-          id: ghostId,
-          type: "smartNode",
-          position: { x: 0, y: parentY + (i - suggs.length / 2) * 60 },
-          data: {
-            label: s.name,
-            reason: s.reason,
-            isGhost: true,
-            onAccept: () => handleAcceptGhost(parentId, s),
-          } as SmartNodeData,
-        });
-        es.push({
-          id: `${parentId}-${ghostId}`,
-          source: parentId,
-          target: ghostId,
-          type: "smoothstep",
-          style: { stroke: "#cbd5e1", strokeWidth: 1, strokeDasharray: "5 5" },
-        });
-      });
-    }
-    return { nodes: ns, edges: es };
-  }, [initialNodes, initialEdges, suggestions]);
-
-  // elkjs layout
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
   useEffect(() => {
+    // Only run layout on initial mount — subsequent ops update ReactFlow state directly
+    if (!isInitialMount.current) return;
+    isInitialMount.current = false;
+
     setEdges(allNodes.edges);
     if (allNodes.nodes.length === 0) {
       setNodes([]);
@@ -484,27 +470,99 @@ function CoCreateCanvasInner({
 
   // ─── AI suggest accept ───
 
-  const handleAcceptGhost = async (parentId: string, suggestion: AiSuggestion) => {
-    await onAddNode(suggestion.name, suggestion.type || "scene", suggestion.reason, parentId);
+  const handleAcceptGhost = useCallback(async (parentId: string, suggestion: AiSuggestion) => {
+    const res = await onAddNode(suggestion.name, suggestion.type || "scene", suggestion.reason, parentId);
+    if (res?.success && res.data) {
+      const newNode = res.data;
+      const newId = newNode._id;
+      const parentPos = nodes.find((n) => n.id === parentId)?.position;
+      const pos = parentPos
+        ? { x: parentPos.x + 200, y: parentPos.y }
+        : { x: 100, y: 100 };
+
+      // Add real node, remove ghost nodes
+      setNodes((nds) => {
+        const filtered = nds.filter((n) => !n.id.startsWith(`ghost-${parentId}-`));
+        return [
+          ...filtered,
+          {
+            id: newId,
+            type: "smartNode",
+            position: pos,
+            data: {
+              label: suggestion.name,
+              onSyncUpdate: (patch: { name?: string }) => actionRefs.current.onUpdateNode(newId, patch),
+              onSuggest: () => actionRefs.current.handleSuggest?.(newId, suggestion.name, suggestion.type || "scene"),
+              onEnterSave: () => {
+                const sid = selectedNodeIdRef.current;
+                if (sid) actionRefs.current.createSiblingNode(sid);
+              },
+              onTabSave: () => {
+                const sid = selectedNodeIdRef.current;
+                if (sid) actionRefs.current.createChildNode(sid);
+              },
+              onEditEnd: () => {},
+            } as SmartNodeData,
+          },
+        ];
+      });
+      setEdges((eds) => {
+        const filtered = eds.filter((e) => !e.id.startsWith(`${parentId}-ghost-`));
+        return [
+          ...filtered,
+          {
+            id: `${parentId}-${newId}`,
+            source: parentId,
+            target: newId,
+            type: "smoothstep",
+            style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+          },
+        ];
+      });
+    }
+    // Clear suggestions for this parent regardless
     setSuggestions((prev) => {
       const next = new Map(prev);
       next.delete(parentId);
       return next;
     });
-    // Reload to get the newly accepted node
-    await onReloadSession();
-  };
+  }, [onAddNode, nodes, setNodes, setEdges]);
 
   // ─── Add root ───
 
-  const handleAddRoot = async () => {
+  const handleAddRoot = useCallback(async () => {
     if (!newRootName.trim()) return;
-    await onAddNode(newRootName.trim(), "scene");
+    const res = await onAddNode(newRootName.trim(), "scene");
+    if (res?.success && res.data) {
+      const newNode = res.data;
+      const newId = newNode._id;
+      setNodes((nds) => [
+        ...nds,
+        {
+          id: newId,
+          type: "smartNode",
+          position: { x: 50 + nodes.length * 50, y: 50 + nodes.length * 50 },
+          data: {
+            label: newRootName.trim(),
+            onSyncUpdate: (patch: { name?: string }) => actionRefs.current.onUpdateNode(newId, patch),
+            onSuggest: () => actionRefs.current.handleSuggest?.(newId, newRootName.trim(), "scene"),
+            onEnterSave: () => {
+              const sid = selectedNodeIdRef.current;
+              if (sid) actionRefs.current.createSiblingNode(sid);
+            },
+            onTabSave: () => {
+              const sid = selectedNodeIdRef.current;
+              if (sid) actionRefs.current.createChildNode(sid);
+            },
+            onEditEnd: () => {},
+          } as SmartNodeData,
+        },
+      ]);
+      pendingEditRef.current = newId;
+    }
     setNewRootName("");
     setShowAddRoot(false);
-    // Reload to get the new root node
-    await onReloadSession();
-  };
+  }, [newRootName, onAddNode, nodes, setNodes]);
 
   // ─── Manual connection ───
 
@@ -512,8 +570,18 @@ function CoCreateCanvasInner({
     const { source, target } = connection;
     if (!source || !target || source === target) return;
     await createRelation(source, target, "canvas_parent_child");
-    await onReloadSession();
-  }, [onReloadSession]);
+    // Optimistically add edge to ReactFlow
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: `${source}-${target}`,
+        source,
+        target,
+        type: "smoothstep",
+        style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+      },
+    ]);
+  }, [setEdges]);
 
   return (
     <div className="h-full relative" tabIndex={0}>
@@ -589,7 +657,21 @@ function CoCreateCanvasInner({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+        onNodeClick={(_, node) => {
+          const isMultiSelect = (window.navigator.platform.includes("Mac") ? window.event?.metaKey : window.event?.ctrlKey);
+          if (isMultiSelect) {
+            // Toggle this node's selection
+            setNodes((nds) =>
+              nds.map((n) => (n.id === node.id ? { ...n, selected: !n.selected } : n))
+            );
+          } else {
+            // Single select: deselect all, select this one
+            setNodes((nds) =>
+              nds.map((n) => ({ ...n, selected: n.id === node.id }))
+            );
+            setSelectedNodeId(node.id);
+          }
+        }}
         onPaneClick={onPaneClick}
         fitView
         attributionPosition="bottom-left"

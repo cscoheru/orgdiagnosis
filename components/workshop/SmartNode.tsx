@@ -26,10 +26,10 @@ export default function SmartNode({ id, data, selected }: NodeProps & { data: Sm
   const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync local edit value when external label changes (e.g. new node created)
+  // Sync local edit value when external label changes — only when NOT actively editing
   useEffect(() => {
-    setEditValue(data.label);
-  }, [data.label]);
+    if (!editing) setEditValue(data.label);
+  }, [data.label, editing]);
 
   // Enter editing mode when parent sets data.editing = true
   useEffect(() => {
