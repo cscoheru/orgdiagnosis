@@ -13,6 +13,7 @@ import ReactFlow, {
   useReactFlow,
   NodeTypes,
   Connection,
+  SelectionMode,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import ELK, { ElkNode } from "elkjs/lib/elk.bundled.js";
@@ -62,6 +63,9 @@ function CoCreateCanvasInner({
   // Refs for stable callbacks — avoids stale closures when node data is preserved across merges
   const selectedNodeIdRef = useRef<string | null>(null);
   selectedNodeIdRef.current = selectedNodeId;
+
+  // Track parent relationships for optimistically added nodes (parentMap only covers initial session)
+  const optimisticParentMap = useRef<Map<string, string>>(new Map());
   const actionRefs = useRef<any>({});
   // actionRefs is updated below after function definitions
 
@@ -154,18 +158,33 @@ function CoCreateCanvasInner({
 
   // ─── Node operations ───
 
-  const createNodeWithFocus = useCallback(async (name: string, parentId?: string) => {
+  const createNodeWithFocus = useCallback(async (name: string, parentId?: string, siblingOfId?: string) => {
     const res = await onAddNode(name || "新节点", "scene", undefined, parentId);
     if (res?.success && res.data) {
       const newNode = res.data;
       const newId = newNode._id;
-      // Determine position: offset from parent or default
-      const parentPos = parentId
-        ? nodes.find((n) => n.id === parentId)?.position
-        : undefined;
-      const pos = parentPos
-        ? { x: parentPos.x + 200, y: parentPos.y + 60 }
-        : { x: 100 + nodes.length * 50, y: 100 + nodes.length * 50 };
+      // Determine position based on context
+      let pos: { x: number; y: number };
+      if (siblingOfId) {
+        // Sibling: place below the reference node
+        const refPos = nodes.find((n) => n.id === siblingOfId)?.position;
+        pos = refPos
+          ? { x: refPos.x, y: refPos.y + 80 }
+          : { x: 100 + nodes.length * 50, y: 100 + nodes.length * 50 };
+      } else if (parentId) {
+        // Child: place to the right and below the parent
+        const parentPos = nodes.find((n) => n.id === parentId)?.position;
+        pos = parentPos
+          ? { x: parentPos.x + 200, y: parentPos.y + 60 }
+          : { x: 100 + nodes.length * 50, y: 100 + nodes.length * 50 };
+      } else {
+        pos = { x: 100 + nodes.length * 50, y: 100 + nodes.length * 50 };
+      }
+
+      // Track optimistic parent relationship
+      if (parentId) {
+        optimisticParentMap.current.set(newId, parentId);
+      }
 
       // Optimistically add node to ReactFlow
       setNodes((nds) => [
@@ -208,11 +227,12 @@ function CoCreateCanvasInner({
   }, [onAddNode, nodes, setNodes, setEdges]);
 
   const createSiblingNode = useCallback(async (nodeId: string) => {
-    const parentId = parentMap.get(nodeId);
+    // Check both initial session parentMap and optimistic parent tracking
+    const parentId = parentMap.get(nodeId) || optimisticParentMap.current.get(nodeId);
     if (parentId) {
-      await createNodeWithFocus("新节点", parentId);
+      await createNodeWithFocus("新节点", parentId, nodeId);
     } else {
-      await createNodeWithFocus("新节点");
+      await createNodeWithFocus("新节点", undefined, nodeId);
     }
   }, [parentMap, createNodeWithFocus]);
 
@@ -355,6 +375,12 @@ function CoCreateCanvasInner({
     setSelectedNodeId(null);
   }, []);
 
+  // Track selectedNodeId from ReactFlow's built-in selection (supports multi-select)
+  const onSelectionChange = useCallback(({ nodes: selectedNodes }: { nodes: Node[] }) => {
+    const singleSelected = selectedNodes.filter(n => n.selected);
+    setSelectedNodeId(singleSelected.length === 1 ? singleSelected[0].id : null);
+  }, []);
+
   // ─── Build ReactFlow nodes/edges ───
 
   /**
@@ -486,8 +512,11 @@ function CoCreateCanvasInner({
       const newId = newNode._id;
       const parentPos = nodes.find((n) => n.id === parentId)?.position;
       const pos = parentPos
-        ? { x: parentPos.x + 200, y: parentPos.y }
+        ? { x: parentPos.x + 200, y: parentPos.y + 60 }
         : { x: 100, y: 100 };
+
+      // Track optimistic parent relationship
+      optimisticParentMap.current.set(newId, parentId);
 
       // Add real node, remove ghost nodes
       setNodes((nds) => {
@@ -666,34 +695,7 @@ function CoCreateCanvasInner({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={(event, node) => {
-          const isMultiSelect = event.metaKey || event.ctrlKey;
-          if (isMultiSelect) {
-            // Toggle this node's selection
-            setNodes((nds) =>
-              nds.map((n) => (n.id === node.id ? { ...n, selected: !n.selected } : n))
-            );
-          } else {
-            // Single select: deselect all, select this one
-            setNodes((nds) =>
-              nds.map((n) => ({ ...n, selected: n.id === node.id }))
-            );
-            setEdges((eds) => eds.map((e) => ({ ...e, selected: false })));
-            setSelectedNodeId(node.id);
-          }
-        }}
-        onEdgeClick={(event, edge) => {
-          const isMultiSelect = event.metaKey || event.ctrlKey;
-          if (isMultiSelect) {
-            setEdges((eds) =>
-              eds.map((e) => (e.id === edge.id ? { ...e, selected: !e.selected } : e))
-            );
-          } else {
-            setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
-            setEdges((eds) => eds.map((e) => ({ ...e, selected: e.id === edge.id })));
-            setSelectedNodeId(null);
-          }
-        }}
+        onSelectionChange={onSelectionChange}
         onPaneClick={onPaneClick}
         fitView
         attributionPosition="bottom-left"
@@ -704,7 +706,7 @@ function CoCreateCanvasInner({
         proOptions={{ hideAttribution: true }}
         panOnDrag={true}
         selectionOnDrag={true}
-        selectionKeyCode="Shift"
+        selectionMode={SelectionMode.Partial}
         nodesFocusable={false}
         edgesFocusable={false}
         elementsSelectable={true}
