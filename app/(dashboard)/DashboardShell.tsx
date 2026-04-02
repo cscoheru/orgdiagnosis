@@ -28,6 +28,7 @@ const navigationGroups: NavGroup[] = [
     icon: '',
     items: [
       { name: '总览', href: '/overview', icon: '📊' },
+      { name: 'AI 顾问', href: '/agent', icon: '🤖' },
     ],
   },
   {

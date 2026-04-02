@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-种子数据：创建 27 个咨询体系元模型 (5 大领域 + 项目管理 + 交付管理 + 智能共创套件)
+种子数据：创建 32 个咨询体系元模型 (5 大领域 + 项目管理 + 交付管理 + 智能共创套件 + AI 顾问 Agent)
 
 直接调用 service 层，无需 HTTP。
 
@@ -396,6 +396,73 @@ META_MODELS = [
         ],
         "description": "共创套件 — 具体标签",
     },
+
+    # ========== AI 顾问 Agent (4) ==========
+    {
+        "model_key": "Logic_Node",
+        "name": "逻辑节点",
+        "fields": [
+            {"field_name": "node_type", "field_type": "string", "is_required": True, "description": "节点类型标识 (SWOT/GAP/五力/PEST等)"},
+            {"field_name": "display_name", "field_type": "string", "is_required": True, "description": "展示名称"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "节点用途说明"},
+            {"field_name": "required_data_schema", "field_type": "object", "is_required": True, "description": "JSON Schema: 该节点必须收集的数据字段定义"},
+            {"field_name": "layout_template_id", "field_type": "string", "is_required": False, "description": "对应的 PPT 模板坑位 ID"},
+            {"field_name": "dependencies", "field_type": "array", "is_required": False, "description": "前置依赖的 node_type 列表"},
+            {"field_name": "industry_tags", "field_type": "array", "is_required": False, "description": "适用行业标签"},
+            {"field_name": "output_schema", "field_type": "object", "is_required": False, "description": "该节点产出的数据结构定义"},
+            {"field_name": "display_order", "field_type": "integer", "is_required": False, "default_value": 0, "description": "展示排序"},
+        ],
+        "description": "AI 顾问 — 标杆报告的逻辑分析单元",
+    },
+    {
+        "model_key": "Benchmark",
+        "name": "标杆报告模板",
+        "fields": [
+            {"field_name": "title", "field_type": "string", "is_required": True, "description": "标杆报告标题"},
+            {"field_name": "industry", "field_type": "string", "is_required": True, "description": "适用行业"},
+            {"field_name": "consulting_type", "field_type": "enum", "is_required": True, "enum_options": ["组织诊断", "战略规划", "数字化转型", "人才管理", "人才培训", "绩效改进", "流程优化"], "description": "咨询类型"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "模板描述"},
+            {"field_name": "node_order", "field_type": "array", "is_required": False, "description": "节点展示顺序 (Logic_Node _id 列表)"},
+        ],
+        "description": "AI 顾问 — 咨询标杆报告的逻辑骨架模板",
+    },
+    {
+        "model_key": "Agent_Session",
+        "name": "AI 顾问会话",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": False, "description": "关联的项目 ID (sys_objects/_key)"},
+            {"field_name": "benchmark_id", "field_type": "string", "is_required": True, "description": "使用的标杆报告模板 ID"},
+            {"field_name": "project_goal", "field_type": "text", "is_required": True, "description": "用户初始目标描述"},
+            {"field_name": "status", "field_type": "enum", "is_required": True, "enum_options": ["plan", "interact", "execute", "distill", "completed", "failed"], "default_value": "plan", "description": "会话状态"},
+            {"field_name": "progress", "field_type": "float", "is_required": False, "default_value": 0.0, "description": "整体进度 (0-1)"},
+            {"field_name": "interaction_count", "field_type": "integer", "is_required": False, "default_value": 0, "description": "交互轮次计数"},
+            {"field_name": "pptx_path", "field_type": "string", "is_required": False, "description": "生成的 PPTX 文件路径"},
+        ],
+        "description": "AI 顾问 — Agent 工作流会话记录",
+    },
+    {
+        "model_key": "Project_Spec",
+        "name": "项目规格书",
+        "fields": [
+            {"field_name": "session_id", "field_type": "string", "is_required": True, "description": "关联的 Agent 会话 ID"},
+            {"field_name": "title", "field_type": "string", "is_required": True, "description": "项目标题"},
+            {"field_name": "industry", "field_type": "string", "is_required": False, "description": "行业"},
+            {"field_name": "spec_data", "field_type": "object", "is_required": True, "description": "蒸馏后的结构化数据 (按逻辑节点索引)"},
+            {"field_name": "distilled_at", "field_type": "datetime", "is_required": False, "description": "蒸馏时间"},
+        ],
+        "description": "AI 顾问 — Agent 蒸馏后的结构化项目数据",
+    },
+    {
+        "model_key": "Collected_Data",
+        "name": "收集数据",
+        "fields": [
+            {"field_name": "session_id", "field_type": "string", "is_required": True, "description": "关联的 Agent 会话 ID"},
+            {"field_name": "node_types", "field_type": "array", "is_required": False, "description": "已完成的逻辑节点类型列表"},
+            {"field_name": "data", "field_type": "object", "is_required": True, "description": "按 node_type 索引的收集数据"},
+            {"field_name": "collected_at", "field_type": "datetime", "is_required": False, "description": "收集完成时间"},
+        ],
+        "description": "AI 顾问 — Agent 收集的原始数据",
+    },
 ]
 
 
@@ -447,7 +514,7 @@ def seed_all_meta_models(verbose: bool = False):
 
 def main():
     print("=" * 60)
-    print("Seeding 27 Consulting Meta Models...")
+    print("Seeding 31 Consulting Meta Models...")
     print("=" * 60)
 
     init_kernel_db()

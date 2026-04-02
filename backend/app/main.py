@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Auth: {'ENABLED' if os.getenv('AUTH_ENABLED', 'false').lower() == 'true' else 'DISABLED (set AUTH_ENABLED=true to enable)'}")
 
     # 初始化内核数据库
-    from app.kernel.database import init_kernel_db, close_kernel_db
+    from app.kernel.database import init_kernel_db, close_kernel_db, get_db
     from app.kernel.config import kernel_settings
     logger.info(f"Kernel: mode={kernel_settings.KERNEL_MODE}, database={kernel_settings.ARANGO_DATABASE}")
     init_kernel_db()
@@ -48,6 +48,26 @@ async def lifespan(app: FastAPI):
         from scripts.seed_meta_models import seed_all_meta_models
         seed_all_meta_models()
         logger.info("Kernel: meta-models seeded (demo mode)")
+
+        # Seed Agent blueprints (logic nodes + benchmark templates)
+        try:
+            from app.agent.seed_blueprints import seed_all as seed_generic_blueprints
+            seed_generic_blueprints(verbose=False)
+            logger.info("Kernel: agent blueprints seeded (demo mode)")
+        except Exception as e:
+            logger.warning(f"Kernel: failed to seed agent blueprints: {e}")
+
+        # Seed real PPTX-based benchmarks (domain-specific nodes + templates)
+        try:
+            from app.agent.seed_real_benchmarks import seed_domain_nodes, seed_real_benchmarks
+            from app.agent.blueprint_service import BlueprintService
+            db = get_db()
+            svc = BlueprintService(db)
+            node_id_map = seed_domain_nodes(svc)
+            seed_real_benchmarks(svc, node_id_map)
+            logger.info("Kernel: real benchmarks seeded (demo mode)")
+        except Exception as e:
+            logger.warning(f"Kernel: failed to seed real benchmarks: {e}")
 
     yield
 
