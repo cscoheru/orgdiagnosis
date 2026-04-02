@@ -303,11 +303,6 @@ function CoCreateCanvasInner({
           if (rfSelectedNodes.length > 0) deleteSelectedNodes(rfSelectedNodes);
           if (rfSelectedEdges.length > 0) {
             setEdges((eds) => eds.filter((e) => !rfSelectedEdges.includes(e.id)));
-            // Fire-and-forget API delete for relations
-            for (const edgeId of rfSelectedEdges) {
-              const edge = reactFlowInstance.getEdges().find(e => e.id === edgeId);
-              if (edge) onDeleteNode(edge.target).catch(console.error);
-            }
           }
         }
         return;
