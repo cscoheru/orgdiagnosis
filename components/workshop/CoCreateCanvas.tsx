@@ -13,7 +13,6 @@ import ReactFlow, {
   useReactFlow,
   NodeTypes,
   Connection,
-  SelectionMode,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import ELK, { ElkNode } from "elkjs/lib/elk.bundled.js";
@@ -707,11 +706,10 @@ function CoCreateCanvasInner({
         panOnDrag={true}
         selectionOnDrag={true}
         selectionKeyCode="Shift"
-        selectionMode={SelectionMode.Partial}
         nodesFocusable={false}
         edgesFocusable={false}
         elementsSelectable={true}
-        selectNodesOnDrag={false}
+        selectNodesOnDrag={true}
       >
         <Background />
         <Controls />
