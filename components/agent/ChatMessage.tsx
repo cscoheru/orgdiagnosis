@@ -16,6 +16,8 @@ interface ChatMessageProps {
  * - user 消息：显示用户提交的数据摘要
  * - system 消息：显示系统通知（灰色，左对齐）
  */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+
 export default function ChatMessage({ message, onFormSubmit, formLoading }: ChatMessageProps) {
   const { role, content, metadata } = message;
 
@@ -61,10 +63,22 @@ export default function ChatMessage({ message, onFormSubmit, formLoading }: Chat
           </div>
         )}
 
-        {/* 完成通知 */}
+        {/* 完成通知 + 下载 */}
         {metadata?.kernel_objects_created && (
-          <div className="bg-green-50 border border-green-200 px-4 py-2.5 rounded-xl text-sm text-green-700">
-            数据已存入知识图谱 ({metadata.kernel_objects_created.length} 条记录)
+          <div className="bg-green-50 border border-green-200 px-4 py-3 rounded-xl text-sm text-green-700 space-y-2">
+            <p>数据已存入知识图谱 ({metadata.kernel_objects_created.length} 条记录)，报告已生成。</p>
+            {metadata.pptx_download_url && (
+              <a
+                href={`${API_BASE}${metadata.pptx_download_url}`}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                download
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                下载咨询报告 (PPTX)
+              </a>
+            )}
           </div>
         )}
       </div>

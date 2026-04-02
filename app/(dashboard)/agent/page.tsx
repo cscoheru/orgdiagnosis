@@ -84,14 +84,25 @@ export default function AgentPage() {
       };
 
       // 添加 AI 响应消息
+      // completed 时 interaction 为空，需要从 metadata 构建内容
+      let assistantContent = result.interaction?.message || '';
+      if (result.mode === 'completed' && !assistantContent) {
+        const parts = ['所有数据已收集完毕，分析报告已生成。'];
+        if (result.distilled_spec) {
+          parts.push(`项目标题：${(result.distilled_spec as Record<string, string>).project_title || ''}`);
+        }
+        assistantContent = parts.join('\n');
+      }
+
       const assistantMsg: ChatMessage = {
         role: 'assistant',
-        content: result.interaction?.message || '',
+        content: assistantContent,
         metadata: {
           ui_components: result.interaction?.ui_components,
           context: result.interaction?.context,
           kernel_objects_created: result.kernel_objects_created,
           distilled_spec: result.distilled_spec,
+          pptx_download_url: session ? `/api/v1/agent/sessions/${session._key}/download` : undefined,
         },
       };
 

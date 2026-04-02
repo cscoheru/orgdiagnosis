@@ -42,6 +42,7 @@ export interface ChatMessage {
     context?: InteractionResponse['context']
     kernel_objects_created?: string[]
     distilled_spec?: Record<string, unknown>
+    pptx_download_url?: string
   }
 }
 
