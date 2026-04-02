@@ -227,14 +227,19 @@ function CoCreateCanvasInner({
   }, [onAddNode, nodes, setNodes, setEdges]);
 
   const createSiblingNode = useCallback(async (nodeId: string) => {
-    // Check both initial session parentMap and optimistic parent tracking
-    const parentId = parentMap.get(nodeId) || optimisticParentMap.current.get(nodeId);
+    // Find parent: check session parentMap, optimistic tracking, or ReactFlow edges
+    let parentId = parentMap.get(nodeId) || optimisticParentMap.current.get(nodeId);
+    if (!parentId) {
+      // Fallback: look at current ReactFlow edges to find parent
+      const parentEdge = edges.find((e) => e.target === nodeId);
+      if (parentEdge) parentId = parentEdge.source;
+    }
     if (parentId) {
       await createNodeWithFocus("新节点", parentId, nodeId);
     } else {
       await createNodeWithFocus("新节点", undefined, nodeId);
     }
-  }, [parentMap, createNodeWithFocus]);
+  }, [parentMap, edges, createNodeWithFocus]);
 
   const createChildNode = useCallback(async (nodeId: string) => {
     await createNodeWithFocus("新节点", nodeId);
@@ -706,6 +711,7 @@ function CoCreateCanvasInner({
         proOptions={{ hideAttribution: true }}
         panOnDrag={true}
         selectionOnDrag={true}
+        selectionKeyCode="Shift"
         selectionMode={SelectionMode.Partial}
         nodesFocusable={false}
         edgesFocusable={false}
