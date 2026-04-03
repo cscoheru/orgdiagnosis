@@ -14,8 +14,6 @@ import StructuredQuestionnaireStep from '@/components/workflow/StructuredQuestio
 import ClientConfirmStep from '@/components/workflow/ClientConfirmStep';
 import FiveDimensionDashboard from '@/components/workflow/FiveDimensionDashboard';
 import DiagnosisPPTStep from '@/components/workflow/DiagnosisPPTStep';
-import AgentPanel from '@/components/agent/AgentPanel';
-import AIGenerateButton from '@/components/agent/AIGenerateButton';
 import {
   startWorkflow,
   executeWorkflowStep,
@@ -45,9 +43,6 @@ export default function DiagnosisPage() {
   const [questionnaireData, setQuestionnaireData] = useState<QuestionnaireData | null>(null);
   const [analysisData, setAnalysisData] = useState<FiveDimensionsData | null>(null);
   const [pptFilePath, setPPTFilePath] = useState<string | null>(null);
-
-  // Agent panel
-  const [agentOpen, setAgentOpen] = useState(false);
 
   // Start workflow
   useEffect(() => {
@@ -169,22 +164,11 @@ export default function DiagnosisPage() {
       )}
 
       {currentStep === 2 && (
-        <div className="space-y-4">
-          <FiveDimensionDashboard
-            analysisData={analysisData}
-            onGenerate={handleGenerateAnalysis}
-            generating={loading}
-          />
-          {analysisData && (
-            <AIGenerateButton
-              mode="consulting_report"
-              projectId={projectId}
-              benchmarkId="general"
-              projectGoal="组织诊断咨询报告"
-              onClick={() => setAgentOpen(true)}
-            />
-          )}
-        </div>
+        <FiveDimensionDashboard
+          analysisData={analysisData}
+          onGenerate={handleGenerateAnalysis}
+          generating={loading}
+        />
       )}
 
       {currentStep === 3 && (
@@ -196,15 +180,6 @@ export default function DiagnosisPage() {
         />
       )}
     </WorkflowStepNavigator>
-
-    <AgentPanel
-      projectId={projectId}
-      mode="consulting_report"
-      benchmarkId="general"
-      projectGoal="组织诊断咨询报告"
-      open={agentOpen}
-      onClose={() => setAgentOpen(false)}
-    />
     </>
   );
 }

@@ -19,10 +19,16 @@ interface AgentPanelProps {
   onClose: () => void;
   onComplete?: (result: { pptxUrl: string; sessionId: string }) => void;
   workflowData?: Record<string, unknown>;
+  /** When true, renders as an inline sidebar (no overlay/modal). Used in project workspace. */
+  embedded?: boolean;
 }
 
 /**
- * AgentPanel — 可复用的侧滑面板，在项目工作流中嵌入 AI 顾问。
+ * AgentPanel — 可复用的 AI 顾问面板。
+ *
+ * 两种模式:
+ * - embedded=false (默认): 全屏 Modal 覆盖层
+ * - embedded=true: 内嵌侧栏，由父组件控制尺寸
  *
  * 行为：
  * 1. open=true 时，调用 createSessionFromProject() 创建带种子数据的会话
@@ -39,6 +45,7 @@ export default function AgentPanel({
   onClose,
   onComplete,
   workflowData,
+  embedded = false,
 }: AgentPanelProps) {
   const [session, setSession] = useState<AgentSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -153,6 +160,84 @@ export default function AgentPanel({
 
   if (!open) return null;
 
+  // Shared inner content
+  const panelContent = (
+    <>
+      {/* 头部 */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">
+            AI {mode === 'proposal' ? '建议书生成' : '咨询报告生成'}
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {started && !error
+              ? session
+                ? `会话 ${session._key.slice(0, 8)}...`
+                : '正在初始化...'
+              : ''}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* 内容区 */}
+      <div className="flex-1 min-h-0">
+        {error ? (
+          <div className="flex flex-col items-center justify-center h-full px-8">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="text-sm text-red-600 text-center">{error}</p>
+            <button
+              onClick={() => {
+                setStarted(false);
+                setError('');
+              }}
+              className="mt-4 px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              重试
+            </button>
+          </div>
+        ) : started && !loading ? (
+          <AgentChat
+            messages={messages}
+            interaction={interaction}
+            progress={progress}
+            mode={agentMode}
+            onFormSubmit={handleFormSubmit}
+            loading={loading}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-gray-500">正在加载 AI 顾问...</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  // Embedded mode: inline sidebar (no overlay)
+  if (embedded) {
+    return (
+      <div className="h-full flex flex-col bg-white">
+        {panelContent}
+      </div>
+    );
+  }
+
+  // Default: full modal overlay
   return (
     <div className="fixed inset-0 z-50 flex">
       {/* 遮罩 */}
@@ -160,83 +245,13 @@ export default function AgentPanel({
 
       {/* 面板 */}
       <div className="relative ml-auto w-full max-w-2xl bg-white shadow-2xl flex flex-col animate-slide-in-right">
-        {/* 头部 */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">
-              AI {mode === 'proposal' ? '建议书生成' : '咨询报告生成'}
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {started && !error
-                ? session
-                  ? `会话 ${session._key.slice(0, 8)}...`
-                  : '正在初始化...'
-                : ''}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-
-        {/* 内容区 */}
-        <div className="flex-1 min-h-0">
-          {error ? (
-            <div className="flex flex-col items-center justify-center h-full px-8">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <p className="text-sm text-red-600 text-center">{error}</p>
-              <button
-                onClick={() => {
-                  setStarted(false);
-                  setError('');
-                }}
-                className="mt-4 px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                重试
-              </button>
-            </div>
-          ) : started && !loading ? (
-            <AgentChat
-              messages={messages}
-              interaction={interaction}
-              progress={progress}
-              mode={agentMode}
-              onFormSubmit={handleFormSubmit}
-              loading={loading}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-gray-500">正在加载 AI 顾问...</p>
-              </div>
-            </div>
-          )}
-        </div>
+        {panelContent}
       </div>
 
       <style jsx>{`
         @keyframes slide-in-right {
-          from {
-            transform: translateX(100%);
-          }
-          to {
-            transform: translateX(0);
-          }
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
         }
         .animate-slide-in-right {
           animation: slide-in-right 0.3s ease-out;

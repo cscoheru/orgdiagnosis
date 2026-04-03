@@ -11,7 +11,7 @@
  *   6. 生成 PPTX（对接 v2 renderer）
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import WorkflowStepNavigator from '@/components/workflow/WorkflowStepNavigator';
 import type { StepDef } from '@/components/workflow/WorkflowStepNavigator';
@@ -21,8 +21,6 @@ import MDSContentStep from '@/components/workflow/MDSContentStep';
 import ImplementationOutlineStep from '@/components/workflow/ImplementationOutlineStep';
 import TemplateSelectionStep from '@/components/workflow/TemplateSelectionStep';
 import PPTOutputStep from '@/components/workflow/PPTOutputStep';
-import AgentPanel from '@/components/agent/AgentPanel';
-import AIGenerateButton from '@/components/agent/AIGenerateButton';
 import {
   startWorkflow,
   executeWorkflowStep,
@@ -31,7 +29,6 @@ import {
   generateOutlineSection,
   generateOutlineActivity,
 } from '@/lib/api/workflow-client';
-import { getBenchmarks } from '@/lib/agent-api';
 import {
   mapExtractResponse,
   mapPlanResponse,
@@ -75,10 +72,6 @@ export default function ProposalPage() {
   const [generatingSection, setGeneratingSection] = useState<number | null>(null);
   const [generatingActivity, setGeneratingActivity] = useState<[number, number] | null>(null);
 
-  // Agent panel
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [agentBenchmarkId, setAgentBenchmarkId] = useState<string>('');
-
   // Start workflow (or restore existing session)
   useEffect(() => {
     const init = async () => {
@@ -120,15 +113,6 @@ export default function ProposalPage() {
     };
     init();
   }, [projectId]);
-
-  // Fetch benchmark list for Agent panel
-  useEffect(() => {
-    getBenchmarks()
-      .then((bms) => {
-        if (bms.length > 0) setAgentBenchmarkId(bms[0]._key);
-      })
-      .catch(console.error);
-  }, []);
 
   // Step 1: Smart extract
   const handleSmartExtract = useCallback(async (text: string) => {
@@ -383,43 +367,15 @@ export default function ProposalPage() {
       )}
 
       {currentStep === 5 && (
-        <div className="space-y-4">
-          <PPTOutputStep
-            templateData={templateData}
-            onExport={handleExportPPT}
-            exporting={loading}
-            filePath={pptFilePath}
-            slideCount={outlineData?.sections.reduce((sum, s) => sum + s.activities.reduce((a, act) => a + act.slides.length, 0), 0)}
-          />
-          {extractedData && (
-            <AIGenerateButton
-              mode="proposal"
-              projectId={projectId}
-              benchmarkId={agentBenchmarkId}
-              projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
-              onClick={() => setAgentOpen(true)}
-              disabled={!agentBenchmarkId}
-            />
-          )}
-        </div>
+        <PPTOutputStep
+          templateData={templateData}
+          onExport={handleExportPPT}
+          exporting={loading}
+          filePath={pptFilePath}
+          slideCount={outlineData?.sections.reduce((sum, s) => sum + s.activities.reduce((a, act) => a + act.slides.length, 0), 0)}
+        />
       )}
     </WorkflowStepNavigator>
-
-    <AgentPanel
-      projectId={projectId}
-      mode="proposal"
-      benchmarkId={agentBenchmarkId}
-      projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
-      open={agentOpen}
-      onClose={() => setAgentOpen(false)}
-      workflowData={useMemo(() => ({
-        smart_extract: extractedData,
-        milestone_plan: planData,
-        mds_content: mdsData,
-        impl_outline: outlineData,
-        template_select: templateData,
-      }), [extractedData, planData, mdsData, outlineData, templateData])}
-    />
     </>
   );
 }

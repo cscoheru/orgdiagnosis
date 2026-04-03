@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import StatsOverview from '@/components/project/StatsOverview'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -197,8 +198,8 @@ function ProjectsPageContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">项目列表</h1>
-          <p className="text-gray-500 mt-1">共 {projects.length} 个项目</p>
+          <h1 className="text-2xl font-bold">项目总览</h1>
+          <p className="text-gray-500 mt-1">管理所有咨询项目</p>
         </div>
         <button
           onClick={() => setDialogOpen(true)}
@@ -208,6 +209,22 @@ function ProjectsPageContent() {
           新建项目
         </button>
       </div>
+
+      {/* Stats Overview */}
+      {!loading && (
+        <StatsOverview
+          stats={{
+            total: projects.length,
+            active: projects.filter(p => p.status !== 'completed' && p.status !== 'draft').length,
+            completed: projects.filter(p => p.status === 'completed').length,
+            recent: projects.filter(p => {
+              const d = new Date(p.created_at);
+              const now = new Date();
+              return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            }).length,
+          }}
+        />
+      )}
 
       {/* Error */}
       {error && (

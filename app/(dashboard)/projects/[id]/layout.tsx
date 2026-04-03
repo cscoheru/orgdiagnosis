@@ -1,8 +1,11 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
+import ProjectLifecycleSidebar from '@/components/project/ProjectLifecycleSidebar';
+import AgentPanel from '@/components/agent/AgentPanel';
+import { Sparkles } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -30,11 +33,16 @@ const statusColors: Record<string, string> = {
   completed: 'bg-purple-100 text-purple-700',
 };
 
-const tabs = [
-  { name: '需求分析', href: 'proposal', icon: '📋', key: 'requirement' },
-  { name: '调研诊断', href: 'diagnosis', icon: '🔍', key: 'diagnosing' },
-  { name: '项目交付', href: 'delivery', icon: '🚀', key: 'delivering' },
-];
+// Map lifecycle stage to agent mode
+const stageAgentModes: Record<string, 'proposal' | 'consulting_report'> = {
+  proposal: 'proposal',
+  diagnosis: 'consulting_report',
+  delivery: 'consulting_report',
+  cowork: 'consulting_report',
+  competency: 'consulting_report',
+  strategy: 'consulting_report',
+  report: 'consulting_report',
+};
 
 export default function ProjectLayout({ children }: { children: ReactNode }) {
   const params = useParams();
@@ -43,7 +51,14 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [agentBenchmarkId, setAgentBenchmarkId] = useState('');
 
+  // Determine current lifecycle stage from pathname
+  const currentStage = ['proposal', 'diagnosis', 'delivery', 'cowork', 'competency', 'strategy', 'report']
+    .find(s => pathname.endsWith(`/${s}`)) || '';
+
+  // Fetch project info
   useEffect(() => {
     const fetchProject = async () => {
       try {
@@ -51,14 +66,13 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           const p = data.project;
-          // Normalize selected_modules: API may return JSON string instead of array
           if (p && typeof p.selected_modules === 'string') {
             try { p.selected_modules = JSON.parse(p.selected_modules); } catch { p.selected_modules = []; }
           }
           setProject(p);
         }
       } catch {
-        // Silently fail — header just won't show project info
+        // Silent fail
       } finally {
         setLoading(false);
       }
@@ -66,86 +80,91 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
     if (projectId) fetchProject();
   }, [projectId]);
 
-  // Determine active tab from pathname
-  const activeTab = tabs.find(t => pathname.endsWith(t.href));
+  // Fetch benchmark list for AI panel
+  useEffect(() => {
+    const fetchBenchmarks = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/agent/blueprint/benchmarks`);
+        if (res.ok) {
+          const data = await res.json();
+          const bms = Array.isArray(data) ? data : (data.items || []);
+          if (bms.length > 0) setAgentBenchmarkId(bms[0]._key);
+        }
+      } catch { /* silent */ }
+    };
+    fetchBenchmarks();
+  }, []);
+
+  const agentMode = stageAgentModes[currentStage] || 'consulting_report';
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-gray-500">
-        <Link href="/projects" className="hover:text-gray-700">
-          项目列表
-        </Link>
-        <span>/</span>
-        <span className="text-gray-900 font-medium">
-          {loading ? '加载中...' : project?.name || '未知项目'}
-        </span>
-        {activeTab && (
-          <>
-            <span>/</span>
-            <span className="text-gray-700">{activeTab.name}</span>
-          </>
-        )}
-      </nav>
-
+    <div className="space-y-4">
       {/* Project Header */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">
+          <div className="flex items-center gap-3 min-w-0">
+            <nav className="flex items-center gap-1.5 text-sm text-gray-400 flex-shrink-0">
+              <Link href="/projects" className="hover:text-gray-600 transition-colors">项目列表</Link>
+              <span>/</span>
+            </nav>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-gray-900 truncate">
                 {loading ? '...' : project?.name || '未知项目'}
               </h1>
               {project?.client_name && (
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {project.client_name}
-                  {project.selected_modules && project.selected_modules.length > 0 && (
-                    <span className="ml-3">
-                      {project.selected_modules.map(m => (
-                        <span key={m} className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs mr-1">
-                          {m}
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                </p>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{project.client_name}</p>
               )}
             </div>
           </div>
           {!loading && project && (
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-600'}`}>
-              {statusLabels[project.status] || project.status}
-            </span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-600'}`}>
+                {statusLabels[project.status] || project.status}
+              </span>
+              {/* AI panel toggle */}
+              <button
+                onClick={() => setAiOpen(!aiOpen)}
+                className={`p-2 rounded-lg border transition-colors ${
+                  aiOpen
+                    ? 'bg-blue-50 border-blue-200 text-blue-600'
+                    : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300'
+                }`}
+                title="AI 助手"
+              >
+                <Sparkles size={16} />
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Project Navigation Tabs */}
-      <div className="border-b border-gray-200">
-        <div className="flex gap-6">
-          {tabs.map(tab => {
-            const href = `/projects/${projectId}/${tab.href}`;
-            const isActive = pathname === href || pathname.startsWith(href + '/');
-            return (
-              <Link
-                key={tab.key}
-                href={href}
-                className={`flex items-center gap-2 px-1 py-3 border-b-2 transition-colors ${
-                  isActive
-                    ? 'border-blue-600 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <span>{tab.icon}</span>
-                <span>{tab.name}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      {/* Three-column layout: Lifecycle Sidebar + Content + AI Panel */}
+      <div className="flex gap-0 border border-gray-200 rounded-xl bg-white overflow-hidden" style={{ height: 'calc(100vh - 14rem)' }}>
+        {/* 1. Lifecycle sidebar */}
+        <ProjectLifecycleSidebar className="border-r border-gray-200" />
 
-      {/* Page Content */}
-      {children}
+        {/* 2. Main content */}
+        <div className="flex-1 min-w-0 overflow-auto">
+          <div className="p-6">
+            {children}
+          </div>
+        </div>
+
+        {/* 3. AI panel (collapsible sidebar) */}
+        {aiOpen && (
+          <div className="w-[400px] flex-shrink-0 border-l border-gray-200">
+            <AgentPanel
+              projectId={projectId}
+              mode={agentMode}
+              benchmarkId={agentBenchmarkId}
+              projectGoal={project?.name || ''}
+              open={aiOpen}
+              onClose={() => setAiOpen(false)}
+              embedded
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

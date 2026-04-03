@@ -7,7 +7,7 @@
  * 核心是 Step 3（阶段推进），用户在整个交付周期内持续使用。
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import WorkflowStepNavigator from '@/components/workflow/WorkflowStepNavigator';
 import type { StepDef } from '@/components/workflow/WorkflowStepNavigator';
@@ -15,8 +15,6 @@ import CreateOrderStep from '@/components/workflow/CreateOrderStep';
 import EditPlanStep from '@/components/workflow/EditPlanStep';
 import PhaseExecutionStep from '@/components/workflow/PhaseExecutionStep';
 import PhaseReportStep from '@/components/workflow/PhaseReportStep';
-import AgentPanel from '@/components/agent/AgentPanel';
-import AIGenerateButton from '@/components/agent/AIGenerateButton';
 import {
   startWorkflow,
   executeWorkflowStep,
@@ -26,7 +24,6 @@ import {
   type PhaseData,
   type PhaseReportData,
 } from '@/lib/api/workflow-client';
-import { getBenchmarks } from '@/lib/agent-api';
 import type { CreateOrderFormData, TeamMemberInfo } from '@/lib/workflow/w3-types';
 import type { EnhancedSmartExtractData } from '@/lib/workflow/w1-types';
 import { mapExtractResponse } from '@/lib/workflow/w1-types';
@@ -57,19 +54,6 @@ export default function DeliveryPage() {
   const [reportData, setReportData] = useState<PhaseReportData | null>(null);
   const [reportFilePath, setReportFilePath] = useState<string | null>(null);
   const [w1ExtractData, setW1ExtractData] = useState<EnhancedSmartExtractData | null>(null);
-
-  // Agent panel
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [agentBenchmarkId, setAgentBenchmarkId] = useState<string>('');
-
-  // Fetch benchmark list for Agent panel
-  useEffect(() => {
-    getBenchmarks()
-      .then((bms) => {
-        if (bms.length > 0) setAgentBenchmarkId(bms[0]._key);
-      })
-      .catch(console.error);
-  }, []);
 
   // Start workflow + restore state
   useEffect(() => {
@@ -416,36 +400,9 @@ export default function DeliveryPage() {
             onBack={handleBackToExecution}
           />
 
-          {/* AI 一键生成：咨询报告（阶段工作启动后才可用） */}
-          {phases.length > 0 && (
-            <AIGenerateButton
-              mode="consulting_report"
-              projectId={projectId}
-              benchmarkId={agentBenchmarkId}
-              projectGoal="组织诊断咨询报告"
-              disabled={!phases.some(p => p.status !== 'planned') || !agentBenchmarkId}
-              onClick={() => setAgentOpen(true)}
-            />
-          )}
         </div>
       )}
     </WorkflowStepNavigator>
-
-    <AgentPanel
-      projectId={projectId}
-      mode="consulting_report"
-      benchmarkId={agentBenchmarkId}
-      projectGoal="组织诊断咨询报告"
-      open={agentOpen}
-      onClose={() => setAgentOpen(false)}
-      workflowData={useMemo(() => ({
-        smart_extract: w1ExtractData,
-        milestone_plan: planData,
-        phases,
-        team_members: teamMembers,
-        report_data: reportData,
-      }), [w1ExtractData, planData, phases, teamMembers, reportData])}
-    />
     </>
   );
 }

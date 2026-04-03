@@ -4,6 +4,18 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import {
+  LayoutDashboard,
+  FolderKanban,
+  BookOpen,
+  Settings,
+  Cpu,
+  FileText,
+  Layers,
+  LogOut,
+  ChevronLeft,
+  Menu,
+} from 'lucide-react';
 
 interface DashboardShellProps {
   children: ReactNode;
@@ -12,55 +24,29 @@ interface DashboardShellProps {
 interface NavItem {
   name: string;
   href: string;
-  icon: string;
-  badge?: string;
+  icon: ReactNode;
 }
 
 interface NavGroup {
   title: string;
-  icon: string;
   items: NavItem[];
 }
 
 const navigationGroups: NavGroup[] = [
   {
     title: '工作台',
-    icon: '',
     items: [
-      { name: '总览', href: '/overview', icon: '📊' },
-      { name: 'AI 顾问', href: '/agent', icon: '🤖' },
-    ],
-  },
-  {
-    title: '项目管理',
-    icon: '',
-    items: [
-      { name: '项目列表', href: '/projects', icon: '📂' },
-    ],
-  },
-  {
-    title: '研讨会工具',
-    icon: '',
-    items: [
-      { name: '能力模型研讨', href: '/workshop/competency', icon: '🧠' },
-      { name: '智能共创', href: '/workshop/cocreate', icon: '✨' },
-    ],
-  },
-  {
-    title: '数据',
-    icon: '',
-    items: [
-      { name: '数据探索', href: '/data', icon: '🔍' },
+      { name: '项目总览', href: '/projects', icon: <LayoutDashboard size={18} /> },
+      { name: '知识库', href: '/knowledge', icon: <BookOpen size={18} /> },
     ],
   },
   {
     title: '系统',
-    icon: '',
     items: [
-      { name: '系统管理', href: '/settings/system', icon: '🔧' },
-      { name: '内核管理', href: '/settings/kernel', icon: '⚙️' },
-      { name: '知识库', href: '/knowledge/dashboard', icon: '📚' },
-      { name: '报告历史', href: '/history', icon: '📁' },
+      { name: '内核管理', href: '/kernel', icon: <Cpu size={18} /> },
+      { name: '系统设置', href: '/settings', icon: <Settings size={18} /> },
+      { name: 'PPT 模板', href: '/templates', icon: <FileText size={18} /> },
+      { name: '版式管理', href: '/layouts', icon: <Layers size={18} /> },
     ],
   },
 ];
@@ -96,7 +82,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         onClick={() => setSidebarOpen(!sidebarOpen)}
         className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md"
       >
-        <span className="text-xl">{sidebarOpen ? '✕' : '☰'}</span>
+        {sidebarOpen ? <ChevronLeft size={20} /> : <Menu size={20} />}
       </button>
 
       {/* Desktop sidebar toggle (presentation mode) */}
@@ -106,7 +92,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         style={{ left: sidebarHidden ? '16px' : '272px' }}
         title="按 H 切换侧边栏"
       >
-        <span className="text-gray-500 text-sm">{sidebarHidden ? '☰' : '✕'}</span>
+        {sidebarHidden ? <Menu size={16} className="text-gray-500" /> : <ChevronLeft size={16} className="text-gray-500" />}
       </button>
 
       {/* Sidebar */}
@@ -136,9 +122,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             {navigationGroups.map((group) => (
               <div key={group.title} className="space-y-1">
                 {/* Group Header */}
-                <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  <span>{group.icon}</span>
-                  <span>{group.title}</span>
+                <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  {group.title}
                 </div>
                 {/* Group Items */}
                 {group.items.map((item) => {
@@ -154,13 +139,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}
                     >
-                      <span className="text-lg">{item.icon}</span>
+                      {item.icon}
                       <span className="text-sm">{item.name}</span>
-                      {item.badge && (
-                        <span className="ml-auto text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
-                          {item.badge}
-                        </span>
-                      )}
                     </Link>
                   );
                 })}
@@ -196,7 +176,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                   onClick={handleSignOut}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <span>🚪</span>
+                  <LogOut size={16} />
                   <span>退出登录</span>
                 </button>
               </div>
@@ -205,7 +185,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 href="/login"
                 className="flex items-center gap-3 px-3 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors"
               >
-                <span className="text-lg">🔐</span>
+                <FolderKanban size={18} />
                 <span className="text-sm font-medium">登录 / 注册</span>
               </Link>
             )}
