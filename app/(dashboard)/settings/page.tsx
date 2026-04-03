@@ -5,6 +5,12 @@ import { useState } from 'react';
 
 const settingsSections = [
   {
+    name: '系统管理',
+    description: '功能开关、工具注册表、Hook 拦截器、记忆巩固、后台任务',
+    href: '/settings/system',
+    icon: '🔧',
+  },
+  {
     name: '内核管理',
     description: '元模型、对象、关系和图谱管理',
     href: '/settings/kernel',

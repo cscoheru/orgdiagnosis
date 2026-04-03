@@ -598,3 +598,17 @@ async def download_pptx(session_id: str):
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         filename=filename,
     )
+
+
+# ─── Tool & Hook Registry Endpoints ───
+
+@router.get("/tools", summary="列出已注册工具")
+def api_list_tools():
+    from app.tools.registry import list_tools
+    return list_tools()
+
+
+@router.get("/hooks", summary="列出已注册 Hook")
+def api_list_hooks():
+    from app.hooks.registry import list_hooks
+    return list_hooks()

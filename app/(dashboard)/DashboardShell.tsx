@@ -57,6 +57,7 @@ const navigationGroups: NavGroup[] = [
     title: '系统',
     icon: '',
     items: [
+      { name: '系统管理', href: '/settings/system', icon: '🔧' },
       { name: '内核管理', href: '/settings/kernel', icon: '⚙️' },
       { name: '知识库', href: '/knowledge/dashboard', icon: '📚' },
       { name: '报告历史', href: '/history', icon: '📁' },
