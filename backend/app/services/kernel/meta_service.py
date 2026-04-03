@@ -38,19 +38,23 @@ class MetaModelService:
         """获取元模型列表"""
         return self._meta_repo.list_all(limit, offset)
 
+    def _resolve_key(self, key: str) -> dict[str, Any] | None:
+        """先按 model_key 查，再按 _key 查"""
+        return self._meta_repo.get_by_model_key(key) or self._meta_repo.get_by_key(key)
+
     def update_meta_model(self, key: str, data: MetaModelUpdate) -> dict[str, Any] | None:
-        """更新元模型"""
-        existing = self._meta_repo.get_by_key(key)
+        """更新元模型（支持 model_key 或 _key）"""
+        existing = self._resolve_key(key)
         if existing is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"元模型 '{key}' 不存在",
             )
-        return self._meta_repo.update(key, data)
+        return self._meta_repo.update(existing["_key"], data)
 
     def delete_meta_model(self, key: str) -> bool:
-        """删除元模型"""
-        existing = self._meta_repo.get_by_key(key)
+        """删除元模型（支持 model_key 或 _key）"""
+        existing = self._resolve_key(key)
         if existing is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

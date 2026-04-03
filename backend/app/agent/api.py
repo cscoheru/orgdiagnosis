@@ -245,7 +245,7 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
         map_w2_to_collected_data,
         merge_collected_data,
     )
-    from lib.projects.store import get_project_store
+    from lib.projects.store import project_store
 
     # 1. 验证 benchmark 存在
     bp_svc = BlueprintService(db)
@@ -254,7 +254,6 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
         raise HTTPException(404, f"标杆报告不存在: {data.benchmark_id}")
 
     # 2. 从 SQLite 读取项目工作流数据
-    project_store = get_project_store()
     workflow_data = project_store.get_workflow_data(data.project_id)
 
     if not workflow_data:

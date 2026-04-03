@@ -69,9 +69,9 @@ def get_meta_model(
     key: str,
     db: Any = Depends(get_db),
 ) -> dict[str, Any]:
-    """根据 _key 获取元模型"""
+    """根据 _key 或 model_key 获取元模型"""
     service = MetaModelService(db)
-    result = service.get_meta_model(key)
+    result = service.get_meta_model_by_key(key) or service.get_meta_model(key)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -86,7 +86,7 @@ def update_meta_model(
     data: MetaModelUpdate,
     db: Any = Depends(get_db),
 ) -> dict[str, Any]:
-    """更新元模型定义"""
+    """更新元模型定义（支持 _key 或 model_key）"""
     service = MetaModelService(db)
     return service.update_meta_model(key, data)
 

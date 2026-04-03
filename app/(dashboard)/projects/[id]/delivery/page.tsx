@@ -26,6 +26,7 @@ import {
   type PhaseData,
   type PhaseReportData,
 } from '@/lib/api/workflow-client';
+import { getBenchmarks } from '@/lib/agent-api';
 import type { CreateOrderFormData, TeamMemberInfo } from '@/lib/workflow/w3-types';
 import { saveProjectOrder, getProjectOrder } from '@/lib/api/workflow-client';
 
@@ -56,6 +57,16 @@ export default function DeliveryPage() {
 
   // Agent panel
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentBenchmarkId, setAgentBenchmarkId] = useState<string>('');
+
+  // Fetch benchmark list for Agent panel
+  useEffect(() => {
+    getBenchmarks()
+      .then((bms) => {
+        if (bms.length > 0) setAgentBenchmarkId(bms[0]._key);
+      })
+      .catch(console.error);
+  }, []);
 
   // Start workflow + restore state
   useEffect(() => {
@@ -404,9 +415,9 @@ export default function DeliveryPage() {
             <AIGenerateButton
               mode="consulting_report"
               projectId={projectId}
-              benchmarkId="general"
+              benchmarkId={agentBenchmarkId}
               projectGoal="组织诊断咨询报告"
-              disabled={!phases.some(p => p.status !== 'planned')}
+              disabled={!phases.some(p => p.status !== 'planned') || !agentBenchmarkId}
               onClick={() => setAgentOpen(true)}
             />
           )}
@@ -417,7 +428,7 @@ export default function DeliveryPage() {
     <AgentPanel
       projectId={projectId}
       mode="consulting_report"
-      benchmarkId="general"
+      benchmarkId={agentBenchmarkId}
       projectGoal="组织诊断咨询报告"
       open={agentOpen}
       onClose={() => setAgentOpen(false)}

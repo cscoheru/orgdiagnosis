@@ -31,6 +31,7 @@ import {
   generateOutlineSection,
   generateOutlineActivity,
 } from '@/lib/api/workflow-client';
+import { getBenchmarks } from '@/lib/agent-api';
 import {
   mapExtractResponse,
   mapPlanResponse,
@@ -76,6 +77,7 @@ export default function ProposalPage() {
 
   // Agent panel
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentBenchmarkId, setAgentBenchmarkId] = useState<string>('');
 
   // Start workflow (or restore existing session)
   useEffect(() => {
@@ -118,6 +120,15 @@ export default function ProposalPage() {
     };
     init();
   }, [projectId]);
+
+  // Fetch benchmark list for Agent panel
+  useEffect(() => {
+    getBenchmarks()
+      .then((bms) => {
+        if (bms.length > 0) setAgentBenchmarkId(bms[0]._key);
+      })
+      .catch(console.error);
+  }, []);
 
   // Step 1: Smart extract
   const handleSmartExtract = useCallback(async (text: string) => {
@@ -384,9 +395,10 @@ export default function ProposalPage() {
             <AIGenerateButton
               mode="proposal"
               projectId={projectId}
-              benchmarkId="proposal"
+              benchmarkId={agentBenchmarkId}
               projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
               onClick={() => setAgentOpen(true)}
+              disabled={!agentBenchmarkId}
             />
           )}
         </div>
@@ -396,7 +408,7 @@ export default function ProposalPage() {
     <AgentPanel
       projectId={projectId}
       mode="proposal"
-      benchmarkId="proposal"
+      benchmarkId={agentBenchmarkId}
       projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
       open={agentOpen}
       onClose={() => setAgentOpen(false)}
