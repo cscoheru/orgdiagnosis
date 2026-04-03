@@ -44,7 +44,7 @@ ssh hk-jump "
   docker run -d \
     --name org-diagnosis-api \
     --restart unless-stopped \
-    --network bridge \
+    --network cb-network \
     -p 127.0.0.1:8000:8000 \
     -v /opt/org-diagnosis/backend/.env:/app/.env \
     -v /opt/org-diagnosis/data:/app/data \
