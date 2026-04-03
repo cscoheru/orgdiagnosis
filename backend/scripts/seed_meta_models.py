@@ -463,6 +463,63 @@ META_MODELS = [
         ],
         "description": "AI 顾问 — Agent 收集的原始数据",
     },
+
+    # ========== 智能基础设施 Smart Infrastructure (4) ==========
+    {
+        "model_key": "Knowledge_Entry",
+        "name": "知识条目",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": False, "description": "关联项目 ID"},
+            {"field_name": "session_id", "field_type": "string", "is_required": False, "description": "来源会话 ID"},
+            {"field_name": "memory_type", "field_type": "enum", "is_required": True, "enum_options": ["client", "methodology", "project", "reference"], "description": "记忆类型"},
+            {"field_name": "title", "field_type": "string", "is_required": True, "description": "简短标题"},
+            {"field_name": "content", "field_type": "text", "is_required": True, "description": "知识内容 (Markdown)"},
+            {"field_name": "tags", "field_type": "array", "is_required": False, "description": "标签列表"},
+            {"field_name": "source_type", "field_type": "enum", "is_required": False, "enum_options": ["manual", "agent", "dream"], "default_value": "manual", "description": "来源方式"},
+            {"field_name": "confidence", "field_type": "float", "is_required": False, "default_value": 1.0, "description": "置信度 (0-1)"},
+            {"field_name": "expires_at", "field_type": "datetime", "is_required": False, "description": "过期时间 (可选)"},
+            {"field_name": "created_at", "field_type": "datetime", "is_required": False, "description": "创建时间"},
+        ],
+        "description": "基础设施 — 结构化知识条目 (四类记忆体系)",
+    },
+    {
+        "model_key": "Consolidation_State",
+        "name": "巩固状态",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": True, "description": "关联项目 ID"},
+            {"field_name": "locked", "field_type": "boolean", "is_required": False, "default_value": False, "description": "是否锁定中"},
+            {"field_name": "locked_at", "field_type": "datetime", "is_required": False, "description": "锁定时间"},
+            {"field_name": "last_consolidated_at", "field_type": "datetime", "is_required": False, "description": "上次巩固时间"},
+        ],
+        "description": "基础设施 — AutoDream 记忆巩固锁和时间戳",
+    },
+    {
+        "model_key": "Project_Settings",
+        "name": "项目设置",
+        "fields": [
+            {"field_name": "project_id", "field_type": "string", "is_required": True, "description": "关联项目 ID"},
+            {"field_name": "flags", "field_type": "object", "is_required": False, "description": "功能开关配置 (JSON: {flag_name: bool})"},
+            {"field_name": "updated_at", "field_type": "datetime", "is_required": False, "description": "更新时间"},
+        ],
+        "description": "基础设施 — 项目级功能开关配置",
+    },
+    {
+        "model_key": "Background_Task",
+        "name": "后台任务",
+        "fields": [
+            {"field_name": "task_type", "field_type": "enum", "is_required": True, "enum_options": ["report_generation", "data_export", "dream_consolidation"], "description": "任务类型"},
+            {"field_name": "project_id", "field_type": "string", "is_required": False, "description": "关联项目 ID"},
+            {"field_name": "session_id", "field_type": "string", "is_required": False, "description": "来源会话 ID"},
+            {"field_name": "status", "field_type": "enum", "is_required": True, "enum_options": ["pending", "running", "completed", "failed", "cancelled"], "default_value": "pending", "description": "任务状态"},
+            {"field_name": "progress", "field_type": "float", "is_required": False, "default_value": 0.0, "description": "进度 (0-1)"},
+            {"field_name": "result", "field_type": "object", "is_required": False, "description": "任务结果 (JSON)"},
+            {"field_name": "error", "field_type": "text", "is_required": False, "description": "错误信息"},
+            {"field_name": "created_at", "field_type": "datetime", "is_required": False, "description": "创建时间"},
+            {"field_name": "started_at", "field_type": "datetime", "is_required": False, "description": "开始时间"},
+            {"field_name": "completed_at", "field_type": "datetime", "is_required": False, "description": "完成时间"},
+        ],
+        "description": "基础设施 — 后台任务记录",
+    },
 ]
 
 

@@ -69,6 +69,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Kernel: failed to seed real benchmarks: {e}")
 
+    # 注册内置工具和 hook（装饰器在 import 时自动执行）
+    try:
+        import app.tools.builtin  # noqa: F401
+        import app.hooks.builtin  # noqa: F401
+        logger.info("Plugins: tools and hooks registered")
+    except Exception as e:
+        logger.warning(f"Plugins: failed to register tools/hooks: {e}")
+
     yield
 
     close_kernel_db()

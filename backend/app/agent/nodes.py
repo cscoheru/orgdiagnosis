@@ -120,84 +120,59 @@ def planner_node(state: ConsultingState) -> dict:
 
 async def interact_node(state: ConsultingState) -> dict:
     """
-    交互节点：读取 missing_fields，调用 LLM 生成自然语言引导话术 + UI 组件。
+    交互节点：读取 missing_fields，通过 ToolRegistry 调用 guidance_generator 生成引导话术。
 
     此节点之前会 interrupt（human-in-the-loop），用户提交数据后恢复。
     """
     try:
         missing = state.get("missing_fields", [])
-        blueprint = state.get("blueprint", {})
-        collected = state.get("collected_data", {})
-        goal = state.get("project_goal", "")
-        messages = state.get("messages", [])
+        if not missing:
+            return {"mode": AgentMode.PLAN}
 
-        # 构建 UI 组件列表
-        ui_components = []
-        current_node_display = ""
+        # 通过 ToolRegistry 调用 guidance_generator
+        from app.tools import call_tool, ToolContext
 
-        for field in missing:
-            comp = {
-                "type": field.get("field_type", "input"),
-                "key": field.get("field_key", ""),
-                "label": field.get("field_label", ""),
-                "required": field.get("required", False),
+        result = await call_tool("guidance_generator", ToolContext(
+            session_id=state["session_id"],
+            benchmark_id=state["benchmark_id"],
+            project_goal=state.get("project_goal", ""),
+            collected_data=state.get("collected_data", {}),
+            messages=state.get("messages", []),
+            blueprint=state.get("blueprint", {}),
+            project_id=state.get("project_id"),
+            extra={
+                "missing_fields": missing,
+                "progress": state.get("progress", 0.0),
+                "interaction_count": state.get("interaction_count", 0),
+            },
+        ))
+
+        if not result.success:
+            # Fallback 到模板引导
+            guidance = _build_template_guidance(
+                missing[0].get("node_display_name", ""), missing
+            )
+            ui_components = [{
+                "type": f.get("field_type", "input"),
+                "key": f.get("field_key", ""),
+                "label": f.get("field_label", ""),
+                "required": f.get("required", False),
+            } for f in missing]
+            return {
+                "messages": [{
+                    "role": "assistant",
+                    "content": guidance,
+                    "metadata": {"ui_components": ui_components},
+                }],
+                "interaction_count": state.get("interaction_count", 0) + 1,
             }
-            if field.get("field_options"):
-                comp["options"] = field["field_options"]
-            ui_components.append(comp)
-            current_node_display = field.get("node_display_name", "")
 
-        # 构建 LLM 引导话术
-        system_prompt = """你是一位资深管理咨询顾问。根据用户的项目目标和当前需要收集的数据，
-用专业但亲切的语气，生成一段引导话术（2-3句话），帮助用户理解为什么需要这些数据以及如何填写。
-直接输出话术文本，不要加引号或额外格式。"""
-
-        # 收集当前需要填写的字段摘要
-        fields_summary = "\n".join(
-            f"- {f['field_label']} ({'必填' if f['required'] else '选填'})"
-            for f in missing
-        )
-
-        user_prompt = f"""项目目标：{goal}
-标杆模板：{blueprint.get('title', '')}
-当前分析节点：{current_node_display}
-已收集数据概要：{json.dumps({k: '...' for k in collected.keys()}, ensure_ascii=False)}
-需要收集的字段：
-{fields_summary}
-
-请生成引导话术。"""
-
-        ai_client = _get_ai_client()
-        if ai_client.is_configured():
-            try:
-                guidance = await ai_client.chat(
-                    system_prompt, user_prompt,
-                    temperature=0.7, max_tokens=512,
-                )
-            except Exception as e:
-                logger.warning(f"AI guidance generation failed: {e}, using template")
-                guidance = _build_template_guidance(current_node_display, missing)
-        else:
-            guidance = _build_template_guidance(current_node_display, missing)
-
-        progress = state.get("progress", 0.0)
-
-        return {
-            "messages": [{
-                "role": "assistant",
-                "content": guidance,
-                "metadata": {
-                    "ui_components": ui_components,
-                    "context": {
-                        "current_node": current_node_display,
-                        "progress": progress,
-                        "benchmark_title": blueprint.get("title", ""),
-                        "interaction_count": state.get("interaction_count", 0) + 1,
-                    },
-                },
-            }],
+        update = {
             "interaction_count": state.get("interaction_count", 0) + 1,
         }
+        if result.message:
+            update["messages"] = [result.message]
+        return update
     except Exception as e:
         logger.error(f"interact_node failed: {e}")
         return {

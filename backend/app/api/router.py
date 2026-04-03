@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from app.api import (
     upload, analyze, diagnosis, export_pdf, langgraph_diagnosis,
     requirement, report, knowledge, projects, layout, knowledge_v2, folders,
-    templates, orders,
+    templates, orders, feature_flags, memory, tasks,
 )
 from lib.api import files as lib_files
 from app.api.v1.kernel import router as kernel_router
@@ -58,6 +58,15 @@ api_router.include_router(workshop_router, prefix="/v1")
 
 # AI 顾问 Agent API (Consulting OS 2.0)
 api_router.include_router(agent_router, prefix="/v1")
+
+# 功能开关管理 API
+api_router.include_router(feature_flags.router, prefix="/v1")
+
+# 知识库 API
+api_router.include_router(memory.router)
+
+# 后台任务 API
+api_router.include_router(tasks.router)
 
 # PPTX 文件下载（本地 output 目录）
 @api_router.get("/output/pptx/{filename}")

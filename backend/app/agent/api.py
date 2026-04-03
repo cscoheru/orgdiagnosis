@@ -177,6 +177,16 @@ async def create_agent_session(data: AgentSessionCreate, db: Any = Depends(get_d
     ))
     session_key = session["_key"]
 
+    # 2.5 触发 ON_SESSION_START hook
+    from app.hooks.base import HookContext as HC, HookPoint
+    from app.hooks.registry import run_hooks
+    await run_hooks(HookPoint.ON_SESSION_START, HC(
+        hook_point=HookPoint.ON_SESSION_START,
+        session_id=session_key,
+        project_id=data.project_id or "",
+        data={"benchmark_id": data.benchmark_id, "project_goal": data.project_goal},
+    ))
+
     # 3. 启动 LangGraph 工作流
     try:
         wf = get_agent_workflow()
@@ -469,6 +479,21 @@ async def resume_agent_session(
                 logger.info(f"Agent PPTX linked to project_exports: {export['id']}")
             except Exception as e:
                 logger.warning(f"Failed to create project_export: {e}")
+
+        # 异步触发 AutoDream 记忆巩固（不阻塞响应）
+        try:
+            from app.services.dream.dream_service import DreamService
+            from app.services.feature_flags import feature_flags
+            if feature_flags.is_enabled("dream_consolidation"):
+                async def _trigger_dream():
+                    try:
+                        dream_svc = DreamService(db)
+                        await dream_svc.check_and_consolidate(project_id or "")
+                    except Exception as e:
+                        logger.warning(f"[dream] background trigger failed: {e}")
+                asyncio.create_task(_trigger_dream())
+        except Exception as e:
+            logger.warning(f"[dream] trigger setup failed: {e}")
 
     # 如果失败，返回错误信息
     if mode == "failed":
