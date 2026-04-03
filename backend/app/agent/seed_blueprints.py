@@ -80,8 +80,9 @@ LOGIC_NODES = [
             },
             "market_position": {
                 "label": "市场地位",
-                "type": "select",
+                "type": "single_choice",
                 "options": ["领导者", "挑战者", "跟随者", "利基者"],
+                "ui_style": "cards",
                 "required": True,
             },
             "industry_trend": {
@@ -116,7 +117,15 @@ LOGIC_NODES = [
             },
             "threats": {
                 "label": "外部威胁 (T)",
-                "type": "textarea",
+                "type": "multi_choice",
+                "options": [
+                    "新进入者威胁",
+                    "替代品/新技术颠覆",
+                    "行业监管收紧",
+                    "市场需求下滑",
+                    "供应链风险",
+                ],
+                "allow_custom": True,
                 "required": True,
             },
         },
@@ -131,8 +140,9 @@ LOGIC_NODES = [
         "required_data_schema": {
             "org_type": {
                 "label": "组织类型",
-                "type": "select",
+                "type": "single_choice",
                 "options": ["职能制", "事业部制", "矩阵制", "网络制", "混合制"],
+                "ui_style": "cards",
                 "required": True,
             },
             "hierarchy_levels": {
@@ -147,7 +157,15 @@ LOGIC_NODES = [
             },
             "org_pain_points": {
                 "label": "组织结构痛点",
-                "type": "textarea",
+                "type": "multi_choice",
+                "options": [
+                    "层级过多，决策链长",
+                    "部门墙严重，协作困难",
+                    "权责不清，推诿扯皮",
+                    "管理层能力不足",
+                    "组织僵化，难以适应变化",
+                ],
+                "allow_custom": True,
                 "required": True,
             },
         },
@@ -172,7 +190,15 @@ LOGIC_NODES = [
             },
             "talent_pain_points": {
                 "label": "人才痛点",
-                "type": "textarea",
+                "type": "multi_choice",
+                "options": [
+                    "关键岗位缺人",
+                    "人才流失率高",
+                    "胜任力不匹配",
+                    "缺乏继任计划",
+                    "培训体系不完善",
+                ],
+                "allow_custom": True,
                 "required": True,
             },
         },
@@ -187,13 +213,22 @@ LOGIC_NODES = [
         "required_data_schema": {
             "has_kpi_system": {
                 "label": "是否建立 KPI 体系",
-                "type": "select",
+                "type": "single_choice",
                 "options": ["已建立", "部分建立", "未建立"],
+                "ui_style": "cards",
                 "required": True,
             },
             "performance_pain_points": {
                 "label": "绩效管理痛点",
-                "type": "textarea",
+                "type": "multi_choice",
+                "options": [
+                    "考核指标不清晰",
+                    "考核周期不合理",
+                    "结果与薪酬脱钩",
+                    "缺乏绩效反馈",
+                    "目标设定困难",
+                ],
+                "allow_custom": True,
                 "required": True,
             },
         },
@@ -261,6 +296,16 @@ BENCHMARKS = [
         "industry": "通用",
         "consulting_type": "战略规划",
         "description": "聚焦战略分析，从企业概况到 SWOT 到战略建议再到实施路线图",
+        "node_types": [
+            "company_overview", "industry_analysis", "SWOT",
+            "strategic_recommendations", "implementation_roadmap",
+        ],
+    },
+    {
+        "title": "项目建议书",
+        "industry": "通用",
+        "consulting_type": "组织诊断",
+        "description": "基于 W1 需求数据生成项目建议书，聚焦 SWOT 机会/威胁和战略建议",
         "node_types": [
             "company_overview", "industry_analysis", "SWOT",
             "strategic_recommendations", "implementation_roadmap",

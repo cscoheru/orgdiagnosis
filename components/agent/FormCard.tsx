@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { UIComponent } from '@/lib/agent-api';
+import { SingleChoiceGroup, MultiChoiceGroup, type SingleChoiceGroupProps, type MultiChoiceGroupProps } from './ChoiceCard';
 
 interface FormCardProps {
   components: UIComponent[];
@@ -11,9 +12,8 @@ interface FormCardProps {
 
 /**
  * FormCard — 根据 Server-Driven UI 协议动态渲染表单。
-
- * 后端返回的 ui_components 数组定义了每个字段的类型、标签、选项等。
- * 前端只负责渲染和提交，不关心业务逻辑。
+ *
+ * 支持类型: input, textarea, select, number, single_choice, multi_choice
  */
 export default function FormCard({ components, onSubmit, loading }: FormCardProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
@@ -74,6 +74,28 @@ function FieldRenderer({ component, value, onChange }: FieldRendererProps) {
   );
 
   switch (type) {
+    case 'single_choice':
+      return (
+        <div>
+          <SingleChoiceGroup
+            component={component as SingleChoiceGroupProps['component']}
+            value={(value as string) || ''}
+            onChange={(k, v) => onChange(v)}
+          />
+        </div>
+      );
+
+    case 'multi_choice':
+      return (
+        <div>
+          <MultiChoiceGroup
+            component={component as MultiChoiceGroupProps['component']}
+            value={(value as string[]) || []}
+            onChange={(k, v) => onChange(v)}
+          />
+        </div>
+      );
+
     case 'textarea':
       return (
         <div className="md:col-span-2">

@@ -37,6 +37,7 @@ from app.agent.models import (
     BenchmarkUpdate,
     AgentSessionCreate,
     AgentSessionResume,
+    AgentSessionFromProject,
 )
 
 router = APIRouter(prefix="/agent", tags=["AI 顾问 Agent"])
@@ -218,6 +219,119 @@ async def create_agent_session(data: AgentSessionCreate, db: Any = Depends(get_d
     }
 
 
+@router.post("/sessions/from-project", status_code=status.HTTP_201_CREATED, summary="从项目数据创建 Agent 会话")
+async def create_session_from_project(data: AgentSessionFromProject, db: Any = Depends(get_db)):
+    """
+    从项目工作流数据创建 Agent 会话，预填充已收集的 W1/W2 数据。
+
+    用于项目交付工作流中的"AI 一键生成"入口。
+    """
+    import json
+    from app.services.kernel.object_service import ObjectService
+    from app.models.kernel.meta_model import ObjectCreate, ObjectUpdate
+    from app.agent.workflow import get_agent_workflow
+    from app.agent.seed_mapper import (
+        map_w1_to_collected_data,
+        map_w2_to_collected_data,
+        merge_collected_data,
+    )
+    from lib.projects.store import get_project_store
+
+    # 1. 验证 benchmark 存在
+    bp_svc = BlueprintService(db)
+    benchmark = bp_svc.get_benchmark(_to_key(data.benchmark_id))
+    if not benchmark:
+        raise HTTPException(404, f"标杆报告不存在: {data.benchmark_id}")
+
+    # 2. 从 SQLite 读取项目工作流数据
+    project_store = get_project_store()
+    workflow_data = project_store.get_workflow_data(data.project_id)
+
+    if not workflow_data:
+        raise HTTPException(404, f"项目工作流数据不存在: {data.project_id}")
+
+    all_step_data = workflow_data.get("all_step_data", {})
+
+    # 3. 根据 mode 提取并映射数据
+    seed_data: dict = {}
+
+    # W1 数据 (smart_extract + milestone_plan)
+    w1_extract = all_step_data.get("smart_extract", {})
+    w1_plan = all_step_data.get("milestone_plan", {})
+    if w1_extract:
+        seed_data = map_w1_to_collected_data(w1_extract, w1_plan)
+
+    # W2 数据 (five_dimensions)
+    w2_dimensions = all_step_data.get("five_dimensions", {})
+    if w2_dimensions and data.mode == "consulting_report":
+        w2_collected = map_w2_to_collected_data(w2_dimensions)
+        seed_data = merge_collected_data(seed_data, w2_collected)
+
+    logger.info(
+        f"Seed data prepared for project {data.project_id}: "
+        f"W1={bool(w1_extract)}, W2={bool(w2_dimensions)}, "
+        f"nodes={list(seed_data.keys())}"
+    )
+
+    # 4. 创建 Agent_Session 记录
+    obj_svc = ObjectService(db)
+    session = obj_svc.create_object(ObjectCreate(
+        model_key="Agent_Session",
+        properties={
+            "project_goal": data.project_goal,
+            "benchmark_id": data.benchmark_id,
+            "project_id": data.project_id,
+            "status": "plan",
+            "progress": 0.0,
+            "interaction_count": 0,
+            "source": data.mode,  # "proposal" or "consulting_report"
+        },
+    ))
+    session_key = session["_key"]
+
+    # 5. 启动 LangGraph 工作流 (带种子数据)
+    try:
+        wf = get_agent_workflow()
+        result = await wf.start_with_seed(
+            session_id=session_key,
+            benchmark_id=_to_key(data.benchmark_id),
+            project_goal=data.project_goal,
+            seed_data=seed_data,
+            project_id=data.project_id,
+        )
+    except Exception as e:
+        logger.error(f"Failed to start workflow: {e}")
+        raise HTTPException(500, f"工作流启动失败: {str(e)}")
+
+    # 6. 更新 session 状态
+    mode = result.get("mode", "plan")
+    progress = result.get("progress", 0.0)
+    try:
+        orig_props = session.get("properties", {})
+        obj_svc.update_object(session_key, ObjectUpdate(properties={
+            "project_goal": orig_props.get("project_goal", data.project_goal),
+            "benchmark_id": orig_props.get("benchmark_id", data.benchmark_id),
+            "project_id": data.project_id,
+            "status": mode,
+            "progress": progress,
+            "interaction_count": 0,
+            "source": data.mode,
+        }))
+    except Exception as e:
+        logger.warning(f"Failed to update session status: {e}")
+
+    # 7. 返回 session + 交互指令
+    ui_response = wf.get_missing_ui(result)
+
+    return {
+        "session": session,
+        "interaction": ui_response,
+        "mode": mode,
+        "progress": progress,
+        "seeded_nodes": list(seed_data.keys()),
+    }
+
+
 @router.get("/sessions", summary="列表 Agent 会话")
 def list_agent_sessions(
     project_id: str | None = Query(default=None),
@@ -337,6 +451,24 @@ async def resume_agent_session(
                 if metadata.get("kernel_objects_created"):
                     response["kernel_objects_created"] = metadata["kernel_objects_created"]
                 break
+
+        # 关联 PPTX 到 project_exports（仅当有 project_id 时）
+        pptx_path = result.get("pptx_path")
+        project_id = session.get("properties", {}).get("project_id")
+        if pptx_path and project_id:
+            try:
+                from lib.projects.store import get_project_store
+                store = get_project_store()
+                export = store.save_export(
+                    project_id=project_id,
+                    file_path=pptx_path,
+                    source="agent",
+                    slide_count=result.get("slide_count"),
+                )
+                response["export"] = export
+                logger.info(f"Agent PPTX linked to project_exports: {export['id']}")
+            except Exception as e:
+                logger.warning(f"Failed to create project_export: {e}")
 
     # 如果失败，返回错误信息
     if mode == "failed":

@@ -11,12 +11,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 // ============================================================
 
 export interface UIComponent {
-  type: 'input' | 'textarea' | 'select' | 'multiselect' | 'number' | 'file'
+  type: 'input' | 'textarea' | 'select' | 'single_choice' | 'multi_choice' | 'rating' | 'number' | 'file'
   key: string
   label: string
   placeholder?: string
   required: boolean
   options?: string[]
+  ui_style?: 'cards' | 'chips' | 'slider'
+  allow_custom?: boolean
   min?: number
   max?: number
   accept?: string[]
@@ -189,6 +191,40 @@ export async function getBenchmarks(params?: {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`Failed to get benchmarks: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Create Agent session from existing project data (W1/W2 pre-fill)
+ */
+export async function createSessionFromProject(
+  projectId: string,
+  benchmarkId: string,
+  projectGoal: string,
+  mode: 'proposal' | 'consulting_report' = 'consulting_report',
+): Promise<{
+  session: AgentSession
+  interaction: InteractionResponse
+  mode: string
+  progress: number
+  seeded_nodes: string[]
+}> {
+  const response = await fetch(`${API_BASE}/api/v1/agent/sessions/from-project`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      project_id: projectId,
+      benchmark_id: benchmarkId,
+      project_goal: projectGoal,
+      mode,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `Failed to create session from project: ${response.status}`)
   }
 
   return response.json()

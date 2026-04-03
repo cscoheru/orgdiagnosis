@@ -104,6 +104,14 @@ class AgentSessionCreate(BaseModel):
     project_id: str | None = Field(default=None, description="关联的项目 ID")
 
 
+class AgentSessionFromProject(BaseModel):
+    """从项目工作流创建 Agent 会话 (带种子数据)"""
+    project_id: str = Field(..., description="项目 ID")
+    benchmark_id: str = Field(..., description="标杆报告模板 ID")
+    project_goal: str = Field(..., description="项目目标")
+    mode: str = Field(default="consulting_report", description="proposal 或 consulting_report")
+
+
 class AgentSessionResume(BaseModel):
     """恢复 Agent 会话 (提交用户数据)"""
     data: dict[str, Any] = Field(..., description="用户提交的表单数据")

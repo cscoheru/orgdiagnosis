@@ -21,6 +21,8 @@ import MDSContentStep from '@/components/workflow/MDSContentStep';
 import ImplementationOutlineStep from '@/components/workflow/ImplementationOutlineStep';
 import TemplateSelectionStep from '@/components/workflow/TemplateSelectionStep';
 import PPTOutputStep from '@/components/workflow/PPTOutputStep';
+import AgentPanel from '@/components/agent/AgentPanel';
+import AIGenerateButton from '@/components/agent/AIGenerateButton';
 import {
   startWorkflow,
   executeWorkflowStep,
@@ -71,6 +73,9 @@ export default function ProposalPage() {
   const [pptFilePath, setPPTFilePath] = useState<string | null>(null);
   const [generatingSection, setGeneratingSection] = useState<number | null>(null);
   const [generatingActivity, setGeneratingActivity] = useState<[number, number] | null>(null);
+
+  // Agent panel
+  const [agentOpen, setAgentOpen] = useState(false);
 
   // Start workflow (or restore existing session)
   useEffect(() => {
@@ -298,6 +303,7 @@ export default function ProposalPage() {
   const handleNext = () => { setStepError(null); setCurrentStep(Math.min(STEPS.length - 1, currentStep + 1)); };
 
   return (
+    <>
     <WorkflowStepNavigator
       steps={STEPS}
       currentStepIndex={currentStep}
@@ -323,14 +329,25 @@ export default function ProposalPage() {
       )}
 
       {currentStep === 1 && (
-        <MilestonePlanStep
-          extractedData={extractedData}
-          clientName={extractedData?.client_name || ''}
-          onGenerate={handleGeneratePlan}
-          onConfirm={handleConfirmPlan}
-          generating={loading}
-          planData={planData}
-        />
+        <div className="space-y-4">
+          <MilestonePlanStep
+            extractedData={extractedData}
+            clientName={extractedData?.client_name || ''}
+            onGenerate={handleGeneratePlan}
+            onConfirm={handleConfirmPlan}
+            generating={loading}
+            planData={planData}
+          />
+          {planData && (
+            <AIGenerateButton
+              mode="proposal"
+              projectId={projectId}
+              benchmarkId="proposal"
+              projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
+              onClick={() => setAgentOpen(true)}
+            />
+          )}
+        </div>
       )}
 
       {currentStep === 2 && (
@@ -375,5 +392,15 @@ export default function ProposalPage() {
         />
       )}
     </WorkflowStepNavigator>
+
+    <AgentPanel
+      projectId={projectId}
+      mode="proposal"
+      benchmarkId="proposal"
+      projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
+      open={agentOpen}
+      onClose={() => setAgentOpen(false)}
+    />
+    </>
   );
 }

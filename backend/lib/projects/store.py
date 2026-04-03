@@ -6,6 +6,7 @@ Uses the same database as the knowledge base for consistency.
 
 import sqlite3
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -164,6 +165,13 @@ def init_db():
             cursor.execute("SELECT workflow_session_id FROM projects LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE projects ADD COLUMN workflow_session_id TEXT")
+            conn.commit()
+
+        # Migration: add source column to project_exports if missing
+        try:
+            cursor.execute("SELECT source FROM project_exports LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE project_exports ADD COLUMN source TEXT DEFAULT 'manual'")
             conn.commit()
 
         print("✅ Project tables initialized")
@@ -474,6 +482,44 @@ class ProjectStore:
                 return data
             except (json.JSONDecodeError, TypeError):
                 return None
+
+    def save_export(self, project_id: str, file_path: str, source: str = 'manual',
+                    slide_count: int = None, generation_time_ms: int = None) -> Dict[str, Any]:
+        """Create a project_exports record for a generated file."""
+        export_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
+
+        file_size_kb = None
+        if file_path and os.path.exists(file_path):
+            file_size_kb = os.path.getsize(file_path) // 1024
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO project_exports (id, project_id, format, file_path, file_size_kb,
+                                             download_url, slide_count, generation_time_ms,
+                                             status, created_at, completed_at, source)
+                VALUES (?, ?, 'pptx', ?, ?, ?, ?, ?, 'completed', ?, ?, ?)
+            """, (
+                export_id, project_id, file_path, file_size_kb,
+                f"/api/v1/projects/{project_id}/exports/{export_id}/download",
+                slide_count, generation_time_ms,
+                now, now, source,
+            ))
+            conn.commit()
+
+        return {
+            "id": export_id,
+            "project_id": project_id,
+            "format": "pptx",
+            "file_path": file_path,
+            "file_size_kb": file_size_kb,
+            "download_url": f"/api/v1/projects/{project_id}/exports/{export_id}/download",
+            "slide_count": slide_count,
+            "status": "completed",
+            "source": source,
+            "created_at": now,
+        }
 
 
 # Global instance

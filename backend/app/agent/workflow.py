@@ -142,6 +142,28 @@ class ConsultingAgentWorkflow:
         2. 运行 init → planner → (可能中断在 interact)
         3. 返回当前状态快照
         """
+        return await self.start_with_seed(
+            session_id=session_id,
+            benchmark_id=benchmark_id,
+            project_goal=project_goal,
+            seed_data={},
+            project_id=project_id,
+        )
+
+    async def start_with_seed(
+        self,
+        session_id: str,
+        benchmark_id: str,
+        project_goal: str,
+        seed_data: dict[str, Any],
+        project_id: str | None = None,
+    ) -> dict:
+        """
+        启动 Agent 会话，预填充已收集的数据。
+
+        与 start() 相同，但 collected_data 预填充。
+        planner_node 会自动跳过已满足的节点。
+        """
         initial_state = {
             "session_id": session_id,
             "benchmark_id": benchmark_id,
@@ -149,7 +171,7 @@ class ConsultingAgentWorkflow:
             "project_goal": project_goal,
             "mode": AgentMode.PLAN,
             "messages": [],
-            "collected_data": {},
+            "collected_data": seed_data,
             "missing_fields": [],
             "interaction_count": 0,
             "progress": 0.0,

@@ -15,6 +15,8 @@ import CreateOrderStep from '@/components/workflow/CreateOrderStep';
 import EditPlanStep from '@/components/workflow/EditPlanStep';
 import PhaseExecutionStep from '@/components/workflow/PhaseExecutionStep';
 import PhaseReportStep from '@/components/workflow/PhaseReportStep';
+import AgentPanel from '@/components/agent/AgentPanel';
+import AIGenerateButton from '@/components/agent/AIGenerateButton';
 import {
   startWorkflow,
   executeWorkflowStep,
@@ -51,6 +53,10 @@ export default function DeliveryPage() {
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
   const [reportData, setReportData] = useState<PhaseReportData | null>(null);
   const [reportFilePath, setReportFilePath] = useState<string | null>(null);
+
+  // Agent panel
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentMode, setAgentMode] = useState<'proposal' | 'consulting_report'>('consulting_report');
 
   // Start workflow + restore state
   useEffect(() => {
@@ -337,6 +343,7 @@ export default function DeliveryPage() {
   const handleNext = () => setCurrentStep(Math.min(STEPS.length - 1, currentStep + 1));
 
   return (
+    <>
     <WorkflowStepNavigator
       steps={STEPS}
       currentStepIndex={currentStep}
@@ -382,16 +389,46 @@ export default function DeliveryPage() {
       )}
 
       {currentStep === 3 && (
-        <PhaseReportStep
-          phases={phases}
-          selectedPhaseId={selectedPhaseId}
-          reportData={reportData}
-          onGenerate={handleGenerateReport}
-          generating={loading}
-          filePath={reportFilePath}
-          onBack={handleBackToExecution}
-        />
+        <div className="space-y-4">
+          <PhaseReportStep
+            phases={phases}
+            selectedPhaseId={selectedPhaseId}
+            reportData={reportData}
+            onGenerate={handleGenerateReport}
+            generating={loading}
+            filePath={reportFilePath}
+            onBack={handleBackToExecution}
+          />
+
+          {/* AI 一键生成选项 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <AIGenerateButton
+              mode="proposal"
+              projectId={projectId}
+              benchmarkId="proposal"
+              projectGoal="项目建议书"
+              onClick={() => { setAgentMode('proposal'); setAgentOpen(true); }}
+            />
+            <AIGenerateButton
+              mode="consulting_report"
+              projectId={projectId}
+              benchmarkId="general"
+              projectGoal="组织诊断咨询报告"
+              onClick={() => { setAgentMode('consulting_report'); setAgentOpen(true); }}
+            />
+          </div>
+        </div>
       )}
     </WorkflowStepNavigator>
+
+    <AgentPanel
+      projectId={projectId}
+      mode={agentMode}
+      benchmarkId={agentMode === 'proposal' ? 'proposal' : 'general'}
+      projectGoal={agentMode === 'proposal' ? '项目建议书' : '组织诊断咨询报告'}
+      open={agentOpen}
+      onClose={() => setAgentOpen(false)}
+    />
+    </>
   );
 }
