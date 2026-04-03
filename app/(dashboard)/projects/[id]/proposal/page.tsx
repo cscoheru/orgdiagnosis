@@ -329,25 +329,14 @@ export default function ProposalPage() {
       )}
 
       {currentStep === 1 && (
-        <div className="space-y-4">
-          <MilestonePlanStep
-            extractedData={extractedData}
-            clientName={extractedData?.client_name || ''}
-            onGenerate={handleGeneratePlan}
-            onConfirm={handleConfirmPlan}
-            generating={loading}
-            planData={planData}
-          />
-          {planData && (
-            <AIGenerateButton
-              mode="proposal"
-              projectId={projectId}
-              benchmarkId="proposal"
-              projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
-              onClick={() => setAgentOpen(true)}
-            />
-          )}
-        </div>
+        <MilestonePlanStep
+          extractedData={extractedData}
+          clientName={extractedData?.client_name || ''}
+          onGenerate={handleGeneratePlan}
+          onConfirm={handleConfirmPlan}
+          generating={loading}
+          planData={planData}
+        />
       )}
 
       {currentStep === 2 && (
@@ -383,13 +372,24 @@ export default function ProposalPage() {
       )}
 
       {currentStep === 5 && (
-        <PPTOutputStep
-          templateData={templateData}
-          onExport={handleExportPPT}
-          exporting={loading}
-          filePath={pptFilePath}
-          slideCount={outlineData?.sections.reduce((sum, s) => sum + s.activities.reduce((a, act) => a + act.slides.length, 0), 0)}
-        />
+        <div className="space-y-4">
+          <PPTOutputStep
+            templateData={templateData}
+            onExport={handleExportPPT}
+            exporting={loading}
+            filePath={pptFilePath}
+            slideCount={outlineData?.sections.reduce((sum, s) => sum + s.activities.reduce((a, act) => a + act.slides.length, 0), 0)}
+          />
+          {extractedData && (
+            <AIGenerateButton
+              mode="proposal"
+              projectId={projectId}
+              benchmarkId="proposal"
+              projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
+              onClick={() => setAgentOpen(true)}
+            />
+          )}
+        </div>
       )}
     </WorkflowStepNavigator>
 

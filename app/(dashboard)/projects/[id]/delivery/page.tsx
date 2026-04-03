@@ -56,7 +56,6 @@ export default function DeliveryPage() {
 
   // Agent panel
   const [agentOpen, setAgentOpen] = useState(false);
-  const [agentMode, setAgentMode] = useState<'proposal' | 'consulting_report'>('consulting_report');
 
   // Start workflow + restore state
   useEffect(() => {
@@ -400,32 +399,26 @@ export default function DeliveryPage() {
             onBack={handleBackToExecution}
           />
 
-          {/* AI 一键生成选项 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <AIGenerateButton
-              mode="proposal"
-              projectId={projectId}
-              benchmarkId="proposal"
-              projectGoal="项目建议书"
-              onClick={() => { setAgentMode('proposal'); setAgentOpen(true); }}
-            />
+          {/* AI 一键生成：咨询报告（阶段工作启动后才可用） */}
+          {phases.length > 0 && (
             <AIGenerateButton
               mode="consulting_report"
               projectId={projectId}
               benchmarkId="general"
               projectGoal="组织诊断咨询报告"
-              onClick={() => { setAgentMode('consulting_report'); setAgentOpen(true); }}
+              disabled={!phases.some(p => p.status !== 'planned')}
+              onClick={() => setAgentOpen(true)}
             />
-          </div>
+          )}
         </div>
       )}
     </WorkflowStepNavigator>
 
     <AgentPanel
       projectId={projectId}
-      mode={agentMode}
-      benchmarkId={agentMode === 'proposal' ? 'proposal' : 'general'}
-      projectGoal={agentMode === 'proposal' ? '项目建议书' : '组织诊断咨询报告'}
+      mode="consulting_report"
+      benchmarkId="general"
+      projectGoal="组织诊断咨询报告"
       open={agentOpen}
       onClose={() => setAgentOpen(false)}
     />
