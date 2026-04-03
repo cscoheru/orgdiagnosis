@@ -18,6 +18,7 @@ interface AgentPanelProps {
   open: boolean;
   onClose: () => void;
   onComplete?: (result: { pptxUrl: string; sessionId: string }) => void;
+  workflowData?: Record<string, unknown>;
 }
 
 /**
@@ -37,6 +38,7 @@ export default function AgentPanel({
   open,
   onClose,
   onComplete,
+  workflowData,
 }: AgentPanelProps) {
   const [session, setSession] = useState<AgentSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -54,7 +56,7 @@ export default function AgentPanel({
     setLoading(true);
     setError('');
 
-    createSessionFromProject(projectId, benchmarkId, projectGoal, mode)
+    createSessionFromProject(projectId, benchmarkId, projectGoal, mode, workflowData)
       .then((result) => {
         setSession(result.session);
         setInteraction(result.interaction);

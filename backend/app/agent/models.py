@@ -110,6 +110,7 @@ class AgentSessionFromProject(BaseModel):
     benchmark_id: str = Field(..., description="标杆报告模板 ID")
     project_goal: str = Field(..., description="项目目标")
     mode: str = Field(default="consulting_report", description="proposal 或 consulting_report")
+    workflow_data: dict[str, Any] | None = Field(default=None, description="前端传入的工作流步骤数据 (优先于 SQLite)")
 
 
 class AgentSessionResume(BaseModel):

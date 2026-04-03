@@ -204,6 +204,7 @@ export async function createSessionFromProject(
   benchmarkId: string,
   projectGoal: string,
   mode: 'proposal' | 'consulting_report' = 'consulting_report',
+  workflowData?: Record<string, unknown>,
 ): Promise<{
   session: AgentSession
   interaction: InteractionResponse
@@ -219,6 +220,7 @@ export async function createSessionFromProject(
       benchmark_id: benchmarkId,
       project_goal: projectGoal,
       mode,
+      ...(workflowData ? { workflow_data: workflowData } : {}),
     }),
   })
 

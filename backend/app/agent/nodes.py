@@ -197,6 +197,19 @@ def collect_node(state: ConsultingState) -> dict:
                 "error_message": "未收到用户数据",
             }
 
+        # 处理特殊 "确认执行" 操作（来自 guidance_generator 的跳过建议）
+        if "__confirm_execute__" in user_data:
+            if user_data["__confirm_execute__"] == "直接生成":
+                return {
+                    "mode": AgentMode.EXECUTE,
+                    "messages": [{"role": "user", "content": "确认直接生成报告"}],
+                }
+            # 用户选择补充更多信息，回到 PLAN
+            return {
+                "mode": AgentMode.PLAN,
+                "messages": [{"role": "user", "content": "选择补充更多信息"}],
+            }
+
         collected = dict(state.get("collected_data", {}))
 
         # 预加载所有 logic node 的 schema，建立 field_key → node_type 映射

@@ -196,3 +196,115 @@ def _parse_employee_count(scale: str) -> str:
         if key in scale:
             return value
     return scale
+
+
+def map_w3_to_collected_data(
+    phases: list[dict[str, Any]] | None = None,
+    team_members: list[dict[str, Any]] | None = None,
+    report_data: dict[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """
+    将 W3 项目交付数据映射为 Agent collected_data 格式。
+
+    Args:
+        phases: W3 阶段列表 (PhaseData[])
+        team_members: 团队成员列表 (TeamMemberInfo[])
+        report_data: 阶段报告数据 (PhaseReportData)
+
+    Returns:
+        需要合并到已有 collected_data 中的增量数据
+    """
+    collected: dict[str, dict[str, Any]] = {}
+    phases = phases or []
+    team_members = team_members or []
+    report_data = report_data or {}
+
+    if not phases and not team_members and not report_data:
+        return collected
+
+    # ─── implementation_roadmap (阶段 + 时间线) ───
+    if phases:
+        phases_text = "; ".join(
+            f"{p.get('phase_name', '')}: {p.get('goals', '')}"
+            for p in phases if p.get("phase_name")
+        )
+        total_weeks = sum(p.get("duration_weeks", 0) or 0 for p in phases)
+        completed_count = sum(1 for p in phases if p.get("status") == "completed")
+        completed_phases = [p for p in phases if p.get("status") == "completed"]
+
+        collected["implementation_roadmap"] = {
+            "phases": phases_text,
+            "timeline": f"共{len(phases)}个阶段，预计{total_weeks}周，已完成{completed_count}个阶段",
+        }
+
+        # ─── strategic_recommendations (目标 + 交付物) ───
+        all_goals = [p.get("goals", "") for p in phases if p.get("goals")]
+        all_deliverables: list[str] = []
+        for p in completed_phases:
+            deliverables = p.get("deliverables", [])
+            if isinstance(deliverables, list):
+                all_deliverables.extend(deliverables)
+
+        collected["strategic_recommendations"] = {
+            "strategic_priorities": "; ".join(g for g in all_goals if g),
+            "expected_outcomes": "; ".join(all_deliverables[:10]) if all_deliverables else "",
+        }
+
+    # ─── organizational_structure + talent_assessment (团队信息) ───
+    if team_members:
+        role_counts: dict[str, int] = {}
+        for m in team_members:
+            role = m.get("role", "member")
+            role_counts[role] = role_counts.get(role, 0) + 1
+
+        external_count = sum(1 for m in team_members if m.get("is_external"))
+
+        # 启发式推断组织类型
+        lead_count = role_counts.get("lead", 0) + role_counts.get("项目负责人", 0)
+        member_count = sum(v for k, v in role_counts.items() if k not in ("lead", "项目负责人"))
+        if lead_count > 1:
+            org_type_hint = "矩阵制"
+        elif member_count > 5:
+            org_type_hint = "事业部制"
+        else:
+            org_type_hint = "职能制"
+
+        collected.setdefault("organizational_structure", {})
+        collected["organizational_structure"].update({
+            "org_type": org_type_hint,
+            "team_composition": f"共{len(team_members)}人（外部{external_count}人）",
+        })
+
+        collected.setdefault("talent_assessment", {})
+        specializations = [m.get("specialization", "") for m in team_members if m.get("specialization")]
+        collected["talent_assessment"].update({
+            "key_positions": str(len(team_members)),
+            "team_specializations": "; ".join(specializations[:8]) if specializations else "",
+        })
+
+    # ─── SWOT (报告数据增强) ───
+    if report_data:
+        storyline = report_data.get("storyline", "")
+        evidence = report_data.get("evidence", [])
+        arguments = report_data.get("arguments", [])
+
+        if storyline:
+            collected.setdefault("SWOT", {})
+            existing = collected["SWOT"].get("strengths", "")
+            collected["SWOT"]["strengths"] = f"{existing}; {storyline}" if existing else storyline
+
+        if evidence and isinstance(evidence, list):
+            collected.setdefault("SWOT", {})
+            existing = collected["SWOT"].get("opportunities", "")
+            collected["SWOT"]["opportunities"] = (
+                f"{existing}; {'; '.join(evidence[:5])}" if existing else "; ".join(evidence[:5])
+            )
+
+        if arguments and isinstance(arguments, list):
+            collected.setdefault("strategic_recommendations", {})
+            existing = collected["strategic_recommendations"].get("strategic_priorities", "")
+            collected["strategic_recommendations"]["strategic_priorities"] = (
+                f"{existing}; {'; '.join(arguments[:5])}" if existing else "; ".join(arguments[:5])
+            )
+
+    return collected

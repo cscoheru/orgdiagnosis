@@ -7,7 +7,7 @@
  * 核心是 Step 3（阶段推进），用户在整个交付周期内持续使用。
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import WorkflowStepNavigator from '@/components/workflow/WorkflowStepNavigator';
 import type { StepDef } from '@/components/workflow/WorkflowStepNavigator';
@@ -28,6 +28,8 @@ import {
 } from '@/lib/api/workflow-client';
 import { getBenchmarks } from '@/lib/agent-api';
 import type { CreateOrderFormData, TeamMemberInfo } from '@/lib/workflow/w3-types';
+import type { EnhancedSmartExtractData } from '@/lib/workflow/w1-types';
+import { mapExtractResponse } from '@/lib/workflow/w1-types';
 import { saveProjectOrder, getProjectOrder } from '@/lib/api/workflow-client';
 
 const STEPS: StepDef[] = [
@@ -54,6 +56,7 @@ export default function DeliveryPage() {
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
   const [reportData, setReportData] = useState<PhaseReportData | null>(null);
   const [reportFilePath, setReportFilePath] = useState<string | null>(null);
+  const [w1ExtractData, setW1ExtractData] = useState<EnhancedSmartExtractData | null>(null);
 
   // Agent panel
   const [agentOpen, setAgentOpen] = useState(false);
@@ -71,10 +74,13 @@ export default function DeliveryPage() {
   // Start workflow + restore state
   useEffect(() => {
     const init = async () => {
-      // ── 1. Fetch W1 proposal data (milestone_plan) ──
+      // ── 1. Fetch W1 proposal data (milestone_plan + smart_extract) ──
       const proposalRes = await startWorkflow(projectId, 'proposal');
       if (proposalRes.success && proposalRes.data) {
         const proposalData = proposalRes.data.all_step_data || {};
+        if (proposalData.smart_extract) {
+          setW1ExtractData(mapExtractResponse(proposalData.smart_extract as Record<string, unknown>));
+        }
         if (proposalData.milestone_plan) {
           const plan = proposalData.milestone_plan as Record<string, unknown>;
           setPlanData({
@@ -432,6 +438,13 @@ export default function DeliveryPage() {
       projectGoal="组织诊断咨询报告"
       open={agentOpen}
       onClose={() => setAgentOpen(false)}
+      workflowData={useMemo(() => ({
+        smart_extract: w1ExtractData,
+        milestone_plan: planData,
+        phases,
+        team_members: teamMembers,
+        report_data: reportData,
+      }), [w1ExtractData, planData, phases, teamMembers, reportData])}
     />
     </>
   );

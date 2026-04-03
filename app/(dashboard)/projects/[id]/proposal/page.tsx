@@ -11,7 +11,7 @@
  *   6. 生成 PPTX（对接 v2 renderer）
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import WorkflowStepNavigator from '@/components/workflow/WorkflowStepNavigator';
 import type { StepDef } from '@/components/workflow/WorkflowStepNavigator';
@@ -412,6 +412,13 @@ export default function ProposalPage() {
       projectGoal={`${extractedData?.client_name || '项目'} 建议书`}
       open={agentOpen}
       onClose={() => setAgentOpen(false)}
+      workflowData={useMemo(() => ({
+        smart_extract: extractedData,
+        milestone_plan: planData,
+        mds_content: mdsData,
+        impl_outline: outlineData,
+        template_select: templateData,
+      }), [extractedData, planData, mdsData, outlineData, templateData])}
     />
     </>
   );

@@ -243,6 +243,7 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
     from app.agent.seed_mapper import (
         map_w1_to_collected_data,
         map_w2_to_collected_data,
+        map_w3_to_collected_data,
         merge_collected_data,
     )
     from lib.projects.store import project_store
@@ -253,13 +254,16 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
     if not benchmark:
         raise HTTPException(404, f"标杆报告不存在: {data.benchmark_id}")
 
-    # 2. 从 SQLite 读取项目工作流数据
-    workflow_data = project_store.get_workflow_data(data.project_id)
-
-    if not workflow_data:
-        raise HTTPException(404, f"项目工作流数据不存在: {data.project_id}")
-
-    all_step_data = workflow_data.get("all_step_data", {})
+    # 2. 获取工作流数据：优先使用前端传入，fallback 到 SQLite
+    if data.workflow_data:
+        all_step_data = data.workflow_data
+        logger.info(f"Using frontend-provided workflow_data for project {data.project_id}")
+    else:
+        workflow_data = project_store.get_workflow_data(data.project_id)
+        if not workflow_data:
+            raise HTTPException(404, f"项目工作流数据不存在: {data.project_id}")
+        # 兼容两种 key：engine 存储 "step_data"，旧代码读取 "all_step_data"
+        all_step_data = workflow_data.get("step_data") or workflow_data.get("all_step_data", {})
 
     # 3. 根据 mode 提取并映射数据
     seed_data: dict = {}
@@ -276,9 +280,18 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
         w2_collected = map_w2_to_collected_data(w2_dimensions)
         seed_data = merge_collected_data(seed_data, w2_collected)
 
+    # W3 数据 (phases, team_members, report_data)
+    if data.mode == "consulting_report":
+        w3_phases = all_step_data.get("phases", [])
+        w3_team = all_step_data.get("team_members", [])
+        w3_report = all_step_data.get("report_data", {})
+        if w3_phases or w3_team or w3_report:
+            w3_collected = map_w3_to_collected_data(w3_phases, w3_team, w3_report)
+            seed_data = merge_collected_data(seed_data, w3_collected)
+
     logger.info(
         f"Seed data prepared for project {data.project_id}: "
-        f"W1={bool(w1_extract)}, W2={bool(w2_dimensions)}, "
+        f"W1={bool(w1_extract)}, W2={bool(w2_dimensions)}, W3={bool(w3_phases or w3_team or w3_report)}, "
         f"nodes={list(seed_data.keys())}"
     )
 
