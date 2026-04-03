@@ -5,11 +5,13 @@ import {
   createSession,
   resumeSession,
   getBenchmarks,
+  getTask,
   type AgentSession,
   type ChatMessage,
   type InteractionResponse,
 } from '@/lib/agent-api';
 import AgentChat from '@/components/agent/AgentChat';
+import FeatureFlagsPanel from '@/components/agent/FeatureFlagsPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,7 +122,12 @@ export default function AgentPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">AI 顾问</h1>
-        <p className="text-gray-500 mb-8">选择标杆报告模板，开始智能咨询对话</p>
+        <p className="text-gray-500 mb-6">选择标杆报告模板，开始智能咨询对话</p>
+
+        {/* Feature Flags */}
+        <div className="mb-6">
+          <FeatureFlagsPanel />
+        </div>
 
         {/* 目标输入 */}
         <div className="mb-6">

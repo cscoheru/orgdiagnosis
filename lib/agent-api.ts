@@ -229,3 +229,117 @@ export async function createSessionFromProject(
 
   return response.json()
 }
+
+// ============================================================
+// Feature Flags API
+// ============================================================
+
+export interface FeatureFlags {
+  [flag: string]: boolean
+}
+
+export async function getFeatureFlags(projectId?: string): Promise<{
+  flags: FeatureFlags
+  defaults: FeatureFlags
+}> {
+  const params = projectId ? `?project_id=${projectId}` : ''
+  const response = await fetch(`${API_BASE}/api/v1/feature-flags/list${params}`)
+  if (!response.ok) throw new Error(`Failed to get feature flags: ${response.status}`)
+  return response.json()
+}
+
+// ============================================================
+// Memory (Knowledge) API
+// ============================================================
+
+export interface KnowledgeEntry {
+  _key: string
+  _id: string
+  properties: {
+    project_id?: string
+    session_id?: string
+    memory_type: 'client' | 'methodology' | 'project' | 'reference'
+    title: string
+    content: string
+    tags?: string[]
+    source_type?: 'manual' | 'agent' | 'dream'
+    confidence?: number
+    created_at?: string
+  }
+  created_at?: string
+}
+
+export async function listMemory(params?: {
+  project_id?: string
+  memory_type?: string
+  limit?: number
+}): Promise<{ items: KnowledgeEntry[] }> {
+  const sp = new URLSearchParams()
+  if (params?.project_id) sp.set('project_id', params.project_id)
+  if (params?.memory_type) sp.set('memory_type', params.memory_type)
+  if (params?.limit) sp.set('limit', String(params.limit))
+  const query = sp.toString()
+  const response = await fetch(`${API_BASE}/api/v1/agent/memory/list${query ? `?${query}` : ''}`)
+  if (!response.ok) throw new Error(`Failed to list memory: ${response.status}`)
+  return response.json()
+}
+
+export async function saveMemory(data: {
+  memory_type: string
+  title: string
+  content: string
+  project_id?: string
+  session_id?: string
+  source_type?: string
+  tags?: string[]
+  confidence?: number
+}): Promise<{ saved: KnowledgeEntry }> {
+  const response = await fetch(`${API_BASE}/api/v1/agent/memory/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!response.ok) throw new Error(`Failed to save memory: ${response.status}`)
+  return response.json()
+}
+
+export async function deleteMemory(memoryKey: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v1/agent/memory/${memoryKey}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) throw new Error(`Failed to delete memory: ${response.status}`)
+}
+
+// ============================================================
+// Background Tasks API
+// ============================================================
+
+export interface BackgroundTask {
+  task_id: string
+  task_type: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  error?: string
+  result?: Record<string, unknown>
+  created_at: string
+  completed_at?: string
+}
+
+export async function getTask(taskId: string): Promise<BackgroundTask> {
+  const response = await fetch(`${API_BASE}/api/v1/agent/tasks/${taskId}`)
+  if (!response.ok) throw new Error(`Failed to get task: ${response.status}`)
+  return response.json()
+}
+
+export async function listTasks(params?: {
+  project_id?: string
+  task_type?: string
+}): Promise<{ items: BackgroundTask[]; count: number }> {
+  const sp = new URLSearchParams()
+  if (params?.project_id) sp.set('project_id', params.project_id)
+  if (params?.task_type) sp.set('task_type', params.task_type)
+  const query = sp.toString()
+  const response = await fetch(`${API_BASE}/api/v1/agent/tasks${query ? `?${query}` : ''}`)
+  if (!response.ok) throw new Error(`Failed to list tasks: ${response.status}`)
+  return response.json()
+}
