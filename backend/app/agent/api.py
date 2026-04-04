@@ -281,6 +281,9 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
         seed_data = merge_collected_data(seed_data, w2_collected)
 
     # W3 数据 (phases, team_members, report_data)
+    w3_phases: list = []
+    w3_team: list = []
+    w3_report: dict = {}
     if data.mode == "consulting_report":
         w3_phases = all_step_data.get("phases", [])
         w3_team = all_step_data.get("team_members", [])
