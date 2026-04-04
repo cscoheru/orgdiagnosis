@@ -37,17 +37,51 @@ def map_w1_to_collected_data(
         "industry_trend": extract_data.get("industry_background", ""),
     }
 
-    # ─── SWOT (部分 — weaknesses 来自痛点, strengths/opportunities/threats 需要用户补充) ───
+    # ─── 痛点分类：将 core_pain_points 智能分配到不同节点 ───
     pain_points = extract_data.get("core_pain_points", [])
     if isinstance(pain_points, list):
-        weaknesses = "; ".join(
-            p.get("description", "") if isinstance(p, dict) else str(p)
-            for p in pain_points if p
-        )
-    else:
-        weaknesses = str(pain_points) if pain_points else ""
+        weaknesses = []
+        org_pains = []
+        perf_pains = []
+        talent_pains = []
 
-    collected["SWOT"] = {"weaknesses": weaknesses}
+        for p in pain_points:
+            desc = p.get("description", "") if isinstance(p, dict) else str(p)
+            if not desc:
+                continue
+            weaknesses.append(desc)
+            # 关键词分类
+            desc_lower = desc.lower()
+            if any(kw in desc for kw in ["组织", "结构", "部门", "层级", "矩阵", "职能"]):
+                org_pains.append(desc)
+            if any(kw in desc for kw in ["绩效", "KPI", "考核", "薪酬", "激励", "奖金", "固浮比"]):
+                perf_pains.append(desc)
+            if any(kw in desc for kw in ["人才", "招聘", "培训", "留存", "能力", "梯队", "骨干"]):
+                talent_pains.append(desc)
+
+        collected["SWOT"] = {"weaknesses": "; ".join(weaknesses)}
+
+        if org_pains:
+            collected.setdefault("organizational_structure", {})
+            collected["organizational_structure"]["org_pain_points"] = "; ".join(org_pains)
+
+        if perf_pains:
+            collected.setdefault("performance_diagnosis", {})
+            collected["performance_diagnosis"]["performance_pain_points"] = "; ".join(perf_pains)
+
+        if talent_pains:
+            collected.setdefault("talent_assessment", {})
+            collected["talent_assessment"]["talent_pain_points"] = "; ".join(talent_pains)
+
+    # ─── 从 other_requirements / company_info 推断组织结构 ───
+    other_req = extract_data.get("other_requirements", "")
+    company_info = extract_data.get("company_info", "")
+    if other_req or company_info:
+        org_context = f"{other_req}\n{company_info}".strip()
+        collected.setdefault("organizational_structure", {})
+        if org_context:
+            existing = collected["organizational_structure"].get("org_pain_points", "")
+            collected["organizational_structure"]["org_context"] = org_context[:500]
 
     # ─── strategic_recommendations ───
     goals = extract_data.get("expected_goals", [])
@@ -74,6 +108,12 @@ def map_w1_to_collected_data(
             "phases": phases_text,
             "timeline": f"共{total_weeks}周",
         }
+
+    # ─── raw_workflow_data: 保留原始数据供 AI distiller 使用 ───
+    collected["__raw_workflow__"] = {
+        "smart_extract": extract_data,
+        "milestone_plan": plan_data or {},
+    }
 
     return collected
 

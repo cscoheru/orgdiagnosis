@@ -69,29 +69,59 @@ def planner_node(state: ConsultingState) -> dict:
     """
     规划节点：对比 blueprint vs collected_data，判断下一步。
 
-    - 有缺失 → 生成 missing_fields，mode=INTERACT
-    - 全部齐备 → mode=EXECUTE
+    核心原则：数据够用就生成报告，而非强制补全所有字段。
+    - 有原始工作流数据 (from project) → 直接 EXECUTE
+    - 数据覆盖 >40% blueprint 节点 → EXECUTE（AI distiller 可处理部分数据）
+    - 数据覆盖低且缺关键信息 → INTERACT
+    - 全部齐备 → EXECUTE
     """
     try:
         svc = _get_blueprint_service()
 
-        # 将 collected_data 的结构转换为 get_missing_fields 期望的格式
         collected_data = state.get("collected_data", {})
 
+        # 检查是否有原始工作流数据（来自 start_with_seed）
+        has_raw_data = "__raw_workflow__" in collected_data
+
+        # 计算节点覆盖率
+        tree_with_status = svc.get_dependency_tree_with_status(
+            state["benchmark_id"], collected_data
+        )
+        total_nodes = len(tree_with_status.get("nodes", []))
+        completed = sum(
+            1 for n in tree_with_status.get("nodes", [])
+            if n.get("status") == "complete"
+        )
+        # 也统计"有部分数据"的节点（not missing）
+        has_data = sum(
+            1 for n in tree_with_status.get("nodes", [])
+            if n.get("status") != "missing"
+        )
+        coverage = has_data / total_nodes if total_nodes > 0 else 0.0
+        progress = completed / total_nodes if total_nodes > 0 else 0.0
+
+        # 决策：有原始数据或覆盖率足够高 → 直接执行
+        if has_raw_data or coverage >= 0.4:
+            filled_nodes = [n.get("node_type") for n in tree_with_status.get("nodes", []) if n.get("status") != "missing"]
+            logger.info(
+                f"Planner: skipping questionnaire. "
+                f"has_raw={has_raw_data}, coverage={coverage:.0%}, "
+                f"filled_nodes={filled_nodes}"
+            )
+            return {
+                "missing_fields": [],
+                "mode": AgentMode.EXECUTE,
+                "progress": round(max(progress, coverage), 2),
+                "messages": [{
+                    "role": "system",
+                    "content": f"已继承项目工作流数据（覆盖 {len(filled_nodes)}/{total_nodes} 个分析维度），直接生成报告..."
+                }],
+            }
+
+        # 数据不足 → 检查缺失字段，进入交互模式
         missing = svc.get_missing_fields(state["benchmark_id"], collected_data)
 
         if missing:
-            # 用 with_status 版本获取实时节点状态来计算进度
-            tree_with_status = svc.get_dependency_tree_with_status(
-                state["benchmark_id"], collected_data
-            )
-            total_nodes = len(tree_with_status.get("nodes", []))
-            completed = sum(
-                1 for n in tree_with_status.get("nodes", [])
-                if n.get("status") == "complete"
-            )
-            progress = completed / total_nodes if total_nodes > 0 else 0.0
-
             return {
                 "missing_fields": missing,
                 "mode": AgentMode.INTERACT,
