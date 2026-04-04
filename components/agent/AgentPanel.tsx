@@ -87,16 +87,38 @@ export default function AgentPanel({
         setAgentMode(result.mode);
         setProgress(result.progress);
 
-        // Show Plan Mode intro if we have seeded data (data was inherited)
+        const sessionKey = result.session?._key;
+        const downloadUrl = sessionKey
+          ? `/api/v1/agent/sessions/${sessionKey}/download`
+          : undefined;
+
+        // ── mode=completed: report generated immediately ──
+        if (result.mode === 'completed') {
+          setShowPlanIntro(false);
+          setMessages([
+            {
+              role: 'assistant',
+              content: result.interaction?.message || '报告已生成完毕。',
+              metadata: {
+                context: result.interaction?.context,
+                kernel_objects_created: ['knowledge_graph', 'project_spec'],
+                pptx_download_url: downloadUrl,
+              },
+            },
+          ]);
+          if (onComplete && downloadUrl) {
+            onComplete({ pptxUrl: downloadUrl, sessionId: sessionKey });
+          }
+          return;
+        }
+
+        // ── mode=plan/interact/execute: normal flow ──
         const hasSeeds = result.seeded_nodes && result.seeded_nodes.length > 0;
         if (hasSeeds) {
-          // Show analysis animation first, then reveal actual mode
           setPlanIntroSeeds(result.seeded_nodes);
           setShowPlanIntro(true);
-          // Brief delay to let user see the "AI analyzing" view
           planIntroTimer.current = setTimeout(() => {
             setShowPlanIntro(false);
-            // Now set the actual interaction
             if (result.interaction) {
               setInteraction(result.interaction);
             }
@@ -112,7 +134,6 @@ export default function AgentPanel({
             ]);
           }, 2000);
         } else {
-          // No seeded data — show actual mode immediately
           if (result.interaction) {
             setInteraction(result.interaction);
           }
