@@ -255,7 +255,7 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
         raise HTTPException(404, f"标杆报告不存在: {data.benchmark_id}")
 
     # 2. 获取工作流数据：优先使用前端传入，fallback 到 SQLite
-    if data.workflow_data:
+    if data.workflow_data is not None:
         all_step_data = data.workflow_data
         logger.info(f"Using frontend-provided workflow_data for project {data.project_id}")
     else:

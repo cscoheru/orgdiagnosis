@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   createSessionFromProject,
   resumeSession,
@@ -32,9 +32,10 @@ interface AgentPanelProps {
  *
  * 行为：
  * 1. open=true 时，调用 createSessionFromProject() 创建带种子数据的会话
- * 2. 内嵌 AgentChat 显示交互流
- * 3. 完成后 emit onComplete 回调
- * 4. 可随时关闭（会话持久化）
+ * 2. 先展示 Plan Mode 分析动画（让用户感知 AI 正在分析已有数据）
+ * 3. 动画结束后显示实际交互 UI（interact 表单或 execute 进度）
+ * 4. 完成后 emit onComplete 回调
+ * 5. 可随时关闭（会话持久化）
  */
 export default function AgentPanel({
   projectId,
@@ -56,6 +57,18 @@ export default function AgentPanel({
   const [error, setError] = useState('');
   const [started, setStarted] = useState(false);
 
+  // Plan Mode transition: show analysis animation before actual mode
+  const [showPlanIntro, setShowPlanIntro] = useState(false);
+  const [planIntroSeeds, setPlanIntroSeeds] = useState<string[]>([]);
+  const planIntroTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (planIntroTimer.current) clearTimeout(planIntroTimer.current);
+    };
+  }, []);
+
   // 打开面板时自动启动（每次打开都重新创建 session，确保使用最新 workflowData）
   useEffect(() => {
     if (!open) return;
@@ -65,27 +78,58 @@ export default function AgentPanel({
     setSession(null);
     setMessages([]);
     setInteraction(null);
+    setShowPlanIntro(false);
+    if (planIntroTimer.current) clearTimeout(planIntroTimer.current);
 
     createSessionFromProject(projectId, benchmarkId, projectGoal, mode, workflowData)
       .then((result) => {
         setSession(result.session);
-        setInteraction(result.interaction);
         setAgentMode(result.mode);
         setProgress(result.progress);
-        setMessages([]);
 
-        // 初始 assistant 消息
-        if (result.interaction) {
-          setMessages([
-            {
-              role: 'assistant',
-              content: result.interaction.message,
-              metadata: {
-                ui_components: result.interaction.ui_components,
-                context: result.interaction.context,
+        // Show Plan Mode intro if we have seeded data (data was inherited)
+        const hasSeeds = result.seeded_nodes && result.seeded_nodes.length > 0;
+        if (hasSeeds) {
+          // Show analysis animation first, then reveal actual mode
+          setPlanIntroSeeds(result.seeded_nodes);
+          setShowPlanIntro(true);
+          // Brief delay to let user see the "AI analyzing" view
+          planIntroTimer.current = setTimeout(() => {
+            setShowPlanIntro(false);
+            // Now set the actual interaction
+            if (result.interaction) {
+              setInteraction(result.interaction);
+            }
+            setMessages([
+              {
+                role: 'assistant',
+                content: result.interaction?.message || '数据已分析完毕，请确认以下信息。',
+                metadata: {
+                  ui_components: result.interaction?.ui_components,
+                  context: result.interaction?.context,
+                },
               },
-            },
-          ]);
+            ]);
+          }, 2000);
+        } else {
+          // No seeded data — show actual mode immediately
+          if (result.interaction) {
+            setInteraction(result.interaction);
+          }
+          setMessages(
+            result.interaction
+              ? [
+                  {
+                    role: 'assistant',
+                    content: result.interaction.message,
+                    metadata: {
+                      ui_components: result.interaction.ui_components,
+                      context: result.interaction.context,
+                    },
+                  },
+                ]
+              : [],
+          );
         }
       })
       .catch((e) => {
@@ -175,7 +219,9 @@ export default function AgentPanel({
           <p className="text-xs text-gray-500 mt-0.5">
             {started && !error
               ? session
-                ? `会话 ${session._key.slice(0, 8)}...`
+                ? showPlanIntro
+                  ? `正在分析项目数据...`
+                  : `会话 ${session._key.slice(0, 8)}...`
                 : '正在初始化...'
               : ''}
           </p>
@@ -209,6 +255,51 @@ export default function AgentPanel({
             >
               重试
             </button>
+          </div>
+        ) : showPlanIntro ? (
+          /* Plan Mode Intro — AI analyzing inherited data */
+          <div className="flex flex-col items-center justify-center h-full px-6 py-8">
+            <div className="mb-6">
+              <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            </div>
+
+            <h3 className="text-sm font-medium text-gray-900 mb-1">AI 正在分析项目数据</h3>
+            <p className="text-xs text-gray-500 text-center max-w-[280px] mb-6">
+              已读取 {planIntroSeeds.length} 个模块的工作流数据，正在生成分析...
+            </p>
+
+            {/* Seeded data indicators */}
+            <div className="w-full max-w-[300px] space-y-2 mb-6">
+              {planIntroSeeds.map((seed, idx) => (
+                <div key={idx} className="flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <span className="text-xs text-gray-600">{seed}</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-2.5">
+                <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                </div>
+                <span className="text-xs text-gray-900 font-medium">智能分析中...</span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full max-w-[300px]">
+              <div className="w-full bg-gray-100 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-[2000ms] ease-out"
+                  style={{ width: '0%', animation: 'fill-progress 2s ease-out forwards' }}
+                />
+              </div>
+              <span className="text-[10px] text-gray-400 mt-1.5 block text-center">读取工作流数据并生成分析</span>
+            </div>
           </div>
         ) : started && !loading ? (
           <AgentChat
@@ -258,6 +349,10 @@ export default function AgentPanel({
         }
         .animate-slide-in-right {
           animation: slide-in-right 0.3s ease-out;
+        }
+        @keyframes fill-progress {
+          from { width: 0%; }
+          to { width: 85%; }
         }
       `}</style>
     </div>

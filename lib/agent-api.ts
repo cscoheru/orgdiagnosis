@@ -220,7 +220,7 @@ export async function createSessionFromProject(
       benchmark_id: benchmarkId,
       project_goal: projectGoal,
       mode,
-      ...(workflowData ? { workflow_data: workflowData } : {}),
+      ...(workflowData && Object.keys(workflowData).length > 0 ? { workflow_data: workflowData } : {}),
     }),
   })
 
