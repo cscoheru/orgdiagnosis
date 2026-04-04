@@ -56,12 +56,15 @@ export default function AgentPanel({
   const [error, setError] = useState('');
   const [started, setStarted] = useState(false);
 
-  // 打开面板时自动启动
+  // 打开面板时自动启动（每次打开都重新创建 session，确保使用最新 workflowData）
   useEffect(() => {
-    if (!open || started) return;
+    if (!open) return;
     setStarted(true);
     setLoading(true);
     setError('');
+    setSession(null);
+    setMessages([]);
+    setInteraction(null);
 
     createSessionFromProject(projectId, benchmarkId, projectGoal, mode, workflowData)
       .then((result) => {
@@ -89,7 +92,7 @@ export default function AgentPanel({
         setError(e instanceof Error ? e.message : '启动 AI 顾问失败');
       })
       .finally(() => setLoading(false));
-  }, [open, started, projectId, benchmarkId, projectGoal, mode]);
+  }, [open, projectId, benchmarkId, projectGoal, mode, workflowData]);
 
   // 提交表单
   const handleFormSubmit = useCallback(

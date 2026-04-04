@@ -1,10 +1,11 @@
 'use client';
 
-import { ReactNode, useEffect, useState, useCallback } from 'react';
+import { ReactNode, useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import ProjectLifecycleSidebar from '@/components/project/ProjectLifecycleSidebar';
 import AgentPanel from '@/components/agent/AgentPanel';
+import { ProjectWorkflowProvider, useProjectWorkflow, getCombinedWorkflowData } from '@/components/project/ProjectWorkflowContext';
 import { Sparkles } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -46,6 +47,17 @@ const stageAgentModes: Record<string, 'proposal' | 'consulting_report'> = {
 
 export default function ProjectLayout({ children }: { children: ReactNode }) {
   const params = useParams();
+  const projectId = params.id as string;
+
+  return (
+    <ProjectWorkflowProvider projectId={projectId}>
+      <ProjectLayoutInner>{children}</ProjectLayoutInner>
+    </ProjectWorkflowProvider>
+  );
+}
+
+function ProjectLayoutInner({ children }: { children: ReactNode }) {
+  const params = useParams();
   const pathname = usePathname();
   const projectId = params.id as string;
 
@@ -53,6 +65,10 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [aiOpen, setAiOpen] = useState(false);
   const [agentBenchmarkId, setAgentBenchmarkId] = useState('');
+
+  // Workflow data from context
+  const { data: workflowData } = useProjectWorkflow();
+  const combinedWorkflowData = useMemo(() => getCombinedWorkflowData(workflowData), [workflowData]);
 
   // Determine current lifecycle stage from pathname
   const currentStage = ['proposal', 'diagnosis', 'delivery', 'cowork', 'competency', 'strategy', 'report']
@@ -161,6 +177,7 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
               open={aiOpen}
               onClose={() => setAiOpen(false)}
               embedded
+              workflowData={combinedWorkflowData}
             />
           </div>
         )}
