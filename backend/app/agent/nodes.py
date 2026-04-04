@@ -41,7 +41,7 @@ def init_node(state: ConsultingState) -> dict:
             "blueprint": tree,
             "execution_order": tree["execution_order"],
             "current_node_index": 0,
-            "collected_data": {},
+            # NOTE: 不要重置 collected_data — start_with_seed 可能已注入种子数据
             "missing_fields": [],
             "interaction_count": 0,
             "distilled_spec": None,
