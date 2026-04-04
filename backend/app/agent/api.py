@@ -274,8 +274,9 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
     if w1_extract:
         seed_data = map_w1_to_collected_data(w1_extract, w1_plan)
 
-    # 将完整的 all_step_data 传入 __raw_workflow__，以便 executor 复用 W1 的 PPTX
-    if seed_data and all_step_data:
+    # 始终将完整 all_step_data 传入 __raw_workflow__，即使 smart_extract 缺失
+    # 这样 planner 能检测到原始数据跳过问卷，executor 能复用已有 PPTX
+    if all_step_data:
         seed_data["__raw_workflow__"] = seed_data.get("__raw_workflow__", {})
         seed_data["__raw_workflow__"]["all_step_data"] = all_step_data
 
