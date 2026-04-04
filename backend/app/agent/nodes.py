@@ -356,9 +356,9 @@ async def distill_node(state: ConsultingState) -> dict:
 
 async def executor_node(state: ConsultingState) -> dict:
     """
-    执行节点：蒸馏数据 → 存入 ArangoDB → 生成 PPTX 报告。
+    执行节点：蒸馏数据 → 存入 ArangoDB → 生成/复用 PPTX 报告。
 
-    如果尚未蒸馏，先触发一次蒸馏。
+    如果项目已有 W1 工作流生成的高质量 PPTX，直接复用。
     """
     try:
         collected = state.get("collected_data", {})
@@ -374,7 +374,6 @@ async def executor_node(state: ConsultingState) -> dict:
         svc = _get_blueprint_service()
         kernel_ids = []
 
-        # 将 collected_data 整体存为一个 Collected_Data 对象
         try:
             from app.models.kernel.meta_model import ObjectCreate
             from datetime import datetime, timezone
@@ -409,14 +408,31 @@ async def executor_node(state: ConsultingState) -> dict:
         except Exception as e:
             logger.warning(f"Failed to persist Project_Spec: {e}")
 
-        # ─── Step 3: 生成 PPTX ───
+        # ─── Step 3: 生成或复用 PPTX ───
         pptx_path = None
         pptx_error = None
-        try:
-            pptx_path = await _generate_pptx(state["session_id"], distilled, collected)
-        except Exception as e:
-            pptx_error = str(e)
-            logger.warning(f"PPTX generation failed: {e}")
+        pptx_source = "agent"
+
+        # 优先复用 W1 工作流已生成的高质量 PPTX
+        raw_workflow = collected.get("__raw_workflow__", {})
+        if raw_workflow:
+            # 从 W1 all_step_data 中查找 ppt_output
+            ppt_output = raw_workflow.get("ppt_output") or raw_workflow.get("all_step_data", {}).get("ppt_output")
+            if isinstance(ppt_output, dict) and ppt_output.get("file_path"):
+                import os
+                existing_path = ppt_output["file_path"]
+                if os.path.exists(existing_path):
+                    pptx_path = existing_path
+                    pptx_source = "workflow"
+                    logger.info(f"Reusing existing W1 PPTX: {existing_path}")
+
+        # 如果没有现成的，则用 AI 数据重新生成（但质量较低）
+        if not pptx_path:
+            try:
+                pptx_path = await _generate_pptx(state["session_id"], distilled, collected)
+            except Exception as e:
+                pptx_error = str(e)
+                logger.warning(f"PPTX generation failed: {e}")
 
         # ─── Step 4: 构建响应 ───
         content_parts = [

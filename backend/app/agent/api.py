@@ -274,6 +274,11 @@ async def create_session_from_project(data: AgentSessionFromProject, db: Any = D
     if w1_extract:
         seed_data = map_w1_to_collected_data(w1_extract, w1_plan)
 
+    # 将完整的 all_step_data 传入 __raw_workflow__，以便 executor 复用 W1 的 PPTX
+    if seed_data and all_step_data:
+        seed_data["__raw_workflow__"] = seed_data.get("__raw_workflow__", {})
+        seed_data["__raw_workflow__"]["all_step_data"] = all_step_data
+
     # W2 数据 (five_dimensions)
     w2_dimensions = all_step_data.get("five_dimensions", {})
     if w2_dimensions and data.mode == "consulting_report":
