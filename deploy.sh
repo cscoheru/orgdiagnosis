@@ -48,6 +48,7 @@ ssh hk-jump "
     -p 127.0.0.1:8000:8000 \
     -v /opt/org-diagnosis/backend/.env:/app/.env \
     -v /opt/org-diagnosis/data:/app/data \
+    -v /opt/org-diagnosis/output:/app/output \
     org-diagnosis-api:latest
   docker network connect docker_internal org-diagnosis-api
 "

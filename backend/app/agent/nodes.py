@@ -417,10 +417,14 @@ async def executor_node(state: ConsultingState) -> dict:
         raw_workflow = collected.get("__raw_workflow__", {})
         if raw_workflow:
             # 从 W1 all_step_data 中查找 ppt_output
-            ppt_output = raw_workflow.get("ppt_output") or raw_workflow.get("all_step_data", {}).get("ppt_output")
+            all_step = raw_workflow.get("all_step_data", {})
+            ppt_output = all_step.get("ppt_output")
             if isinstance(ppt_output, dict) and ppt_output.get("file_path"):
                 import os
                 existing_path = ppt_output["file_path"]
+                # file_path 可能是 API 路径 (/api/output/...)，转为文件系统路径 (/app/output/...)
+                if existing_path.startswith("/api/"):
+                    existing_path = "/app" + existing_path[4:]
                 if os.path.exists(existing_path):
                     pptx_path = existing_path
                     pptx_source = "workflow"
