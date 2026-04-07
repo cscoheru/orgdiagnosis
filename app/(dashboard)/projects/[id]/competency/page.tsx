@@ -40,16 +40,19 @@ export default function CompetencyPage() {
       try {
         const res = await fetch(`${API_BASE}/api/v1/competency/materials?project_id=${projectId}`);
         if (res.ok) {
-          const data = await res.json();
-          const items = Array.isArray(data) ? data : (data.items || []);
+          const json = await res.json();
+          // API returns {"success": true, "data": {"meta": ..., "competencies": [...]}}
+          const items = json?.data?.competencies || json?.items || (Array.isArray(json) ? json : []);
           setCompetencies(items);
         }
 
         // Fetch confirmed model
         const modelRes = await fetch(`${API_BASE}/api/v1/competency/final-model?project_id=${projectId}`);
         if (modelRes.ok) {
-          const modelData = await modelRes.json();
-          if (modelData.confirmed_l1_terms) {
+          const modelJson = await modelRes.json();
+          // API returns {"success": true, "data": {...}} or {"success": true, "data": null}
+          const modelData = modelJson?.data;
+          if (modelData?.confirmed_l1_terms) {
             setConfirmedL1Terms(modelData.confirmed_l1_terms);
           }
         }
