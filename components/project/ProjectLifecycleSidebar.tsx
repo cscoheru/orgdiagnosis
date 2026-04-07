@@ -7,14 +7,9 @@ import {
   FileText,
   Search,
   Rocket,
-  Users,
-  Brain,
-  Target,
   FileOutput,
   ChevronDown,
   ChevronRight,
-  Sparkles,
-  BarChart3,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -35,7 +30,7 @@ interface LifecycleStage {
   progress?: number;
 }
 
-// Static stage definitions
+// Static stage definitions — 协作工具已移至全局侧边栏，此处仅保留工作流和输出
 const STAGES: Omit<LifecycleStage, 'progress' | 'steps'>[] = [
   {
     id: 'proposal',
@@ -57,27 +52,6 @@ const STAGES: Omit<LifecycleStage, 'progress' | 'steps'>[] = [
     href: 'delivery',
     icon: <Rocket size={16} />,
     group: 'workflow',
-  },
-  {
-    id: 'cowork',
-    name: '智能共创',
-    href: 'cowork',
-    icon: <Sparkles size={16} />,
-    group: 'cowork',
-  },
-  {
-    id: 'competency',
-    name: '能力研讨',
-    href: 'competency',
-    icon: <Brain size={16} />,
-    group: 'cowork',
-  },
-  {
-    id: 'strategy',
-    name: '战略解码',
-    href: 'strategy',
-    icon: <Target size={16} />,
-    group: 'cowork',
   },
   {
     id: 'report',
@@ -175,7 +149,6 @@ export default function ProjectLifecycleSidebar({ className = '' }: ProjectLifec
 
   const groups = [
     { key: 'workflow', label: '工作流' },
-    { key: 'cowork', label: '协作工具' },
     { key: 'output', label: '输出' },
   ];
 
