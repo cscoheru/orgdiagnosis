@@ -15,6 +15,9 @@ import {
   LogOut,
   ChevronLeft,
   Menu,
+  Sparkles,
+  Brain,
+  Target,
 } from 'lucide-react';
 
 interface DashboardShellProps {
@@ -32,24 +35,7 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const navigationGroups: NavGroup[] = [
-  {
-    title: '工作台',
-    items: [
-      { name: '项目总览', href: '/projects', icon: <LayoutDashboard size={18} /> },
-      { name: '知识库', href: '/knowledge', icon: <BookOpen size={18} /> },
-    ],
-  },
-  {
-    title: '系统',
-    items: [
-      { name: '内核管理', href: '/kernel', icon: <Cpu size={18} /> },
-      { name: '系统设置', href: '/settings', icon: <Settings size={18} /> },
-      { name: 'PPT 模板', href: '/templates', icon: <FileText size={18} /> },
-      { name: '版式管理', href: '/layouts', icon: <Layers size={18} /> },
-    ],
-  },
-];
+// Navigation is built dynamically inside the component based on project context
 
 export default function DashboardShell({ children }: DashboardShellProps) {
   const pathname = usePathname();
@@ -57,6 +43,38 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const { user, loading, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(false);
+
+  // Detect current project ID from URL for project-scoped tools
+  const projectIdMatch = pathname.match(/^\/projects\/([^/]+)/);
+  const currentProjectId = projectIdMatch ? projectIdMatch[1] : null;
+
+  // Build navigation groups — include collaboration tools when inside a project
+  const navigationGroups: NavGroup[] = [
+    {
+      title: '工作台',
+      items: [
+        { name: '项目总览', href: '/projects', icon: <LayoutDashboard size={18} /> },
+        { name: '知识库', href: '/knowledge', icon: <BookOpen size={18} /> },
+      ],
+    },
+    ...(currentProjectId ? [{
+      title: '协作工具',
+      items: [
+        { name: '智能共创', href: `/projects/${currentProjectId}/cowork`, icon: <Sparkles size={18} /> },
+        { name: '能力研讨', href: `/projects/${currentProjectId}/competency`, icon: <Brain size={18} /> },
+        { name: '战略解码', href: `/projects/${currentProjectId}/strategy`, icon: <Target size={18} /> },
+      ],
+    }] : []),
+    {
+      title: '系统',
+      items: [
+        { name: '内核管理', href: '/kernel', icon: <Cpu size={18} /> },
+        { name: '系统设置', href: '/settings', icon: <Settings size={18} /> },
+        { name: 'PPT 模板', href: '/templates', icon: <FileText size={18} /> },
+        { name: '版式管理', href: '/layouts', icon: <Layers size={18} /> },
+      ],
+    },
+  ];
 
   // Press H to toggle sidebar (presentation mode)
   useEffect(() => {

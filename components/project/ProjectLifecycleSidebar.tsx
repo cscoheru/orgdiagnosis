@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, usePathname } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   FileText,
   Search,
@@ -94,6 +95,7 @@ interface ProjectLifecycleSidebarProps {
 export default function ProjectLifecycleSidebar({ className = '' }: ProjectLifecycleSidebarProps) {
   const params = useParams();
   const pathname = usePathname();
+  const router = useRouter();
   const projectId = params.id as string;
 
   const [stages, setStages] = useState<LifecycleStage[]>(STAGES.map(s => ({ ...s, steps: [], progress: 0 })));
@@ -196,64 +198,69 @@ export default function ProjectLifecycleSidebar({ className = '' }: ProjectLifec
                 const isExpanded = expandedStages.has(stage.id);
                 const hasSteps = stage.steps && stage.steps.length > 0;
 
+                const itemClass = `w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
+                  isActive
+                    ? 'text-blue-700 bg-blue-50 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`;
+
                 return (
                   <div key={stage.id}>
-                    <button
-                      onClick={() => hasSteps ? toggleExpand(stage.id) : undefined}
-                      className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
-                        isActive
-                          ? 'text-blue-700 bg-blue-50 font-medium'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                      }`}
-                    >
-                      {hasSteps ? (
-                        isExpanded
-                          ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
-                          : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
-                      ) : (
-                        <span className="w-3.5" />
-                      )}
-
-                      <span className={isActive ? 'text-blue-600' : 'text-gray-400'}>{stage.icon}</span>
-
-                      <span className="flex-1 text-left truncate">{stage.name}</span>
-
-                      {stage.progress != null && stage.progress > 0 && stage.progress < 1 && (
-                        <span className="text-[11px] text-gray-400">
-                          {Math.round(stage.progress * 100)}%
-                        </span>
-                      )}
-                      {(stage.progress ?? 0) >= 1 && (
-                        <span className="text-[11px] text-green-600">✓</span>
-                      )}
-                    </button>
-
-                    {/* Expanded steps */}
-                    {isExpanded && hasSteps && (
-                      <div className="ml-8 mr-3 mb-1 space-y-0.5">
-                        {stage.steps!.map(step => (
-                          <div
-                            key={step.id}
-                            className="flex items-center gap-2 px-2 py-1 text-xs text-gray-500 rounded"
-                          >
-                            {step.status === 'complete' ? (
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
-                            ) : step.status === 'active' ? (
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 animate-pulse" />
-                            ) : (
-                              <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
-                            )}
-                            <span className="truncate">{step.name}</span>
+                    {hasSteps ? (
+                      <>
+                        <button
+                          onClick={() => toggleExpand(stage.id)}
+                          className={itemClass}
+                        >
+                          {isExpanded
+                            ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
+                            : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
+                          }
+                          <span className={isActive ? 'text-blue-600' : 'text-gray-400'}>{stage.icon}</span>
+                          <span className="flex-1 text-left truncate">{stage.name}</span>
+                          {stage.progress != null && stage.progress > 0 && stage.progress < 1 && (
+                            <span className="text-[11px] text-gray-400">
+                              {Math.round(stage.progress * 100)}%
+                            </span>
+                          )}
+                          {(stage.progress ?? 0) >= 1 && (
+                            <span className="text-[11px] text-green-600">✓</span>
+                          )}
+                        </button>
+                        {/* Expanded steps */}
+                        {isExpanded && (
+                          <div className="ml-8 mr-3 mb-1 space-y-0.5">
+                            {stage.steps!.map(step => (
+                              <div
+                                key={step.id}
+                                className="flex items-center gap-2 px-2 py-1 text-xs text-gray-500 rounded"
+                              >
+                                {step.status === 'complete' ? (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                                ) : step.status === 'active' ? (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 animate-pulse" />
+                                ) : (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+                                )}
+                                <span className="truncate">{step.name}</span>
+                              </div>
+                            ))}
+                            {/* Mini progress bar */}
+                            <div className="mt-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                                style={{ width: `${(stage.progress ?? 0) * 100}%` }}
+                              />
+                            </div>
                           </div>
-                        ))}
-                        {/* Mini progress bar */}
-                        <div className="mt-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                            style={{ width: `${(stage.progress ?? 0) * 100}%` }}
-                          />
-                        </div>
-                      </div>
+                        )}
+                      </>
+                    ) : (
+                      <Link href={`/projects/${projectId}/${stage.href}`} className={itemClass}>
+                        <span className="w-3.5" />
+                        <span className={isActive ? 'text-blue-600' : 'text-gray-400'}>{stage.icon}</span>
+                        <span className="flex-1 text-left truncate">{stage.name}</span>
+                      </Link>
                     )}
                   </div>
                 );
