@@ -71,8 +71,11 @@ function ProjectLayoutInner({ children }: { children: ReactNode }) {
   const combinedWorkflowData = useMemo(() => getCombinedWorkflowData(workflowData), [workflowData]);
 
   // Determine current lifecycle stage from pathname
-  const currentStage = ['proposal', 'diagnosis', 'delivery', 'cowork', 'competency', 'strategy', 'report']
+  const currentStage = ['proposal', 'diagnosis', 'delivery', 'report']
     .find(s => pathname.endsWith(`/${s}`)) || '';
+
+  // 协作工具页面不显示工作流侧边栏
+  const isCollabTool = ['cowork', 'competency', 'strategy'].some(s => pathname.endsWith(`/${s}`));
 
   // Fetch project info
   useEffect(() => {
@@ -154,10 +157,12 @@ function ProjectLayoutInner({ children }: { children: ReactNode }) {
         </div>
       </div>
 
-      {/* Three-column layout: Lifecycle Sidebar + Content + AI Panel */}
-      <div className="flex gap-0 border border-gray-200 rounded-xl bg-white overflow-hidden" style={{ height: 'calc(100vh - 14rem)' }}>
-        {/* 1. Lifecycle sidebar */}
-        <ProjectLifecycleSidebar className="border-r border-gray-200" />
+      {/* Layout: conditional sidebar for workflows, full-width for collaboration tools */}
+      <div className={`flex gap-0 border border-gray-200 rounded-xl bg-white overflow-hidden ${isCollabTool ? '' : ''}`} style={{ height: 'calc(100vh - 14rem)' }}>
+        {/* 1. Lifecycle sidebar — only for workflow/report pages */}
+        {!isCollabTool && (
+          <ProjectLifecycleSidebar className="border-r border-gray-200" />
+        )}
 
         {/* 2. Main content */}
         <div className="flex-1 min-w-0 overflow-auto">
