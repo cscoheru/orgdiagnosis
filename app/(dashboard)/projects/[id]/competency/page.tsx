@@ -18,14 +18,16 @@ import CompetencyRadarView from '@/components/workshop/CompetencyRadarView';
 import CompetencyExplorer from '@/components/workshop/CompetencyExplorer';
 import ResourceInventory from '@/components/workshop/ResourceInventory';
 import DataFlowDiagram from '@/components/workshop/DataFlowDiagram';
+import CompetencyCalibrationChat from '@/components/workshop/CompetencyCalibrationChat';
 
-type TabId = 'flow' | 'l1' | 'explorer' | 'resources';
+type TabId = 'flow' | 'l1' | 'explorer' | 'resources' | 'calibration';
 
 const TABS: { id: TabId; name: string }[] = [
   { id: 'flow', name: '分析流程' },
   { id: 'l1', name: '一级能力研讨' },
   { id: 'explorer', name: '二级与行为探索' },
   { id: 'resources', name: '学习资源盘点' },
+  { id: 'calibration', name: '能力模型校准' },
 ];
 
 export default function CompetencyPage() {
@@ -162,6 +164,10 @@ export default function CompetencyPage() {
 
       {activeTab === 'resources' && (
         <ResourceInventory competencies={competencies} />
+      )}
+
+      {activeTab === 'calibration' && (
+        <CompetencyCalibrationChat data={data} />
       )}
     </div>
   );
