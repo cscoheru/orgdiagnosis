@@ -30,6 +30,15 @@ class RelationType(str, Enum):
     BENCHMARKED_AGAINST = "Benchmarked_Against"  # 对标
     CUSTOM = "Custom"                  # 自定义
 
+    # Performance Management Relations
+    CASCADES_TO = "Cascades_To"                # 部门绩效→岗位绩效分解
+    USES_TEMPLATE = "Uses_Template"              # 考核记录→表单模板
+    APPLIES_RATING = "Applies_Rating"            # 表单模板→评分模型
+    BELONGS_TO_PLAN = "Belongs_To_Plan"          # 模板/记录→绩效方案
+    CALIBRATED_IN = "Calibrated_In"              # 考核记录→校准会话
+    GOAL_ALIGNED = "Goal_Aligned"                # 部门绩效→战略目标对齐
+    ASSESSES_COMPETENCY = "Assesses_Competency"  # 岗位绩效→胜任力评估
+
 
 class RelationCreate(BaseModel):
     """创建关系 (边)"""

@@ -78,6 +78,20 @@ WORKFLOW_CONFIGS["delivery"] = WorkflowConfig(
     initial_step="create_order",
 )
 
+# W4: 战略解码 (步骤由前端 StrategyStore 管理，后端仅提供 session 持久化)
+WORKFLOW_CONFIGS["strategy"] = WorkflowConfig(
+    key="strategy",
+    name="战略解码",
+    description="业绩诊断 → 市场洞察 → 目标设定 → 战略执行，前端驱动步骤流转",
+    steps=[
+        StepConfig(id="performance_review", name="业绩诊断", type="manual_edit", is_manual=True),
+        StepConfig(id="market_insight", name="市场洞察", type="manual_edit", depends_on="performance_review", is_manual=True),
+        StepConfig(id="target_setting", name="目标设定", type="manual_edit", depends_on="market_insight", is_manual=True),
+        StepConfig(id="strategy_execution", name="战略执行", type="manual_edit", depends_on="target_setting", is_manual=True),
+    ],
+    initial_step="performance_review",
+)
+
 
 def get_workflow_config(workflow_type: str) -> WorkflowConfig:
     """获取工作流配置，不存在则抛出 ValueError"""

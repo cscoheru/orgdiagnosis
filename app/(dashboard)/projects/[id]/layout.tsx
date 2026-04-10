@@ -42,6 +42,7 @@ const stageAgentModes: Record<string, 'proposal' | 'consulting_report'> = {
   cowork: 'consulting_report',
   competency: 'consulting_report',
   strategy: 'consulting_report',
+  performance: 'consulting_report',
   report: 'consulting_report',
 };
 
@@ -75,7 +76,7 @@ function ProjectLayoutInner({ children }: { children: ReactNode }) {
     .find(s => pathname.endsWith(`/${s}`)) || '';
 
   // 协作工具页面不显示工作流侧边栏
-  const isCollabTool = ['cowork', 'competency', 'strategy'].some(s => pathname.endsWith(`/${s}`));
+  const isCollabTool = ['cowork', 'competency', 'strategy', 'performance'].some(s => pathname.endsWith(`/${s}`));
 
   // Fetch project info
   useEffect(() => {

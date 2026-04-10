@@ -81,6 +81,7 @@ class AIClient:
         system_prompt: str,
         user_prompt: str,
         *,
+        messages: Optional[List[Dict[str, str]]] = None,
         model: Optional[str] = None,
         temperature: float = 0.3,
         max_tokens: int = 4096,
@@ -92,6 +93,7 @@ class AIClient:
         Args:
             system_prompt: 系统提示词
             user_prompt: 用户消息
+            messages: 完整消息列表（含 system），如提供则覆盖 system_prompt + user_prompt
             model: 覆盖默认模型
             temperature: 生成温度
             max_tokens: 最大 token 数
@@ -110,6 +112,15 @@ class AIClient:
         use_model = model or self.default_model
         use_timeout = timeout or self.timeout
 
+        # 使用传入的 messages 或构建默认的
+        if messages:
+            api_messages = messages
+        else:
+            api_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
         async with httpx.AsyncClient(timeout=use_timeout, trust_env=False) as client:
             response = await client.post(
                 self.api_url,
@@ -119,10 +130,7 @@ class AIClient:
                 },
                 json={
                     "model": use_model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
+                    "messages": api_messages,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                 },

@@ -17,6 +17,7 @@ from app.api.v1.meetings import router as meetings_router
 from app.api.v1.deliverables import router as deliverables_router
 from app.api.v2.workflow import router as workflow_router
 from app.api.v1.workshop import router as workshop_router
+from app.api.v1.performance import router as performance_router
 from app.agent.api import router as agent_router
 
 api_router = APIRouter()
@@ -55,6 +56,9 @@ api_router.include_router(workflow_router)
 
 # 工作坊共创套件 API
 api_router.include_router(workshop_router, prefix="/v1")
+
+# 绩效管理 API
+api_router.include_router(performance_router, prefix="/v1")
 
 # AI 顾问 Agent API (Consulting OS 2.0)
 api_router.include_router(agent_router, prefix="/v1")

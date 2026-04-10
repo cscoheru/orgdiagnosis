@@ -17,6 +17,7 @@ import {
   FileOutput,
   ChevronDown,
   ChevronRight,
+  Target,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -243,6 +244,27 @@ export default function ProjectLifecycleSidebar({ className = '' }: ProjectLifec
               <FileOutput size={16} />
             </span>
             <span className="flex-1 text-left truncate">报告输出</span>
+          </Link>
+        </div>
+
+        {/* 咨询工具 */}
+        <div className="mt-4">
+          <div className="px-4 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+            咨询工具
+          </div>
+          <Link
+            href={`/projects/${projectId}/performance`}
+            className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
+              pathname.endsWith('/performance')
+                ? 'text-blue-700 bg-blue-50 font-medium'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            <span className="w-3.5" />
+            <span className={pathname.endsWith('/performance') ? 'text-blue-600' : 'text-gray-400'}>
+              <Target size={16} />
+            </span>
+            <span className="flex-1 text-left truncate">绩效管理</span>
           </Link>
         </div>
       </div>
