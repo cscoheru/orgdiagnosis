@@ -37,6 +37,20 @@ logger = logging.getLogger(__name__)
 _bridge = KernelBridge()
 
 
+def _ref(key: str) -> str:
+    """将裸 _key 转为 sys_objects/ 引用格式（用于 reference 类型字段写入）。"""
+    if not key:
+        return ""
+    return key if key.startswith("sys_objects/") else f"sys_objects/{key}"
+
+
+def _unref(value: str | None) -> str:
+    """将 sys_objects/ 引用还原为裸 _key（用于从 properties 读取后传给 get_object）。"""
+    if not value:
+        return ""
+    return value.removeprefix("sys_objects/")
+
+
 # ──────────────────────────────────────────────
 # 通用工具函数
 # ──────────────────────────────────────────────
@@ -238,7 +252,7 @@ async def analyze_performance_node(state: dict[str, Any]) -> dict[str, Any]:
         state = await _write_results_to_kernel(analysis_result, data, state)
         logger.info("[绩效领域] 分析结果已写入内核")
 
-        state = set_domain_result("performance", {
+        state = set_domain_result(state, "performance", {
             "status": "completed",
             "summary": analysis_result.get("diagnosis", ""),
             "maturity_level": analysis_result.get("maturity_level", 0),
@@ -332,8 +346,8 @@ async def generate_org_performance_node(state: dict[str, Any]) -> dict[str, Any]
         org_perf = await _bridge.create_object(
             "Org_Performance",
             {
-                "org_unit_ref": org_unit_id,
-                "plan_ref": plan_id,
+                "org_unit_ref": _ref(org_unit_id),
+                "plan_ref": _ref(plan_id),
                 "project_id": plan_props.get("project_id", ""),
                 "strategic_kpis": _safe_json_dumps(result.get("strategic_kpis", [])),
                 "management_indicators": _safe_json_dumps(result.get("management_indicators", [])),
@@ -399,8 +413,8 @@ async def generate_position_performance_node(state: dict[str, Any]) -> dict[str,
         org_perf_props = org_perf.get("properties", {})
 
         # 2. 查询关联部门
-        org_unit_id = org_perf_props.get("org_unit_ref", "")
-        plan_id = org_perf_props.get("plan_ref", "")
+        org_unit_id = _unref(org_perf_props.get("org_unit_ref"))
+        plan_id = _unref(org_perf_props.get("plan_ref"))
         project_id = org_perf_props.get("project_id", "")
 
         # 3. 查询该部门下的所有岗位
@@ -480,8 +494,8 @@ async def generate_position_performance_node(state: dict[str, Any]) -> dict[str,
                 "Position_Performance",
                 {
                     "job_role_ref": role.get("_id", ""),
-                    "org_perf_ref": org_perf_id,
-                    "plan_ref": plan_id,
+                    "org_perf_ref": _ref(org_perf_id),
+                    "plan_ref": _ref(plan_id),
                     "project_id": project_id,
                     "performance_goals": _safe_json_dumps(result.get("performance_goals", [])),
                     "competency_items": _safe_json_dumps(result.get("competency_items", [])),
@@ -541,12 +555,12 @@ async def generate_review_template_node(state: dict[str, Any]) -> dict[str, Any]
         pos_props = pos_perf.get("properties", {})
 
         # 2. 查询关联岗位
-        job_role_id = pos_props.get("job_role_ref", "")
+        job_role_id = _unref(pos_props.get("job_role_ref"))
         job_role = await _bridge.get_object(job_role_id) if job_role_id else None
         job_props = job_role.get("properties", {}) if job_role else {}
 
         # 3. 查询绩效方案
-        plan_id = pos_props.get("plan_ref", "")
+        plan_id = _unref(pos_props.get("plan_ref"))
         plan_data = await _bridge.get_object(plan_id) if plan_id else None
         plan_props = plan_data.get("properties", {}) if plan_data else {}
 
@@ -641,8 +655,8 @@ async def generate_review_template_node(state: dict[str, Any]) -> dict[str, Any]
                 "total_weight": result.get("total_weight", 100),
                 "rating_model_ref": rating_model_id or "",
                 "reviewer_config": _safe_json_dumps(result.get("reviewer_config", {})),
-                "plan_ref": plan_id,
-                "position_ref": pos_perf_id,
+                "plan_ref": _ref(plan_id),
+                "position_ref": _ref(pos_perf_id),
                 "status": "草拟",
                 "description": f"基于岗位绩效自动生成的考核表单 ({template_type})",
             },
