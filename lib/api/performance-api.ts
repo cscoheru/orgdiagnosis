@@ -101,11 +101,11 @@ async function perfRequest<T>(
     const json = await response.json();
     // Normalize JSON-stringified fields in performance objects
     if (Array.isArray(json)) {
-      json.forEach((item: Record<string, unknown>) => {
+      json.forEach((item: { properties?: Record<string, unknown> }) => {
         if (item.properties) normalizeJsonFields(item.properties);
       });
     } else if (json?.properties) {
-      normalizeJsonFields(json.properties);
+      normalizeJsonFields(json.properties as Record<string, unknown>);
     }
     return { success: true, data: json };
   } catch (error) {
