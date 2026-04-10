@@ -47,10 +47,9 @@ async def _call_ai(
     temperature: float = 0.3,
 ) -> dict[str, Any]:
     """调用 AI 并解析 JSON 响应"""
-    from app.services.ai_service import AIService
+    from app.services.ai_client import ai_client
 
-    ai_service = AIService()
-    raw_result = await ai_service.chat(
+    raw_result = await ai_client.chat(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=temperature,

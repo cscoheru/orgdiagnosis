@@ -14,10 +14,10 @@ import {
   type PerformancePlan,
   type PerformancePlanCreate,
 } from '@/lib/api/performance-api';
-import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
+import { getObjectsByModel, updateObject, deleteObject, type KernelObject } from '@/lib/api/kernel-client';
 import type { Methodology, CycleType, PlanStatus } from '@/types/performance';
 import { METHODOLOGY_LABELS, CYCLE_TYPE_LABELS, PLAN_STATUS_LABELS, PLAN_STATUS_COLORS } from '@/types/performance';
-import { Plus, Settings2, Target, Trash2 } from 'lucide-react';
+import { Plus, Settings2, Target, Trash2, Edit3 } from 'lucide-react';
 import InlineCreateModal from './InlineCreateModal';
 
 interface Props {
@@ -44,6 +44,8 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
   const [goals, setGoals] = useState<KernelObject[]>([]);
   const [loadingGoals, setLoadingGoals] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<KernelObject | null>(null);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     plan_name: '',
@@ -112,7 +114,25 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
   };
 
   const handleGoalCreated = (obj: KernelObject) => {
-    setGoals(prev => [obj, ...prev]);
+    if (editingGoal) {
+      // Replace in-place
+      setGoals(prev => prev.map(g => g._key === obj._key ? obj : g));
+      setEditingGoal(null);
+    } else {
+      setGoals(prev => [obj, ...prev]);
+    }
+  };
+
+  const handleDeleteGoal = async (key: string) => {
+    setDeletingKey(key);
+    try {
+      const res = await deleteObject(key);
+      if (res.success) {
+        setGoals(prev => prev.filter(g => g._key !== key));
+      }
+    } finally {
+      setDeletingKey(null);
+    }
   };
 
   return (
@@ -303,9 +323,10 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
             <div className="divide-y divide-gray-50">
               {goals.map((goal) => {
                 const g = goal.properties;
+                const isDeleting = deletingKey === goal._key;
                 return (
-                  <div key={goal._key} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div key={goal._key} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50/50 transition-colors group">
+                    <div className="flex items-center gap-3 min-w-0 cursor-pointer" onClick={() => { setEditingGoal(goal); setShowGoalModal(true); }}>
                       {g.priority ? (
                         <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium flex-shrink-0 ${PRIORITY_COLORS[String(g.priority)] || 'bg-gray-100 text-gray-600'}`}>
                           {String(g.priority)}
@@ -319,6 +340,23 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
                         </p>
                       </div>
                     </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => { setEditingGoal(goal); setShowGoalModal(true); }}
+                        className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                        title="编辑"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteGoal(goal._key)}
+                        disabled={isDeleting}
+                        className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                        title="删除"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -327,13 +365,15 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
         </div>
       )}
 
-      {/* Inline Create Modal for Strategic Goal */}
+      {/* Inline Create / Edit Modal for Strategic Goal */}
       <InlineCreateModal
         modelKey="Strategic_Goal"
-        title="添加战略目标"
+        title={editingGoal ? '编辑战略目标' : '添加战略目标'}
         open={showGoalModal}
-        onClose={() => setShowGoalModal(false)}
+        onClose={() => { setShowGoalModal(false); setEditingGoal(null); }}
         onCreated={handleGoalCreated}
+        prefills={editingGoal ? editingGoal.properties : undefined}
+        editKey={editingGoal?._key}
       />
     </div>
   );

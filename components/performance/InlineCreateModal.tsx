@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import {
   getMetaModel,
   createObject,
+  updateObject,
   type FieldDefinition,
   type KernelObject,
 } from '@/lib/api/kernel-client';
@@ -36,6 +37,8 @@ interface Props {
   onCreated: (obj: KernelObject) => void;
   /** 预填字段 (如创建 Job_Role 时自动填充 org_unit_id) */
   prefills?: Record<string, unknown>;
+  /** 编辑模式：传入已有对象的 _key，提交时调用 updateObject 而非 createObject */
+  editKey?: string;
 }
 
 /** 从 meta-model fields 过滤出可编辑的简单字段 */
@@ -54,7 +57,7 @@ function getEditableFields(fields: FieldDefinition[]): FieldConfig[] {
     }));
 }
 
-export default function InlineCreateModal({ modelKey, title, open, onClose, onCreated, prefills }: Props) {
+export default function InlineCreateModal({ modelKey, title, open, onClose, onCreated, prefills, editKey }: Props) {
   const [fields, setFields] = useState<FieldConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -102,12 +105,17 @@ export default function InlineCreateModal({ modelKey, title, open, onClose, onCr
     setSubmitting(true);
     setError(null);
     try {
-      const res = await createObject(modelKey, form);
+      let res;
+      if (editKey) {
+        res = await updateObject(editKey, form);
+      } else {
+        res = await createObject(modelKey, form);
+      }
       if (res.success && res.data) {
-        onCreated(res.data);
+        onCreated(res.data as KernelObject);
         onClose();
       } else {
-        setError(res.error || '创建失败');
+        setError(res.error || (editKey ? '更新失败' : '创建失败'));
       }
     } finally {
       setSubmitting(false);
@@ -208,7 +216,7 @@ export default function InlineCreateModal({ modelKey, title, open, onClose, onCr
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Plus size={14} />
-            {submitting ? '创建中...' : '创建'}
+            {submitting ? (editKey ? '保存中...' : '创建中...') : (editKey ? '保存' : '创建')}
           </button>
         </div>
       </div>
