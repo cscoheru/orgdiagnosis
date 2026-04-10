@@ -58,7 +58,7 @@ api_router.include_router(workflow_router)
 api_router.include_router(workshop_router, prefix="/v1")
 
 # 绩效管理 API
-api_router.include_router(performance_router, prefix="/v1")
+api_router.include_router(performance_router, prefix="/v1/performance")
 
 # AI 顾问 Agent API (Consulting OS 2.0)
 api_router.include_router(agent_router, prefix="/v1")
