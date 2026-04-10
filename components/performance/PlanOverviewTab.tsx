@@ -1,21 +1,24 @@
 'use client';
 
 /**
- * Tab 1: 方案概览
+ * Tab 1: 方案概览 + 战略目标配置
  *
- * 创建/查看绩效方案列表，支持创建新方案和切换活跃方案。
+ * 创建/查看绩效方案列表，并在选中方案下方管理战略目标。
+ * 战略目标通过 Kernel API 创建/查询 (Strategic_Goal model)。
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   createPlan,
   updatePlan,
   type PerformancePlan,
   type PerformancePlanCreate,
 } from '@/lib/api/performance-api';
+import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
 import type { Methodology, CycleType, PlanStatus } from '@/types/performance';
 import { METHODOLOGY_LABELS, CYCLE_TYPE_LABELS, PLAN_STATUS_LABELS, PLAN_STATUS_COLORS } from '@/types/performance';
-import { Plus, Settings2 } from 'lucide-react';
+import { Plus, Settings2, Target, Trash2 } from 'lucide-react';
+import InlineCreateModal from './InlineCreateModal';
 
 interface Props {
   projectId: string;
@@ -25,10 +28,22 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
+const PRIORITY_COLORS: Record<string, string> = {
+  P0: 'bg-red-100 text-red-700',
+  P1: 'bg-amber-100 text-amber-700',
+  P2: 'bg-blue-100 text-blue-700',
+  P3: 'bg-gray-100 text-gray-600',
+};
+
 export default function PlanOverviewTab({ projectId, plans, activePlan, onSelectPlan, onRefresh }: Props) {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Strategic goals state
+  const [goals, setGoals] = useState<KernelObject[]>([]);
+  const [loadingGoals, setLoadingGoals] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
 
   const [form, setForm] = useState({
     plan_name: '',
@@ -39,6 +54,28 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
     cycle_type: '年度' as CycleType,
     description: '',
   });
+
+  // Fetch strategic goals
+  const fetchGoals = useCallback(async () => {
+    setLoadingGoals(true);
+    try {
+      const res = await getObjectsByModel('Strategic_Goal', 100);
+      if (res.success && res.data) {
+        setGoals(res.data);
+      }
+    } finally {
+      setLoadingGoals(false);
+    }
+  }, []);
+
+  // Load goals when a plan becomes active
+  useEffect(() => {
+    if (activePlan) {
+      fetchGoals();
+    } else {
+      setGoals([]);
+    }
+  }, [activePlan, fetchGoals]);
 
   const handleCreate = async () => {
     if (!form.plan_name.trim()) return;
@@ -72,6 +109,10 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
   const handleStatusChange = async (plan: PerformancePlan, newStatus: PlanStatus) => {
     const res = await updatePlan(plan._key, { status: newStatus });
     if (res.success) await onRefresh();
+  };
+
+  const handleGoalCreated = (obj: KernelObject) => {
+    setGoals(prev => [obj, ...prev]);
   };
 
   return (
@@ -229,6 +270,71 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
           </div>
         </div>
       )}
+
+      {/* ── Strategic Goals Section ── */}
+      {activePlan && (
+        <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Target size={16} className="text-indigo-500" />
+              <h3 className="text-sm font-medium text-gray-700">战略目标</h3>
+              <span className="text-xs text-gray-400">({goals.length}个)</span>
+            </div>
+            <button
+              onClick={() => setShowGoalModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+            >
+              <Plus size={12} />
+              添加目标
+            </button>
+          </div>
+
+          {loadingGoals ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : goals.length === 0 ? (
+            <div className="px-5 py-8 text-center text-gray-400">
+              <Target size={32} className="mx-auto mb-2 opacity-40" />
+              <p className="text-sm">暂无战略目标</p>
+              <p className="text-xs mt-1">添加战略目标后，AI 生成组织绩效时将自动引用</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {goals.map((goal) => {
+                const g = goal.properties;
+                return (
+                  <div key={goal._key} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {g.priority ? (
+                        <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium flex-shrink-0 ${PRIORITY_COLORS[String(g.priority)] || 'bg-gray-100 text-gray-600'}`}>
+                          {String(g.priority)}
+                        </span>
+                      ) : null}
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-900 truncate">{String(g.goal_name || '')}</p>
+                        <p className="text-xs text-gray-400">
+                          {g.period ? String(g.period) : null}
+                          {g.owner ? ` · ${String(g.owner)}` : null}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Inline Create Modal for Strategic Goal */}
+      <InlineCreateModal
+        modelKey="Strategic_Goal"
+        title="添加战略目标"
+        open={showGoalModal}
+        onClose={() => setShowGoalModal(false)}
+        onCreated={handleGoalCreated}
+      />
     </div>
   );
 }
