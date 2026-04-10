@@ -100,7 +100,7 @@ export default function ReviewTemplateTab({ projectId, activePlan, onRefresh }: 
             <option value="">选择要生成考核表单的岗位...</option>
             {positions.map((pos) => (
               <option key={pos._key} value={pos._key}>
-                {pos.properties.job_role_ref}
+                {pos.properties.job_role_name || pos.properties.job_role_ref}
                 {pos.properties.is_leader ? ' (管理岗)' : ''}
               </option>
             ))}

@@ -153,7 +153,7 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
           <option value="">选择部门绩效...</option>
           {orgPerformances.map((op) => (
             <option key={op._key} value={op._key}>
-              {op.properties.org_unit_ref} — {op.properties.strategic_kpis?.length || 0} 个战略KPI
+              {op.properties.org_unit_name || op.properties.org_unit_ref} — {op.properties.strategic_kpis?.length || 0} 个战略KPI
             </option>
           ))}
         </select>
@@ -274,7 +274,7 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
                     <div className="flex items-center gap-2">
                       {isExpanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
                       {isLeader && <Crown size={14} className="text-amber-500" />}
-                      <span className="text-sm font-medium text-gray-900">{p.job_role_ref}</span>
+                      <span className="text-sm font-medium text-gray-900">{p.job_role_name || p.job_role_ref}</span>
                       {isLeader && (
                         <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded">管理岗</span>
                       )}

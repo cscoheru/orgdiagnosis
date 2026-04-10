@@ -225,7 +225,7 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
                     <div className="flex items-center gap-2">
                       {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
                       <div>
-                        <h4 className="font-medium text-gray-900 text-sm">部门绩效 — {p.org_unit_ref}</h4>
+                        <h4 className="font-medium text-gray-900 text-sm">部门绩效 — {p.org_unit_name || p.org_unit_ref}</h4>
                         <p className="text-xs text-gray-500">
                           {p.strategic_kpis?.length || 0} 个战略KPI · 权重合计 {totalWeight}%
                         </p>
