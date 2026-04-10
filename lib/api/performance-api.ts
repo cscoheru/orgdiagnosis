@@ -56,6 +56,26 @@ interface ApiResponse<T> {
   error?: string;
 }
 
+// Fields that may be JSON strings from the backend — parse them to native types
+const JSON_FIELDS = new Set([
+  'strategic_kpis', 'management_indicators', 'team_development',
+  'engagement_compliance', 'dimension_weights', 'strategic_alignment',
+  'performance_goals', 'competency_items', 'values_items', 'development_goals',
+  'section_weights', 'leader_config', 'team_performance',
+  'scale_definitions', 'distribution_guide', 'reviewer_config',
+  'sections', 'section_scores', 'development_actions',
+]);
+
+function normalizeJsonFields(obj: Record<string, unknown>): Record<string, unknown> {
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (typeof val === 'string' && JSON_FIELDS.has(key)) {
+      try { obj[key] = JSON.parse(val); } catch { /* keep original string */ }
+    }
+  }
+  return obj;
+}
+
 async function perfRequest<T>(
   path: string,
   options?: RequestInit,
@@ -79,6 +99,14 @@ async function perfRequest<T>(
     }
 
     const json = await response.json();
+    // Normalize JSON-stringified fields in performance objects
+    if (Array.isArray(json)) {
+      json.forEach((item: Record<string, unknown>) => {
+        if (item.properties) normalizeJsonFields(item.properties);
+      });
+    } else if (json?.properties) {
+      normalizeJsonFields(json.properties);
+    }
     return { success: true, data: json };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
