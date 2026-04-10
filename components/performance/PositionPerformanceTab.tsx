@@ -4,18 +4,19 @@
  * Tab 3: 岗位绩效
  *
  * Step 1 — 岗位配置：查看选中部门的岗位列表，支持新增岗位
- * Step 2 — AI 生成岗位四分区绩效 + 展开查看详情
+ * Step 2 — 表格式展示岗位四分区绩效 + 内联编辑
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   listOrgPerformances,
   listPositionPerformances,
   generatePositionPerformance,
+  updatePositionPerformance,
 } from '@/lib/api/performance-api';
 import type { PerformancePlan, OrgPerformance, PositionPerformance } from '@/types/performance';
 import { POS_PERF_STATUS_LABELS } from '@/types/performance';
-import { Sparkles, Users, ChevronDown, ChevronRight, Crown, Plus, Briefcase } from 'lucide-react';
+import { Sparkles, Users, Crown, Plus, Briefcase, Pencil, Save, X, Trash2 } from 'lucide-react';
 import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
 import InlineCreateModal from './InlineCreateModal';
 
@@ -25,6 +26,26 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
+/* ── Types ── */
+
+interface SectionItem {
+  name: string;
+  weight: number;
+  standard: string;
+}
+
+type EditDimKey = 'performance_goals' | 'competency_items' | 'values_items' | 'development_goals';
+
+interface PosPerfEditData {
+  _key: string;
+  performance_goals: SectionItem[];
+  competency_items: SectionItem[];
+  values_items: SectionItem[];
+  development_goals: SectionItem[];
+}
+
+/* ── Constants ── */
+
 const JOB_FAMILY_COLORS: Record<string, string> = {
   '管理M': 'bg-amber-100 text-amber-700',
   '专业P': 'bg-blue-100 text-blue-700',
@@ -32,53 +53,79 @@ const JOB_FAMILY_COLORS: Record<string, string> = {
   '营销S': 'bg-green-100 text-green-700',
 };
 
+interface SectionConfig {
+  key: string;
+  label: string;
+  weightKey: string;
+  itemsKey: EditDimKey;
+  standardKey: string;
+  defaultWeight: number;
+}
+
+const SECTIONS: SectionConfig[] = [
+  { key: 'performance',  label: '业绩目标',   weightKey: 'performance',  itemsKey: 'performance_goals',  standardKey: 'target',          defaultWeight: 15 },
+  { key: 'competency',   label: '能力评估',   weightKey: 'competency',   itemsKey: 'competency_items',   standardKey: 'required_level',  defaultWeight: 10 },
+  { key: 'values',       label: '价值观',     weightKey: 'values',       itemsKey: 'values_items',       standardKey: 'description',     defaultWeight: 5 },
+  { key: 'development',  label: '发展目标',   weightKey: 'development',  itemsKey: 'development_goals',  standardKey: 'timeline',        defaultWeight: 5 },
+];
+
+/* ── Helpers ── */
+
+function extractItems(p: Record<string, unknown>, itemsKey: string, standardKey: string): SectionItem[] {
+  const raw = p[itemsKey];
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item: Record<string, unknown>) => ({
+    name: String(item.name || ''),
+    weight: Number(item.weight || 0),
+    standard: String(item[standardKey] || ''),
+  }));
+}
+
+/* ── Component ── */
+
 export default function PositionPerformanceTab({ projectId, activePlan, onRefresh }: Props) {
   const [orgPerformances, setOrgPerformances] = useState<OrgPerformance[]>([]);
   const [selectedOrgPerf, setSelectedOrgPerf] = useState<string>('');
   const [positions, setPositions] = useState<PositionPerformance[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
-  // Data prep state
+  // Inline editing
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editData, setEditData] = useState<PosPerfEditData | null>(null);
+
+  // Data prep
   const [jobRoles, setJobRoles] = useState<KernelObject[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
 
-  // Find the org_unit_ref from the selected org performance
   const selectedOrgPerfData = orgPerformances.find(op => op._key === selectedOrgPerf);
   const orgUnitRef = selectedOrgPerfData?.properties.org_unit_ref as string | undefined;
+
+  /* ── Fetch ── */
 
   const fetchOrgPerfs = useCallback(async () => {
     if (!activePlan) return;
     const res = await listOrgPerformances(activePlan._key);
-    if (res.success && res.data) {
-      setOrgPerformances(Array.isArray(res.data) ? res.data : []);
-    }
+    if (res.success && res.data) setOrgPerformances(Array.isArray(res.data) ? res.data : []);
   }, [activePlan]);
 
   const fetchJobRoles = useCallback(async () => {
-    if (!orgUnitRef) {
-      setJobRoles([]);
-      return;
-    }
+    if (!orgUnitRef) { setJobRoles([]); return; }
     setLoadingRoles(true);
     try {
       const res = await getObjectsByModel('Job_Role', 200);
       if (res.success && res.data) {
-        // Filter job roles by org_unit_id matching the org_unit_ref
         const all = Array.isArray(res.data) ? res.data : [];
         const filtered = all.filter(jr => {
           const ouId = jr.properties.org_unit_id as string | undefined;
-          // Match by _key or by name
           return ouId === orgUnitRef || ouId === selectedOrgPerfData?._key;
         });
         setJobRoles(filtered);
       }
-    } finally {
-      setLoadingRoles(false);
-    }
+    } finally { setLoadingRoles(false); }
   }, [orgUnitRef, selectedOrgPerfData?._key]);
 
   const fetchPositions = useCallback(async () => {
@@ -86,29 +133,17 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
     setLoading(true);
     try {
       const res = await listPositionPerformances(selectedOrgPerf);
-      if (res.success && res.data) {
-        setPositions(Array.isArray(res.data) ? res.data : []);
-      }
-    } finally {
-      setLoading(false);
-    }
+      if (res.success && res.data) setPositions(Array.isArray(res.data) ? res.data : []);
+    } finally { setLoading(false); }
   }, [selectedOrgPerf]);
 
-  useEffect(() => {
-    fetchOrgPerfs();
-  }, [fetchOrgPerfs]);
+  useEffect(() => { fetchOrgPerfs(); }, [fetchOrgPerfs]);
+  useEffect(() => { fetchJobRoles(); }, [fetchJobRoles]);
+  useEffect(() => { fetchPositions(); }, [fetchPositions]);
 
-  useEffect(() => {
-    fetchJobRoles();
-  }, [fetchJobRoles]);
+  /* ── Handlers ── */
 
-  useEffect(() => {
-    fetchPositions();
-  }, [fetchPositions]);
-
-  const handleRoleCreated = (obj: KernelObject) => {
-    setJobRoles(prev => [obj, ...prev]);
-  };
+  const handleRoleCreated = (obj: KernelObject) => setJobRoles(prev => [obj, ...prev]);
 
   const handleGenerate = async () => {
     if (!selectedOrgPerf) return;
@@ -116,20 +151,59 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
     setError(null);
     try {
       const res = await generatePositionPerformance({ org_perf_id: selectedOrgPerf });
-      if (res.success) {
-        await fetchPositions();
-        await onRefresh();
-      } else {
-        setError(res.error || '生成失败');
-      }
-    } finally {
-      setGenerating(false);
-    }
+      if (res.success) { await fetchPositions(); await onRefresh(); }
+      else setError(res.error || '生成失败');
+    } finally { setGenerating(false); }
   };
 
-  const handleToggleExpand = (key: string) => {
-    setExpandedKey(expandedKey === key ? null : key);
+  const startEdit = (pos: PositionPerformance) => {
+    const p = pos.properties;
+    setEditKey(pos._key);
+    setEditData({
+      _key: pos._key,
+      performance_goals: extractItems(p as Record<string, unknown>, 'performance_goals', 'target'),
+      competency_items: extractItems(p as Record<string, unknown>, 'competency_items', 'required_level'),
+      values_items: extractItems(p as Record<string, unknown>, 'values_items', 'description'),
+      development_goals: extractItems(p as Record<string, unknown>, 'development_goals', 'timeline'),
+    });
   };
+
+  const cancelEdit = () => { setEditKey(null); setEditData(null); setError(null); };
+
+  const saveEdit = async () => {
+    if (!editData) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { _key, ...fields } = editData;
+      const res = await updatePositionPerformance(_key, fields);
+      if (res.success) { await fetchPositions(); cancelEdit(); }
+      else setError(res.error || '保存失败');
+    } finally { setSaving(false); }
+  };
+
+  const updateItem = (dimKey: EditDimKey, idx: number, field: keyof SectionItem, value: string | number) => {
+    if (!editData) return;
+    const items = [...editData[dimKey]];
+    items[idx] = { ...items[idx], [field]: value };
+    setEditData({ ...editData, [dimKey]: items });
+  };
+
+  const addItem = (dimKey: EditDimKey, defaultWeight: number) => {
+    if (!editData) return;
+    const items = [...editData[dimKey]];
+    items.push({ name: '', weight: defaultWeight, standard: '' });
+    setEditData({ ...editData, [dimKey]: items });
+  };
+
+  const removeItem = (dimKey: EditDimKey, idx: number) => {
+    if (!editData) return;
+    const items = [...editData[dimKey]];
+    items.splice(idx, 1);
+    setEditData({ ...editData, [dimKey]: items });
+  };
+
+  /* ── Empty state ── */
 
   if (!activePlan) {
     return (
@@ -140,41 +214,42 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
     );
   }
 
+  /* ── Render ── */
+
   return (
     <div className="space-y-5">
-      {/* Org Performance Selector */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">选择部门绩效</label>
-        <select
-          value={selectedOrgPerf}
-          onChange={(e) => { setSelectedOrgPerf(e.target.value); setPositions([]); }}
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+      {/* Org Performance Selector + Add Role */}
+      <div className="flex items-end gap-3">
+        <div className="flex-1">
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">选择部门绩效</label>
+          <select
+            value={selectedOrgPerf}
+            onChange={(e) => { setSelectedOrgPerf(e.target.value); setPositions([]); }}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          >
+            <option value="">选择部门绩效...</option>
+            {orgPerformances.map((op) => (
+              <option key={op._key} value={op._key}>
+                {op.properties.org_unit_name || op.properties.org_unit_ref} — {op.properties.strategic_kpis?.length || 0} 个战略KPI
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => setShowRoleModal(true)}
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap"
         >
-          <option value="">选择部门绩效...</option>
-          {orgPerformances.map((op) => (
-            <option key={op._key} value={op._key}>
-              {op.properties.org_unit_name || op.properties.org_unit_ref} — {op.properties.strategic_kpis?.length || 0} 个战略KPI
-            </option>
-          ))}
-        </select>
+          <Plus size={12} /> 添加岗位
+        </button>
       </div>
 
-      {/* ── Step 1: Job Role Configuration ── */}
+      {/* ═══ Step 1: Job Role Configuration ═══ */}
       {selectedOrgPerf && (
         <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-medium text-gray-500">STEP 1</span>
-              <span className="text-xs text-gray-400 ml-2">岗位配置</span>
-              <span className="text-xs text-gray-400 ml-2">— 部门: {orgUnitRef || '未知'}</span>
-            </div>
-            <button
-              onClick={() => setShowRoleModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
-            >
-              <Plus size={12} />
-              添加岗位
-            </button>
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <span className="text-xs font-medium text-gray-500">STEP 1</span>
+            <span className="text-xs text-gray-400 ml-2">岗位配置</span>
+            <span className="text-xs text-gray-400 ml-2">— 部门: {orgUnitRef || '未知'}</span>
           </div>
 
           <div className="p-5">
@@ -189,14 +264,14 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
                 <p className="text-xs mt-1">点击「添加岗位」创建岗位后，AI 将为每个岗位生成专属绩效方案</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
                 {jobRoles.map((jr) => {
                   const r = jr.properties;
                   const family = String(r.job_family || '');
                   return (
-                    <div key={jr._key} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                      <Briefcase size={14} className="text-gray-400 flex-shrink-0" />
-                      <span className="text-sm text-gray-900 font-medium">{String(r.role_name || '')}</span>
+                    <div key={jr._key} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100">
+                      <Briefcase size={13} className="text-gray-400" />
+                      <span className="text-xs text-gray-900 font-medium">{String(r.role_name || '')}</span>
                       {family && (
                         <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${JOB_FAMILY_COLORS[family] || 'bg-gray-100 text-gray-600'}`}>
                           {family}
@@ -205,16 +280,12 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
                       {r.is_key_position ? (
                         <span className="px-1.5 py-0.5 text-[10px] bg-red-50 text-red-600 rounded">关键岗位</span>
                       ) : null}
-                      {r.level_range ? (
-                        <span className="text-xs text-gray-400">{String(r.level_range)}</span>
-                      ) : null}
                     </div>
                   );
                 })}
               </div>
             )}
 
-            {/* Generate Button */}
             {jobRoles.length > 0 && (
               <div className="mt-4 pt-3 border-t border-gray-100">
                 <button
@@ -231,13 +302,14 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
         </div>
       )}
 
+      {/* Error */}
       {error && (
         <div className="border border-red-200 rounded-xl p-4 bg-red-50">
           <p className="text-sm text-red-700">{error}</p>
         </div>
       )}
 
-      {/* ── Step 2: Generated Results ── */}
+      {/* ═══ Step 2: Performance Tables ═══ */}
       {generating && (
         <div className="flex flex-col items-center py-8">
           <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3" />
@@ -245,111 +317,199 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
         </div>
       )}
 
-      {!generating && positions.length > 0 && (
+      {!generating && loading && (
+        <div className="flex items-center justify-center h-32">
+          <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {!generating && !loading && positions.length > 0 && (
         <div>
-          <div className="px-1 py-2 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-medium text-gray-500">STEP 2</span>
-              <span className="text-xs text-gray-400 ml-2">生成结果 ({positions.length}个岗位)</span>
-            </div>
-            <div className="flex items-center gap-3 text-xs text-gray-400">
-              <span>{positions.filter(p => p.properties.is_leader).length} 个管理岗</span>
-              <span>{positions.filter(p => p.properties.auto_generated).length} 个AI生成</span>
-            </div>
+          <div className="px-1 py-2 mb-3">
+            <span className="text-xs font-medium text-gray-500">STEP 2</span>
+            <span className="text-xs text-gray-400 ml-2">生成结果 ({positions.length}个岗位)</span>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-6">
             {positions.map((pos) => {
               const p = pos.properties;
-              const isExpanded = expandedKey === pos._key;
+              const editing = editKey === pos._key;
               const isLeader = p.is_leader;
-              const totalWeight = (p.section_weights?.performance || 0) + (p.section_weights?.competency || 0) + (p.section_weights?.values || 0) + (p.section_weights?.development || 0);
+              const sw = p.section_weights || {};
+              const totalWeight = (sw.performance || 0) + (sw.competency || 0) + (sw.values || 0) + (sw.development || 0);
 
               return (
-                <div key={pos._key} className={`border rounded-xl bg-white overflow-hidden ${isLeader ? 'border-amber-200' : 'border-gray-200'}`}>
-                  <div
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => handleToggleExpand(pos._key)}
-                  >
+                <div key={pos._key} className="border border-gray-300 rounded-xl bg-white overflow-hidden">
+                  {/* Table Header */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50/80 border-b border-gray-200">
                     <div className="flex items-center gap-2">
-                      {isExpanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
                       {isLeader && <Crown size={14} className="text-amber-500" />}
-                      <span className="text-sm font-medium text-gray-900">{p.job_role_name || p.job_role_ref}</span>
-                      {isLeader && (
-                        <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded">管理岗</span>
-                      )}
-                      {p.auto_generated && (
-                        <span className="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-600 rounded">AI生成</span>
-                      )}
+                      <h4 className="font-semibold text-gray-900 text-sm">
+                        {p.job_role_name || p.job_role_ref} 绩效考核表
+                      </h4>
+                      {isLeader && <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded font-medium">管理岗</span>}
+                      {p.auto_generated && <span className="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-600 rounded font-medium">AI生成</span>}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        (p.status as string) === 'draft' ? 'bg-gray-100 text-gray-500' :
+                        (p.status as string) === 'active' ? 'bg-green-100 text-green-700' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {POS_PERF_STATUS_LABELS[p.status] || p.status}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <span>{POS_PERF_STATUS_LABELS[p.status] || p.status}</span>
-                      <span>权重 {totalWeight}%</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">权重合计 {totalWeight}%</span>
+                      {editing ? (
+                        <>
+                          <button onClick={cancelEdit} disabled={saving} className="flex items-center gap-1 px-2.5 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50">
+                            <X size={12} /> 取消
+                          </button>
+                          <button onClick={saveEdit} disabled={saving} className="flex items-center gap-1 px-2.5 py-1 text-xs text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50">
+                            <Save size={12} /> {saving ? '保存中...' : '保存'}
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => startEdit(pos)} className="flex items-center gap-1 px-2.5 py-1 text-xs text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100">
+                          <Pencil size={12} /> 编辑
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  {isExpanded && (
-                    <div className="border-t border-gray-100 p-4 space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-blue-50/50 rounded-lg p-3">
-                          <div className="text-xs font-medium text-blue-700 mb-1">
-                            业绩目标 ({p.section_weights?.performance || 55}%)
-                          </div>
-                          {p.performance_goals?.map((g, i) => (
-                            <div key={i} className="text-xs text-gray-600 mt-1">
-                              <span className="font-medium">{g.name}</span>
-                              <span className="text-gray-400 ml-1">{g.weight}% · {g.target}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="bg-green-50/50 rounded-lg p-3">
-                          <div className="text-xs font-medium text-green-700 mb-1">
-                            能力评估 ({p.section_weights?.competency || 25}%)
-                          </div>
-                          {p.competency_items?.map((c, i) => (
-                            <div key={i} className="text-xs text-gray-600 mt-1">
-                              <span className="font-medium">{c.name}</span>
-                              <span className="text-gray-400 ml-1">{c.required_level} · {c.weight}%</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="bg-purple-50/50 rounded-lg p-3">
-                          <div className="text-xs font-medium text-purple-700 mb-1">
-                            价值观 ({p.section_weights?.values || 10}%)
-                          </div>
-                          {p.values_items?.map((v, i) => (
-                            <div key={i} className="text-xs text-gray-600 mt-1">
-                              <span className="font-medium">{v.name}</span>
-                              <span className="text-gray-400 ml-1">{v.weight}%</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="bg-amber-50/50 rounded-lg p-3">
-                          <div className="text-xs font-medium text-amber-700 mb-1">
-                            发展目标 ({p.section_weights?.development || 10}%)
-                          </div>
-                          {p.development_goals?.map((d, i) => (
-                            <div key={i} className="text-xs text-gray-600 mt-1">
-                              <span className="font-medium">{d.name}</span>
-                              <span className="text-gray-400 ml-1">{d.timeline}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {isLeader && p.leader_config && (
-                        <div className="bg-amber-50 rounded-lg p-3 flex items-center gap-2">
-                          <Crown size={14} className="text-amber-600" />
-                          <div className="text-xs text-amber-800">
-                            双重评估：个人 {p.leader_config.personal_weight}% + 团队 {p.leader_config.team_weight}%
-                          </div>
-                        </div>
-                      )}
+                  {/* Leader dual assessment */}
+                  {isLeader && p.leader_config && (
+                    <div className="bg-amber-50 border-b border-amber-100 px-4 py-2 flex items-center gap-2 text-xs text-amber-700">
+                      <Crown size={13} />
+                      双重评估：个人绩效 {p.leader_config.personal_weight}% + 团队绩效 {p.leader_config.team_weight}%
                     </div>
                   )}
+
+                  {/* ── Performance Evaluation Table ── */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700 w-[14%]">指标类别</th>
+                          <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700 w-[14%]">考评指标</th>
+                          <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700">考评标准</th>
+                          <th className="border border-gray-300 px-3 py-2 text-center font-semibold text-gray-700 w-[56px]">分值</th>
+                          <th className="border border-gray-300 px-3 py-2 text-center font-semibold text-gray-700 w-[56px]">自评</th>
+                          <th className="border border-gray-300 px-3 py-2 text-center font-semibold text-gray-700 w-[64px]">领导评价</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SECTIONS.map((section) => {
+                          const items = editing
+                            ? (editData?.[section.itemsKey] || [])
+                            : extractItems(p as Record<string, unknown>, section.itemsKey, section.standardKey);
+                          const weight = sw[section.weightKey as keyof typeof sw] as number || 0;
+
+                          return (
+                            <Fragment key={section.key}>
+                              {/* Category row */}
+                              <tr className="bg-gray-50">
+                                <td colSpan={6} className="border border-gray-300 px-3 py-1.5 font-semibold text-gray-700">
+                                  {section.label}
+                                  <span className="ml-2 text-gray-500 font-normal">({weight}%)</span>
+                                  {editing && (
+                                    <button
+                                      onClick={() => addItem(section.itemsKey, section.defaultWeight)}
+                                      className="ml-3 inline-flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700 font-normal"
+                                    >
+                                      <Plus size={11} /> 添加指标
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+
+                              {/* Item rows */}
+                              {items.length === 0 && (
+                                <tr>
+                                  <td colSpan={6} className="border border-gray-300 px-3 py-3 text-center text-gray-400">
+                                    暂无指标
+                                  </td>
+                                </tr>
+                              )}
+                              {items.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-blue-50/30">
+                                  <td className="border border-gray-300 px-3 py-2 text-gray-500">{section.label}</td>
+                                  <td className="border border-gray-300 px-3 py-2">
+                                    {editing ? (
+                                      <input
+                                        type="text"
+                                        value={item.name}
+                                        onChange={(e) => updateItem(section.itemsKey, idx, 'name', e.target.value)}
+                                        className="w-full text-xs bg-transparent border-0 border-b border-dashed border-gray-300 focus:border-indigo-500 focus:ring-0 px-0 py-0.5 outline-none"
+                                      />
+                                    ) : (
+                                      <span className="font-medium text-gray-800">{item.name}</span>
+                                    )}
+                                  </td>
+                                  <td className="border border-gray-300 px-3 py-2 text-gray-600">
+                                    {editing ? (
+                                      <input
+                                        type="text"
+                                        value={item.standard}
+                                        onChange={(e) => updateItem(section.itemsKey, idx, 'standard', e.target.value)}
+                                        className="w-full text-xs bg-transparent border-0 border-b border-dashed border-gray-300 focus:border-indigo-500 focus:ring-0 px-0 py-0.5 outline-none"
+                                        placeholder="考评标准"
+                                      />
+                                    ) : (
+                                      item.standard || <span className="text-gray-300">—</span>
+                                    )}
+                                  </td>
+                                  <td className="border border-gray-300 px-3 py-2 text-center font-medium text-gray-800">
+                                    {editing ? (
+                                      <input
+                                        type="number"
+                                        value={item.weight}
+                                        onChange={(e) => updateItem(section.itemsKey, idx, 'weight', Number(e.target.value))}
+                                        className="w-10 text-xs text-center bg-transparent border-0 border-b border-dashed border-gray-300 focus:border-indigo-500 focus:ring-0 px-0 py-0.5 outline-none"
+                                        min={0}
+                                        max={100}
+                                      />
+                                    ) : (
+                                      item.weight
+                                    )}
+                                  </td>
+                                  <td className="border border-gray-300 px-2 py-1.5 text-center">
+                                    <input
+                                      type="number"
+                                      className="w-full text-xs text-center bg-transparent border-0 focus:ring-0 focus:outline-none"
+                                      placeholder="—"
+                                    />
+                                  </td>
+                                  <td className="border border-gray-300 px-1 py-1.5 text-center relative">
+                                    <input
+                                      type="number"
+                                      className="w-full text-xs text-center bg-transparent border-0 focus:ring-0 focus:outline-none pr-4"
+                                      placeholder="—"
+                                    />
+                                    {editing && (
+                                      <button
+                                        onClick={() => removeItem(section.itemsKey, idx)}
+                                        className="absolute top-1 right-0.5 p-0.5 text-gray-300 hover:text-red-500 transition-colors"
+                                        title="删除"
+                                      >
+                                        <Trash2 size={10} />
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </Fragment>
+                          );
+                        })}
+
+                        {/* Total row */}
+                        <tr className="bg-gray-50 font-semibold">
+                          <td colSpan={3} className="border border-gray-300 px-3 py-2 text-right text-gray-700">合计</td>
+                          <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">{totalWeight}</td>
+                          <td colSpan={2} className="border border-gray-300 px-3 py-2" />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               );
             })}

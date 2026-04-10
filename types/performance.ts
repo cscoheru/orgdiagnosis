@@ -124,6 +124,7 @@ export interface OrgPerformance {
   model_key?: string;
   properties: {
     org_unit_ref: string;
+    org_unit_name?: string;
     plan_ref: string;
     project_id: string;
     strategic_kpis: StrategicKPI[];
@@ -206,6 +207,7 @@ export interface PositionPerformance {
   model_key?: string;
   properties: {
     job_role_ref: string;
+    job_role_name?: string;
     org_perf_ref: string;
     plan_ref: string;
     project_id: string;
