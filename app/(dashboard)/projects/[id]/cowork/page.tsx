@@ -17,7 +17,7 @@ export default function CoWorkPage() {
   const params = useParams();
   const projectId = params.id as string;
 
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string; industry_background?: string }>>([]);
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; industry_context?: string }>>([]);
   const [activeSession, setActiveSession] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -34,7 +34,7 @@ export default function CoWorkPage() {
         setSessions(items.map((s: any) => ({
           id: s._key || s.id,
           title: s.title || '未命名共创',
-          industry_background: s.industry_background || '',
+          industry_context: s.properties?.industry_context || s.industry_context || '',
         })));
       }
     } catch { /* silent */ }
@@ -71,7 +71,7 @@ export default function CoWorkPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newTitle,
-          industry_background: newIndustry,
+          industry_context: newIndustry,
           project_id: projectId,
         }),
       });
