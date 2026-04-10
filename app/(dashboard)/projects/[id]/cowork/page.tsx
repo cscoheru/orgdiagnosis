@@ -90,7 +90,7 @@ export default function CoWorkPage() {
     const res = await fetch(`${API_BASE}/api/v1/workshop/sessions/${activeSession.session._key}/nodes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, node_type: nodeType, description, parent_id: parentId }),
+      body: JSON.stringify({ name, node_type: nodeType, description, parent_node_id: parentId }),
     });
     if (!res.ok) throw new Error('Failed to add node');
     return res.json();

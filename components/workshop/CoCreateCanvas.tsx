@@ -158,9 +158,8 @@ function CoCreateCanvasInner({
   // ─── Node operations ───
 
   const createNodeWithFocus = useCallback(async (name: string, parentId?: string, siblingOfId?: string) => {
-    const res = await onAddNode(name || "新节点", "scene", undefined, parentId);
-    if (res?.success && res.data) {
-      const newNode = res.data;
+    const newNode = await onAddNode(name || "新节点", "scene", undefined, parentId);
+    if (newNode?._id) {
       const newId = newNode._id;
       // Determine position based on context
       let pos: { x: number; y: number };
@@ -505,9 +504,8 @@ function CoCreateCanvasInner({
   // ─── AI suggest accept ───
 
   const handleAcceptGhost = useCallback(async (parentId: string, suggestion: AiSuggestion) => {
-    const res = await onAddNode(suggestion.name, suggestion.type || "scene", suggestion.reason, parentId);
-    if (res?.success && res.data) {
-      const newNode = res.data;
+    const newNode = await onAddNode(suggestion.name, suggestion.type || "scene", suggestion.reason, parentId);
+    if (newNode?._id) {
       const newId = newNode._id;
       const parentPos = nodes.find((n) => n.id === parentId)?.position;
       const pos = parentPos
@@ -569,9 +567,8 @@ function CoCreateCanvasInner({
 
   const handleAddRoot = useCallback(async () => {
     if (!newRootName.trim()) return;
-    const res = await onAddNode(newRootName.trim(), "scene");
-    if (res?.success && res.data) {
-      const newNode = res.data;
+    const newNode = await onAddNode(newRootName.trim(), "scene");
+    if (newNode?._id) {
       const newId = newNode._id;
       setNodes((nds) => [
         ...nds,
