@@ -109,7 +109,7 @@ export default function StrategicGoalsTab({ projectId, activePlan, onRefresh }: 
     setLoading(true);
     try {
       const [goalsRes, initRes] = await Promise.all([
-        listStrategicGoals(projectId),
+        listStrategicGoals(),
         getObjectsByModel('Strategic_Initiative', 50),
       ]);
       if (goalsRes.success && goalsRes.data) {
