@@ -93,6 +93,103 @@ class KernelBridge:
         svc = ObjectService(db)
         return await self._run_sync(svc.list_objects, None, limit)
 
+    async def get_objects_by_field(
+        self,
+        model_key: str,
+        field_name: str,
+        field_value: Any,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """按字段值过滤对象
+
+        Args:
+            model_key: 元模型 key
+            field_name: 属性字段名 (在 properties 内)
+            field_value: 期望的字段值
+        """
+        from app.repositories.object_repo import ObjectRepository
+
+        db = self._get_db()
+        repo = ObjectRepository(db)
+
+        def _query():
+            aql = """
+            FOR doc IN @@collection
+            FILTER doc.model_key == @model_key
+               AND doc.properties[@field_name] == @field_value
+            SORT doc._key ASC
+            LIMIT @limit
+            RETURN doc
+            """
+            cursor = db.aql.execute(
+                aql,
+                bind_vars={
+                    "@collection": "sys_objects",
+                    "model_key": model_key,
+                    "field_name": field_name,
+                    "field_value": field_value,
+                    "limit": limit,
+                },
+            )
+            return list(cursor)
+
+        return await self._run_sync(_query)
+
+    async def get_ancestors(
+        self,
+        obj_id: str,
+        relation_type: str,
+        max_depth: int = 10,
+    ) -> list[dict[str, Any]]:
+        """沿关系边向上遍历，获取祖先链
+
+        Args:
+            obj_id: 起始对象 _id (如 sys_objects/123)
+            relation_type: 关系类型 (如 "Parent_Org", "Decomposed_From")
+            max_depth: 最大遍历深度
+
+        Returns:
+            从直接上级到最远祖先的有序列表
+        """
+        from app.repositories.relation_repo import RelationRepository
+
+        db = self._get_db()
+        repo = RelationRepository(db)
+
+        def _traverse():
+            ancestors = []
+            current_id = obj_id
+            for _ in range(max_depth):
+                # Find INBOUND relations of given type
+                aql = """
+                FOR edge IN @@collection
+                FILTER edge._to == @current_id
+                   AND edge.relation_type == @relation_type
+                LIMIT 1
+                RETURN edge._from
+                """
+                cursor = db.aql.execute(
+                    aql,
+                    bind_vars={
+                        "@collection": "sys_relations",
+                        "current_id": current_id,
+                        "relation_type": relation_type,
+                    },
+                )
+                parents = list(cursor)
+                if not parents:
+                    break
+                parent_id = parents[0]
+                parent_key = parent_id.split("/")[1]
+                parent_obj = db.collection("sys_objects").get(parent_key)
+                if parent_obj is None:
+                    break
+                ancestors.append(parent_obj)
+                current_id = parent_id
+            return ancestors
+
+        return await self._run_sync(_traverse)
+
     # ──────────────────────────────────────────────
     # 关系操作
     # ──────────────────────────────────────────────

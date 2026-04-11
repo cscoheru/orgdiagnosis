@@ -18,6 +18,7 @@ import { getObjectsByModel, updateObject, deleteObject, type KernelObject } from
 import type { Methodology, CycleType, PlanStatus } from '@/types/performance';
 import { METHODOLOGY_LABELS, CYCLE_TYPE_LABELS, PLAN_STATUS_LABELS, PLAN_STATUS_COLORS } from '@/types/performance';
 import { Plus, Settings2, Target, Trash2, Edit3 } from 'lucide-react';
+import ContextEnrichmentPanel from './ContextEnrichmentPanel';
 import InlineCreateModal from './InlineCreateModal';
 
 interface Props {
@@ -289,6 +290,11 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── Context Enrichment Panel (Phase 2) ── */}
+      {activePlan && (
+        <ContextEnrichmentPanel plan={activePlan} onUpdated={onRefresh} />
       )}
 
       {/* ── Strategic Goals Section ── */}

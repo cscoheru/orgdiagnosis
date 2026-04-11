@@ -33,7 +33,8 @@ class ObjectService:
             FieldTypeEnum.MONEY: (int, float),  # 金额，类型等同于 FLOAT
             FieldTypeEnum.BOOLEAN: bool,
             FieldTypeEnum.ARRAY: list,
-            FieldTypeEnum.OBJECT: dict,
+            # OBJECT 接受 dict / list / str — meta-model 用 object 存储任意 JSON
+            FieldTypeEnum.OBJECT: (dict, list, str),
             FieldTypeEnum.DATETIME: str,    # ISO 8601 字符串
             FieldTypeEnum.ENUM: str,        # 枚举值是字符串
             FieldTypeEnum.REFERENCE: str,   # 引用 _id 是字符串

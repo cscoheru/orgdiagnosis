@@ -96,6 +96,48 @@ def _safe_json_dumps(obj: Any) -> str:
     return str(obj) if obj is not None else ""
 
 
+def _build_enriched_context(plan_props: dict[str, Any]) -> str:
+    """从 plan.business_context 构建丰富的 AI 上下文
+
+    读取方案中已填充的战略上下文分区，格式化为 AI 可理解的文本。
+    如果没有上下文数据，则降级为基础客户信息。
+    """
+    ctx = plan_props.get("business_context", {})
+    if not ctx:
+        return f"客户: {plan_props.get('client_name', '')}"
+
+    # 兼容 JSON 字符串
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except (json.JSONDecodeError, TypeError):
+            return f"客户: {plan_props.get('client_name', '')}"
+
+    SECTION_LABELS = {
+        "client_profile": "客户概况",
+        "business_review": "业务复盘",
+        "market_insights": "市场洞察",
+        "swot_data": "SWOT 分析",
+        "strategic_direction": "战略方向",
+        "bsc_cards": "BSC 战略地图",
+        "action_plans": "行动计划",
+        "targets": "战略目标",
+    }
+
+    parts = []
+    for key, label in SECTION_LABELS.items():
+        content = ctx.get(key)
+        if content:
+            if isinstance(content, (dict, list)):
+                content = json.dumps(content, ensure_ascii=False, indent=2)
+            parts.append(f"## {label}\n{content}")
+
+    if not parts:
+        return f"客户: {plan_props.get('client_name', '')}"
+
+    return "\n\n".join(parts)
+
+
 # ──────────────────────────────────────────────
 # 原有诊断节点 (保持不变)
 # ──────────────────────────────────────────────
@@ -296,17 +338,28 @@ async def generate_org_performance_node(state: dict[str, Any]) -> dict[str, Any]
         plan_data = await _bridge.get_object(plan_id) if plan_id else None
         plan_props = plan_data.get("properties", {}) if plan_data else {}
 
-        # 2. 查询战略目标
+        # 2. 查询战略目标（包含新增的 goal_type、milestones、target_metrics 等字段）
         strategic_goals = await _bridge.get_objects_by_model("Strategic_Goal", limit=50)
         goals_text = ""
         if strategic_goals:
             lines = []
             for g in strategic_goals:
                 p = g.get("properties", {})
-                lines.append(
-                    f"- {p.get('goal_name', '')} | 优先级: {p.get('priority', '')} "
-                    f"| 目标值: {p.get('target_value', '')} | 状态: {p.get('status', '')}"
-                )
+                goal_type = p.get("goal_type", "operational_kpi")
+                line = f"- {p.get('goal_name', '')} ({goal_type}) | 优先级: {p.get('priority', '')} | 目标值: {p.get('target_value', '')} | 状态: {p.get('status', '')}"
+                # 新增字段：描述
+                desc = p.get("description", "")
+                if desc:
+                    line += f"\n  描述: {desc}"
+                # 新增字段：里程碑
+                milestones = p.get("milestones", [])
+                if milestones and isinstance(milestones, (dict, list)):
+                    line += f"\n  里程碑: {_safe_json_dumps(milestones)}"
+                # 新增字段：多指标
+                target_metrics = p.get("target_metrics", [])
+                if target_metrics and isinstance(target_metrics, (dict, list)):
+                    line += f"\n  衡量指标: {_safe_json_dumps(target_metrics)}"
+                lines.append(line)
             goals_text = "\n".join(lines)
         else:
             goals_text = "暂无战略目标数据"
@@ -323,7 +376,8 @@ async def generate_org_performance_node(state: dict[str, Any]) -> dict[str, Any]
             f"负责人: {org_props.get('manager', '')}"
         )
 
-        # 4. 调用 AI 生成四维度部门绩效
+        # 4. 构建富化上下文（Phase 2: 战略上下文）
+        enriched_context = _build_enriched_context(plan_props)
         client_context = (
             f"客户: {plan_props.get('client_name', '')} | "
             f"行业: {plan_props.get('industry', '')} | "
@@ -338,6 +392,7 @@ async def generate_org_performance_node(state: dict[str, Any]) -> dict[str, Any]
                 strategic_goals=goals_text,
                 org_unit_info=org_text,
                 industry_context=plan_props.get("industry", "未指定"),
+                enriched_context=enriched_context,
             ),
             temperature=0.4,
         )
@@ -347,14 +402,15 @@ async def generate_org_performance_node(state: dict[str, Any]) -> dict[str, Any]
             "Org_Performance",
             {
                 "org_unit_ref": _ref(org_unit_id),
+                "org_unit_name": org_props.get("unit_name", ""),
                 "plan_ref": _ref(plan_id),
                 "project_id": plan_props.get("project_id", ""),
-                "strategic_kpis": _safe_json_dumps(result.get("strategic_kpis", [])),
-                "management_indicators": _safe_json_dumps(result.get("management_indicators", [])),
-                "team_development": _safe_json_dumps(result.get("team_development", [])),
-                "engagement_compliance": _safe_json_dumps(result.get("engagement_compliance", [])),
-                "dimension_weights": _safe_json_dumps(result.get("dimension_weights", {})),
-                "strategic_alignment": _safe_json_dumps(result.get("strategic_alignment", [])),
+                "strategic_kpis": result.get("strategic_kpis", []),
+                "management_indicators": result.get("management_indicators", []),
+                "team_development": result.get("team_development", []),
+                "engagement_compliance": result.get("engagement_compliance", []),
+                "dimension_weights": result.get("dimension_weights", {}),
+                "strategic_alignment": result.get("strategic_alignment", []),
                 "period": plan_props.get("cycle_type", "年度"),
                 "status": "生成中",
                 "generated_at": datetime.now().isoformat(),
@@ -421,7 +477,7 @@ async def generate_position_performance_node(state: dict[str, Any]) -> dict[str,
         job_roles = await _bridge.get_objects_by_model("Job_Role", limit=100)
         dept_roles = [
             r for r in (job_roles or [])
-            if r.get("properties", {}).get("org_unit_id") == org_unit_id
+            if r.get("properties", {}).get("org_unit_id") in (org_unit_id, f"sys_objects/{org_unit_id}")
         ]
 
         if not dept_roles:
@@ -494,17 +550,18 @@ async def generate_position_performance_node(state: dict[str, Any]) -> dict[str,
                 "Position_Performance",
                 {
                     "job_role_ref": role.get("_id", ""),
+                    "job_role_name": role_props.get("role_name", ""),
                     "org_perf_ref": _ref(org_perf_id),
                     "plan_ref": _ref(plan_id),
                     "project_id": project_id,
-                    "performance_goals": _safe_json_dumps(result.get("performance_goals", [])),
-                    "competency_items": _safe_json_dumps(result.get("competency_items", [])),
-                    "values_items": _safe_json_dumps(result.get("values_items", [])),
-                    "development_goals": _safe_json_dumps(result.get("development_goals", [])),
-                    "section_weights": _safe_json_dumps(result.get("section_weights", {})),
+                    "performance_goals": result.get("performance_goals", []),
+                    "competency_items": result.get("competency_items", []),
+                    "values_items": result.get("values_items", []),
+                    "development_goals": result.get("development_goals", []),
+                    "section_weights": result.get("section_weights", {}),
                     "is_leader": is_leader,
-                    "leader_config": _safe_json_dumps(leader_config),
-                    "team_performance": _safe_json_dumps(team_perf),
+                    "leader_config": leader_config,
+                    "team_performance": team_perf,
                     "auto_generated": True,
                     "is_edited": False,
                     "status": "已生成",
@@ -625,12 +682,8 @@ async def generate_review_template_node(state: dict[str, Any]) -> dict[str, Any]
                     "min_value": rating_rec.get("min_value", 1),
                     "max_value": rating_rec.get("max_value", 5),
                     "step": 1.0,
-                    "scale_definitions": _safe_json_dumps(
-                        rating_rec.get("scale_definitions", [])
-                    ),
-                    "distribution_guide": _safe_json_dumps(
-                        rating_rec.get("distribution_guide", {})
-                    ),
+                    "scale_definitions": rating_rec.get("scale_definitions", []),
+                    "distribution_guide": rating_rec.get("distribution_guide", {}),
                     "is_default": False,
                 },
             )
@@ -651,10 +704,10 @@ async def generate_review_template_node(state: dict[str, Any]) -> dict[str, Any]
                 "template_name": f"{job_props.get('role_name', '岗位')}考核表单",
                 "template_type": template_type,
                 "applicable_roles": [job_props.get("job_family", "")],
-                "sections": _safe_json_dumps(result.get("sections", [])),
+                "sections": result.get("sections", []),
                 "total_weight": result.get("total_weight", 100),
                 "rating_model_ref": rating_model_id or "",
-                "reviewer_config": _safe_json_dumps(result.get("reviewer_config", {})),
+                "reviewer_config": result.get("reviewer_config", {}),
                 "plan_ref": _ref(plan_id),
                 "position_ref": _ref(pos_perf_id),
                 "status": "草拟",

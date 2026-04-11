@@ -3,13 +3,15 @@
 /**
  * 绩效管理咨询 — 主页面
  *
- * 6 个 Tab:
+ * 8 个 Tab:
  * 1. 方案概览 — 创建/查看绩效方案
- * 2. 组织绩效 — AI 生成部门四维度绩效
- * 3. 岗位绩效 — 一键生成 + 编辑岗位四分区绩效
- * 4. 考核表单 — AI 生成考核表单模板
- * 5. 数据分析 — 评分分布、偏差分析
- * 6. 报告生成 — AI 生成咨询报告
+ * 2. 战略目标 — 管理战略目标 + AI 分解举措
+ * 3. 组织绩效 — AI 生成部门四维度绩效
+ * 4. 岗位绩效 — 一键生成 + 编辑岗位四分区绩效
+ * 5. 考核表单 — AI 生成考核表单模板
+ * 6. 级联分解 — 目标层级分解 + 周期管理
+ * 7. 数据分析 — 评分分布、偏差分析
+ * 8. 报告生成 — AI 生成咨询报告
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -21,19 +23,23 @@ import {
   type PerformanceOverview as OverviewType,
 } from '@/lib/api/performance-api';
 import PlanOverviewTab from './PlanOverviewTab';
+import StrategicGoalsTab from './StrategicGoalsTab';
 import OrgPerformanceTab from './OrgPerformanceTab';
 import PositionPerformanceTab from './PositionPerformanceTab';
 import ReviewTemplateTab from './ReviewTemplateTab';
+import CascadeTreeTab from './CascadeTreeTab';
 import AnalyticsTab from './AnalyticsTab';
 import ReportTab from './ReportTab';
 
-type TabId = 'plan' | 'org-perf' | 'pos-perf' | 'template' | 'analytics' | 'report';
+type TabId = 'plan' | 'goals' | 'org-perf' | 'pos-perf' | 'template' | 'cascade' | 'analytics' | 'report';
 
 const TABS: { id: TabId; name: string }[] = [
   { id: 'plan', name: '方案概览' },
+  { id: 'goals', name: '战略目标' },
   { id: 'org-perf', name: '组织绩效' },
   { id: 'pos-perf', name: '岗位绩效' },
   { id: 'template', name: '考核表单' },
+  { id: 'cascade', name: '级联分解' },
   { id: 'analytics', name: '数据分析' },
   { id: 'report', name: '报告生成' },
 ];
@@ -125,6 +131,14 @@ export default function PerformancePage() {
         />
       )}
 
+      {activeTab === 'goals' && (
+        <StrategicGoalsTab
+          projectId={projectId}
+          activePlan={activePlan}
+          onRefresh={refreshData}
+        />
+      )}
+
       {activeTab === 'org-perf' && (
         <OrgPerformanceTab
           projectId={projectId}
@@ -143,6 +157,14 @@ export default function PerformancePage() {
 
       {activeTab === 'template' && (
         <ReviewTemplateTab
+          projectId={projectId}
+          activePlan={activePlan}
+          onRefresh={refreshData}
+        />
+      )}
+
+      {activeTab === 'cascade' && (
+        <CascadeTreeTab
           projectId={projectId}
           activePlan={activePlan}
           onRefresh={refreshData}

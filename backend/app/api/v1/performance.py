@@ -7,7 +7,7 @@
 基础 CRUD 通过 /v1/kernel/objects 端点操作，
 本模块提供业务逻辑端点（AI 生成、统计分析等）。
 """
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Body
 from pydantic import BaseModel
 from typing import Any, Optional
 import json
@@ -52,6 +52,41 @@ class BatchImportReviewsRequest(BaseModel):
     reviews: list[dict[str, Any]]
 
 
+class EnrichContextRequest(BaseModel):
+    """富化上下文请求"""
+    context_type: str  # client_profile / business_review / market_insights / strategic_direction
+    content: str
+
+
+class BridgeStrategyRequest(BaseModel):
+    """从战略解码导入数据请求"""
+    project_id: str
+
+
+class DecomposeInitiativeRequest(BaseModel):
+    """战略举措分解请求"""
+    initiative_id: str
+    plan_id: str = ""
+
+
+class CascadeGenerateRequest(BaseModel):
+    """级联生成请求"""
+    plan_id: str
+    org_unit_id: str
+    cascade_mode: str = "top_down"
+
+
+class PeriodDecomposeRequest(BaseModel):
+    """周期分解请求"""
+    org_perf_id: str
+    target_periods: list[str] = ["Q1", "Q2", "Q3", "Q4"]
+
+
+class SetParentOrgRequest(BaseModel):
+    """设置上级部门请求"""
+    parent_org_ref: str
+
+
 # ── 工具函数 ──────────────────────────────────────────────
 
 def _get_service(db: Any = Depends(get_db)) -> tuple:
@@ -74,12 +109,13 @@ def _filter_by_project(objects: list[dict], project_id: str) -> list[dict]:
 def _filter_by_field(
     objects: list[dict], field: str, value: str
 ) -> list[dict]:
-    """按指定字段过滤对象列表"""
+    """按指定字段过滤对象列表（兼容 sys_objects/ 前缀）"""
     if not value:
         return objects
+    prefixed = f"sys_objects/{value}"
     return [
         o for o in objects
-        if o.get("properties", {}).get(field) == value
+        if o.get("properties", {}).get(field) in (value, prefixed)
     ]
 
 
@@ -236,33 +272,9 @@ def list_position_performances(
     return objects
 
 
-@router.get("/pos-perf/{key}", summary="获取岗位绩效详情")
-def get_position_performance(key: str, db: Any = Depends(get_db)):
-    """获取岗位绩效详情"""
-    svc = ObjectService(db)
-    obj = svc.get_object(key)
-    if not obj:
-        raise HTTPException(status_code=404, detail="岗位绩效不存在")
-    return obj
-
-
-@router.patch("/pos-perf/{key}", summary="编辑岗位绩效")
-def update_position_performance(key: str, data: dict[str, Any], db: Any = Depends(get_db)):
-    """编辑岗位绩效 (标记 is_edited=true)"""
-    from app.models.kernel.meta_model import ObjectUpdate
-    svc = ObjectService(db)
-
-    # 标记为已编辑
-    data["is_edited"] = True
-    obj = svc.update_object(key, ObjectUpdate(properties=data))
-    if not obj:
-        raise HTTPException(status_code=404, detail="岗位绩效不存在")
-    return obj
-
-
 @router.patch("/pos-perf/batch-update", summary="批量编辑岗位绩效")
 def batch_update_position_performance(
-    updates: list[dict[str, Any]],
+    updates: list[dict[str, Any]] = Body(...),
     db: Any = Depends(get_db),
 ):
     """批量编辑岗位绩效
@@ -285,6 +297,30 @@ def batch_update_position_performance(
             "status": "updated" if obj else "not_found",
         })
     return {"updated": len([r for r in results if r["status"] == "updated"]), "results": results}
+
+
+@router.get("/pos-perf/{key}", summary="获取岗位绩效详情")
+def get_position_performance(key: str, db: Any = Depends(get_db)):
+    """获取岗位绩效详情"""
+    svc = ObjectService(db)
+    obj = svc.get_object(key)
+    if not obj:
+        raise HTTPException(status_code=404, detail="岗位绩效不存在")
+    return obj
+
+
+@router.patch("/pos-perf/{key}", summary="编辑岗位绩效")
+def update_position_performance(key: str, data: dict[str, Any], db: Any = Depends(get_db)):
+    """编辑岗位绩效 (标记 is_edited=true)"""
+    from app.models.kernel.meta_model import ObjectUpdate
+    svc = ObjectService(db)
+
+    # 标记为已编辑
+    data["is_edited"] = True
+    obj = svc.update_object(key, ObjectUpdate(properties=data))
+    if not obj:
+        raise HTTPException(status_code=404, detail="岗位绩效不存在")
+    return obj
 
 
 # ── 考核表单模板 ──────────────────────────────────────
@@ -622,3 +658,329 @@ async def generate_report(req: GenerateReportRequest):
         raise HTTPException(status_code=500, detail=result.get("error", "报告生成失败"))
 
     return result
+
+
+# ── 战略上下文富化 ──────────────────────────────────────
+
+@router.post("/plans/{key}/enrich-context", summary="富化方案上下文（文本粘贴）")
+def enrich_plan_context(
+    key: str,
+    req: EnrichContextRequest,
+    db: Any = Depends(get_db),
+):
+    """将文本内容保存到绩效方案的 business_context 对应分区"""
+    from app.models.kernel.meta_model import ObjectUpdate
+    svc = ObjectService(db)
+
+    plan = svc.get_object(key)
+    if not plan:
+        raise HTTPException(status_code=404, detail="绩效方案不存在")
+
+    ctx = plan.get("properties", {}).get("business_context", {}) or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except (json.JSONDecodeError, TypeError):
+            ctx = {}
+
+    ctx[req.context_type] = req.content
+
+    obj = svc.update_object(key, ObjectUpdate(properties={"business_context": ctx}))
+    if not obj:
+        raise HTTPException(status_code=500, detail="更新失败")
+    return {"success": True, "context_type": req.context_type}
+
+
+# ── 战略目标 CRUD (Phase 3) ──────────────────────────────────────
+
+@router.post("/strategic-goals", summary="创建战略目标")
+def create_strategic_goal(data: dict[str, Any], db: Any = Depends(get_db)):
+    """创建战略目标（支持 goal_type/milestones/target_metrics 等新字段）"""
+    from app.models.kernel.meta_model import ObjectCreate
+    svc = ObjectService(db)
+    obj_data = ObjectCreate(model_key="Strategic_Goal", properties=data)
+    return svc.create_object(obj_data)
+
+
+@router.get("/strategic-goals", summary="获取战略目标列表")
+def list_strategic_goals(
+    project_id: str = Query(default="", description="按 project_id 过滤"),
+    goal_type: str = Query(default="", description="按 goal_type 过滤"),
+    db: Any = Depends(get_db),
+):
+    """获取战略目标列表"""
+    svc = ObjectService(db)
+    objects = svc.list_objects("Strategic_Goal", limit=100) or []
+    if project_id:
+        objects = _filter_by_field(objects, "project_id", project_id)
+    if goal_type:
+        objects = [o for o in objects if o.get("properties", {}).get("goal_type") == goal_type]
+    return objects
+
+
+@router.patch("/strategic-goals/{key}", summary="更新战略目标")
+def update_strategic_goal(key: str, data: dict[str, Any], db: Any = Depends(get_db)):
+    """更新战略目标"""
+    from app.models.kernel.meta_model import ObjectUpdate
+    svc = ObjectService(db)
+    obj = svc.update_object(key, ObjectUpdate(properties=data))
+    if not obj:
+        raise HTTPException(status_code=404, detail="战略目标不存在")
+    return obj
+
+
+@router.post("/strategic-goals/decompose", summary="AI 分解战略举措")
+async def decompose_initiative(req: DecomposeInitiativeRequest):
+    """AI 将战略举措分解为里程碑 + 关联KPI"""
+    from lib.workflow.base_state import create_workflow_state
+    from lib.domain.performance.goal_decomposer import decompose_initiative_node
+
+    state = create_workflow_state(
+        task_id="initiative_decompose",
+        initiative_id=req.initiative_id,
+        plan_id=req.plan_id,
+    )
+
+    result_state = await decompose_initiative_node(state)
+    result = result_state.get("results", {}).get("initiative_decomposition", {})
+
+    if result.get("status") == "failed":
+        raise HTTPException(status_code=500, detail=result.get("error", "分解失败"))
+
+    return result
+
+
+@router.post("/plans/{key}/bridge-strategy", summary="从战略解码导入数据")
+def bridge_strategy_data(
+    key: str,
+    req: BridgeStrategyRequest,
+    db: Any = Depends(get_db),
+):
+    """从战略解码 wizard 导出数据映射到绩效方案的 business_context。
+
+    映射规则:
+    - step1 (业绩诊断) → business_review
+    - step2 (市场洞察) → market_insights + swot_data
+    - step3 (目标设定) → targets
+    - step4 (战略执行) → bsc_cards + action_plans
+    """
+    from app.models.kernel.meta_model import ObjectUpdate
+    svc = ObjectService(db)
+
+    plan = svc.get_object(key)
+    if not plan:
+        raise HTTPException(status_code=404, detail="绩效方案不存在")
+
+    ctx = plan.get("properties", {}).get("business_context", {}) or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except (json.JSONDecodeError, TypeError):
+            ctx = {}
+
+    # 查找项目下的战略目标
+    goals = svc.list_objects("Strategic_Goal", limit=100) or []
+    project_goals = [g for g in goals if g.get("properties", {}).get("project_id") == req.project_id]
+
+    if project_goals:
+        target_lines = []
+        for g in project_goals:
+            p = g.get("properties", {})
+            target_lines.append(
+                f"- {p.get('goal_name', '')} (优先级: {p.get('priority', '')}, "
+                f"目标值: {p.get('target_value', '')}, 状态: {p.get('status', '')})"
+            )
+        ctx["targets"] = "\n".join(target_lines)
+
+    # 查找市场环境数据
+    markets = svc.list_objects("Market_Context", limit=50) or []
+    if markets:
+        market = markets[0]
+        mp = market.get("properties", {})
+        insights_parts = []
+        if mp.get("competitor_landscape"):
+            insights_parts.append(f"竞争格局:\n{mp['competitor_landscape']}")
+        if mp.get("customer_profile"):
+            insights_parts.append(f"客户画像:\n{mp['customer_profile']}")
+        if mp.get("market_position"):
+            insights_parts.append(f"市场地位: {mp['market_position']}")
+        if mp.get("growth_rate"):
+            insights_parts.append(f"增长率: {mp['growth_rate']}%")
+        if insights_parts:
+            ctx["market_insights"] = "\n\n".join(insights_parts)
+
+    # 查找战略举措
+    initiatives = svc.list_objects("Strategic_Initiative", limit=50) or []
+    if initiatives:
+        init_lines = []
+        for ini in initiatives:
+            ip = ini.get("properties", {})
+            init_lines.append(
+                f"- {ip.get('initiative_name', '')} (状态: {ip.get('status', '')}, "
+                f"描述: {ip.get('description', '')})"
+            )
+        ctx["strategic_direction"] = "\n".join(init_lines)
+
+    obj = svc.update_object(key, ObjectUpdate(properties={"business_context": ctx}))
+    if not obj:
+        raise HTTPException(status_code=500, detail="更新失败")
+
+    imported_sections = [k for k, v in ctx.items() if v]
+    return {
+        "success": True,
+        "imported_sections": imported_sections,
+        "context_summary": {k: (len(v) if isinstance(v, str) else "object") for k, v in ctx.items()},
+    }
+
+
+# ── 级联管理 (Phase 4) ──────────────────────────────────────
+
+@router.post("/cascade/generate", summary="一键级联生成")
+async def cascade_generate(req: CascadeGenerateRequest):
+    """一键级联生成：公司目标 → 部门目标 → 岗位目标"""
+    from lib.workflow.base_state import create_workflow_state
+    from lib.domain.performance.cascade_orchestrator import generate_full_cascade
+
+    state = create_workflow_state(
+        task_id="cascade_gen",
+        plan_id=req.plan_id,
+        org_unit_id=req.org_unit_id,
+        cascade_mode=req.cascade_mode,
+    )
+
+    result_state = await generate_full_cascade(state)
+    result = result_state.get("results", {}).get("cascade", {})
+
+    if result.get("status") == "failed":
+        raise HTTPException(status_code=500, detail=result.get("error", "级联生成失败"))
+
+    return result
+
+
+@router.get("/cascade/tree", summary="获取级联树")
+async def get_cascade_tree(
+    plan_id: str = Query(default="", description="绩效方案 ID"),
+    db: Any = Depends(get_db),
+):
+    """获取级联树结构（组织绩效层级关系）"""
+    from app.services.kernel.object_service import ObjectService
+
+    svc = ObjectService(db)
+    org_perfs = svc.list_objects("Org_Performance", limit=100) or []
+
+    if plan_id:
+        org_perfs = _filter_by_field(org_perfs, "plan_ref", plan_id)
+
+    # 构建树
+    from collections import defaultdict
+
+    children_map: dict[str, list] = defaultdict(list)
+    roots = []
+
+    for op in org_perfs:
+        props = op.get("properties", {})
+        parent_ref = props.get("parent_goal_ref", "")
+        parent_key = parent_ref.removeprefix("sys_objects/") if parent_ref else ""
+
+        node = {
+            "_key": op["_key"],
+            "type": "org_performance",
+            "name": props.get("org_unit_name", ""),
+            "perf_type": props.get("perf_type", "department"),
+            "period_target": props.get("period_target", ""),
+            "status": props.get("status", ""),
+            "dimension_weights": props.get("dimension_weights", {}),
+            "children": [],
+        }
+
+        if parent_key:
+            children_map[parent_key].append(node)
+        else:
+            roots.append(node)
+
+    # Attach children
+    def attach_children(nodes: list):
+        for node in nodes:
+            node["children"] = children_map.get(node["_key"], [])
+            attach_children(node["children"])
+
+    attach_children(roots)
+
+    # Also fetch position performances
+    pos_perfs = svc.list_objects("Position_Performance", limit=200) or []
+    if plan_id:
+        pos_perfs = _filter_by_field(pos_perfs, "plan_ref", plan_id)
+
+    for op_node in _flatten_tree(roots):
+        op_key = op_node["_key"]
+        for pp in pos_perfs:
+            pp_props = pp.get("properties", {})
+            org_ref = pp_props.get("org_perf_ref", "")
+            if org_ref in (op_key, f"sys_objects/{op_key}"):
+                op_node.setdefault("children", []).append({
+                    "_key": pp["_key"],
+                    "type": "position_performance",
+                    "name": pp_props.get("job_role_name", ""),
+                    "is_leader": pp_props.get("is_leader", False),
+                    "status": pp_props.get("status", ""),
+                    "period_target": pp_props.get("period_target", ""),
+                    "children": [],
+                })
+
+    return {"tree": roots, "total_org_perfs": len(org_perfs), "total_pos_perfs": len(pos_perfs)}
+
+
+def _flatten_tree(nodes: list) -> list:
+    """将嵌套树扁平化为列表"""
+    result = []
+    for node in nodes:
+        result.append(node)
+        result.extend(_flatten_tree(node.get("children", [])))
+    return result
+
+
+@router.post("/org-perf/{key}/decompose-period", summary="周期分解")
+async def decompose_period(req: PeriodDecomposeRequest, key: str):
+    """将年度部门绩效分解为季度/月度目标"""
+    from lib.workflow.base_state import create_workflow_state
+    from lib.domain.performance.period_decomposer import decompose_period_node
+
+    state = create_workflow_state(
+        task_id="period_decompose",
+        org_perf_id=key,
+        target_periods=req.target_periods,
+    )
+
+    result_state = await decompose_period_node(state)
+    result = result_state.get("results", {}).get("period_decomposition", {})
+
+    if result.get("status") == "failed":
+        raise HTTPException(status_code=500, detail=result.get("error", "周期分解失败"))
+
+    return result
+
+
+@router.patch("/org-units/{key}/set-parent", summary="设置上级部门")
+def set_parent_org(key: str, req: SetParentOrgRequest, db: Any = Depends(get_db)):
+    """设置部门的上级部门（建立组织层级）"""
+    from app.models.kernel.meta_model import ObjectUpdate
+    svc = ObjectService(db)
+
+    # 验证上级部门存在
+    parent_key = req.parent_org_ref.removeprefix("sys_objects/")
+    parent = svc.get_object(parent_key)
+    if not parent:
+        raise HTTPException(status_code=404, detail=f"上级部门 {req.parent_org_ref} 不存在")
+
+    obj = svc.update_object(key, ObjectUpdate(properties={"parent_org_ref": _ref(req.parent_org_ref)}))
+    if not obj:
+        raise HTTPException(status_code=404, detail="部门不存在")
+
+    return {"success": True, "org_unit": key, "parent": req.parent_org_ref}
+
+
+def _ref(key: str) -> str:
+    """将裸 _key 转为 sys_objects/ 引用格式"""
+    if not key:
+        return ""
+    return key if key.startswith("sys_objects/") else f"sys_objects/{key}"

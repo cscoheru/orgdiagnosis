@@ -30,6 +30,9 @@ from lib.domain.performance.nodes import (
     calibration_analysis_node,
     generate_performance_report_node,
 )
+from lib.domain.performance.goal_decomposer import decompose_initiative_node
+from lib.domain.performance.cascade_orchestrator import generate_full_cascade
+from lib.domain.performance.period_decomposer import decompose_period_node
 from lib.domain.performance.prompts import (
     PERFORMANCE_SYSTEM_PROMPT,
     PERFORMANCE_DIMENSION_PROMPT,
@@ -39,7 +42,9 @@ from lib.domain.performance.prompts import (
     REVIEW_PATTERN_ANALYSIS_PROMPT,
     CALIBRATION_ANALYSIS_PROMPT,
     PERFORMANCE_REPORT_PROMPT,
+    INITIATIVE_DECOMPOSITION_PROMPT,
 )
+from lib.domain.performance.period_decomposer import PERIOD_DECOMPOSITION_PROMPT
 
 
 class PerformanceModule(BaseDomainModule):
@@ -70,15 +75,7 @@ class PerformanceModule(BaseDomainModule):
         """返回绩效分析节点映射
 
         Returns:
-            {
-                "analyze_performance": analyze_performance_node,
-                "generate_org_performance": generate_org_performance_node,
-                "generate_position_performance": generate_position_performance_node,
-                "generate_review_template": generate_review_template_node,
-                "analyze_review_patterns": analyze_review_patterns_node,
-                "calibration_analysis": calibration_analysis_node,
-                "generate_performance_report": generate_performance_report_node,
-            }
+            原有 7 个节点 + Phase 3/4 新增 3 个节点
         """
         return {
             "analyze_performance": analyze_performance_node,
@@ -88,6 +85,12 @@ class PerformanceModule(BaseDomainModule):
             "analyze_review_patterns": analyze_review_patterns_node,
             "calibration_analysis": calibration_analysis_node,
             "generate_performance_report": generate_performance_report_node,
+            # Phase 3: 战略举措分解
+            "decompose_initiative": decompose_initiative_node,
+            # Phase 4: 级联生成
+            "generate_full_cascade": generate_full_cascade,
+            # Phase 4: 周期分解
+            "decompose_period": decompose_period_node,
         }
 
     def get_meta_model_keys(self) -> List[str]:
@@ -122,4 +125,8 @@ class PerformanceModule(BaseDomainModule):
             "review_analysis": REVIEW_PATTERN_ANALYSIS_PROMPT,
             "calibration_analysis": CALIBRATION_ANALYSIS_PROMPT,
             "report_generation": PERFORMANCE_REPORT_PROMPT,
+            # Phase 3: 战略举措分解
+            "initiative_decomposition": INITIATIVE_DECOMPOSITION_PROMPT,
+            # Phase 4: 周期分解
+            "period_decomposition": PERIOD_DECOMPOSITION_PROMPT,
         }

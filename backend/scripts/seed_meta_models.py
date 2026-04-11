@@ -31,6 +31,14 @@ META_MODELS = [
             {"field_name": "target_value", "field_type": "float", "is_required": False, "description": "预期数值"},
             {"field_name": "actual_value", "field_type": "float", "is_required": False, "description": "实际数值"},
             {"field_name": "status", "field_type": "enum", "is_required": False, "enum_options": ["进行中", "已完成", "延期", "暂停"], "default_value": "进行中", "description": "状态"},
+            {"field_name": "goal_type", "field_type": "enum", "is_required": False, "enum_options": ["revenue_target", "profit_target", "strategic_initiative", "operational_kpi", "capability_building"], "default_value": "operational_kpi", "description": "目标类型"},
+            {"field_name": "milestones", "field_type": "object", "is_required": False, "description": "里程碑 JSON [{phase, date, deliverable}]"},
+            {"field_name": "target_metrics", "field_type": "object", "is_required": False, "description": "多指标 JSON [{metric_name, unit, target_value, actual_value}]"},
+            {"field_name": "linked_kpis", "field_type": "object", "is_required": False, "description": "关联KPI JSON [{kpi_goal_id, weight}]"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "目标详细描述"},
+            {"field_name": "parent_goal_ref", "field_type": "reference", "reference_model": "Strategic_Goal", "is_required": False, "description": "上级目标 (层级分解)"},
+            {"field_name": "period_type", "field_type": "enum", "is_required": False, "enum_options": ["annual", "quarterly", "monthly"], "default_value": "annual", "description": "目标周期类型"},
+            {"field_name": "owner_org_ref", "field_type": "reference", "reference_model": "Org_Unit", "is_required": False, "description": "责任组织单元"},
         ],
         "description": "战略 — 战略目标/关键任务",
     },
@@ -74,6 +82,7 @@ META_MODELS = [
             {"field_name": "manager", "field_type": "string", "is_required": False, "description": "负责人"},
             {"field_name": "headcount", "field_type": "integer", "is_required": False, "description": "编制数"},
             {"field_name": "cost_center", "field_type": "string", "is_required": False, "description": "成本中心"},
+            {"field_name": "parent_org_ref", "field_type": "reference", "reference_model": "Org_Unit", "is_required": False, "description": "上级部门 (组织层级)"},
         ],
         "description": "组织 — 组织单元/部门",
     },
@@ -160,6 +169,7 @@ META_MODELS = [
             {"field_name": "status", "field_type": "enum", "is_required": False, "enum_options": ["草拟中", "客户确认", "执行中", "评估中", "已完成"], "description": "方案状态"},
             {"field_name": "description", "field_type": "text", "is_required": False, "description": "方案概述"},
             {"field_name": "scope", "field_type": "array", "is_required": False, "description": "适用范围 (部门/职级列表)"},
+            {"field_name": "business_context", "field_type": "object", "is_required": False, "description": "战略上下文 JSON {client_profile, business_review, market_insights, swot_data, strategic_direction, bsc_cards, action_plans, targets, source_files}"},
         ],
         "description": "绩效 — 绩效管理方案 (咨询交付物)",
     },
@@ -179,6 +189,9 @@ META_MODELS = [
             {"field_name": "period", "field_type": "enum", "is_required": False, "enum_options": ["年度", "季度", "月度"], "description": "考核周期"},
             {"field_name": "status", "field_type": "enum", "is_required": False, "enum_options": ["生成中", "待确认", "已确认", "已分解"], "description": "状态"},
             {"field_name": "generated_at", "field_type": "datetime", "is_required": False, "description": "AI生成时间"},
+            {"field_name": "perf_type", "field_type": "enum", "is_required": False, "enum_options": ["company", "department"], "default_value": "department", "description": "绩效类型 (公司级/部门级)"},
+            {"field_name": "parent_goal_ref", "field_type": "reference", "reference_model": "Org_Performance", "is_required": False, "description": "上级绩效 (分解链)"},
+            {"field_name": "period_target", "field_type": "string", "is_required": False, "description": "周期目标 e.g. 2026-Q1"},
         ],
         "description": "绩效 — 部门组织绩效 (四维度: 战略KPI+管理指标+团队发展+敬业度合规)",
     },
@@ -201,6 +214,7 @@ META_MODELS = [
             {"field_name": "auto_generated", "field_type": "boolean", "is_required": False, "default_value": False, "description": "是否AI自动生成"},
             {"field_name": "is_edited", "field_type": "boolean", "is_required": False, "default_value": False, "description": "是否已被人工编辑"},
             {"field_name": "status", "field_type": "enum", "is_required": False, "enum_options": ["已生成", "已编辑", "已确认"], "description": "状态"},
+            {"field_name": "period_target", "field_type": "string", "is_required": False, "description": "周期目标 e.g. 2026-Q1"},
         ],
         "description": "绩效 — 岗位绩效 (四分区: 业绩目标+能力评估+价值观+发展目标, 管理岗支持双重评估)",
     },
@@ -700,6 +714,83 @@ def seed_all_meta_models(verbose: bool = False):
     if verbose:
         print(f"Seeded {success_count}/{len(META_MODELS)} meta-models")
     return success_count
+
+
+def _build_field_definitions(fields_spec: list[dict]) -> list:
+    """将 raw field spec 列表转为 FieldDefinition 对象列表"""
+    from app.models.kernel.meta_model import FieldDefinition, FieldTypeEnum
+
+    result = []
+    for f in fields_spec:
+        kwargs = {
+            "field_name": f["field_name"],
+            "field_type": FieldTypeEnum(f["field_type"]),
+            "is_required": f.get("is_required", False),
+            "description": f.get("description"),
+        }
+        if "default_value" in f and f["default_value"] is not None:
+            kwargs["default_value"] = f["default_value"]
+        if "enum_options" in f:
+            kwargs["enum_options"] = f["enum_options"]
+        if "reference_model" in f:
+            kwargs["reference_model"] = f["reference_model"]
+        result.append(FieldDefinition(**kwargs))
+    return result
+
+
+def upgrade_meta_models(verbose: bool = False):
+    """增量升级已有元模型：合并新字段，不删除旧字段。
+
+    遍历 META_MODELS 定义，对于已存在的模型，将新字段追加到 fields 列表中。
+    如果字段名已存在则跳过（保留数据库中的当前定义）。
+
+    Can be called from main.py startup or as a standalone script.
+    """
+    db = get_db()
+    service = MetaModelService(db)
+
+    upgraded = 0
+    skipped = 0
+
+    for meta_data in META_MODELS:
+        model_key = meta_data["model_key"]
+        existing = service.get_meta_model_by_key(model_key)
+
+        if existing is None:
+            skipped += 1
+            continue
+
+        # Build set of existing field names
+        existing_fields = existing.get("fields", [])
+        existing_names = {f["field_name"] for f in existing_fields}
+
+        # Find new fields not yet in the model
+        new_field_specs = [
+            f for f in meta_data["fields"]
+            if f["field_name"] not in existing_names
+        ]
+
+        if not new_field_specs:
+            skipped += 1
+            continue
+
+        # Merge: existing + new
+        new_defs = _build_field_definitions(new_field_specs)
+        merged_fields = existing_fields + [fd.model_dump() for fd in new_defs]
+
+        from app.models.kernel.meta_model import MetaModelUpdate
+        update_data = MetaModelUpdate(fields=merged_fields)
+        service.update_meta_model(existing["_key"], update_data)
+        upgraded += 1
+
+        if verbose:
+            new_names = [f["field_name"] for f in new_field_specs]
+            print(f"  Upgraded {model_key}: +{new_names}")
+
+    if verbose:
+        print(f"Upgrade complete: {upgraded} upgraded, {skipped} skipped (not found or no new fields)")
+
+    return upgraded
 
 
 def main():

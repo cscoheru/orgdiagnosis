@@ -70,3 +70,33 @@ class MetaModelService:
             )
 
         return self._meta_repo.delete(key)
+
+    def add_fields_to_model(
+        self,
+        model_key: str,
+        new_fields: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """向已有元模型追加字段（不删除旧字段）
+
+        Args:
+            model_key: 元模型 key
+            new_fields: 新字段定义列表 [{field_name, field_type, ...}]
+
+        Returns:
+            更新后的元模型
+        """
+        existing = self._meta_repo.get_by_model_key(model_key)
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"元模型 '{model_key}' 不存在",
+            )
+
+        existing_names = {f["field_name"] for f in existing.get("fields", [])}
+        to_add = [f for f in new_fields if f["field_name"] not in existing_names]
+
+        if not to_add:
+            return existing
+
+        merged = existing.get("fields", []) + to_add
+        return self._meta_repo.update(existing["_key"], MetaModelUpdate(fields=merged))

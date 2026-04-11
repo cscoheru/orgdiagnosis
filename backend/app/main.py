@@ -45,9 +45,10 @@ async def lifespan(app: FastAPI):
 
     # Demo 模式下自动 seed meta-models（内存数据库每次启动为空）
     if kernel_settings.is_demo_mode:
-        from scripts.seed_meta_models import seed_all_meta_models
+        from scripts.seed_meta_models import seed_all_meta_models, upgrade_meta_models
         seed_all_meta_models()
-        logger.info("Kernel: meta-models seeded (demo mode)")
+        upgrade_meta_models()
+        logger.info("Kernel: meta-models seeded + upgraded (demo mode)")
 
         # Seed Agent blueprints (logic nodes + benchmark templates)
         try:

@@ -64,6 +64,7 @@ const JSON_FIELDS = new Set([
   'section_weights', 'leader_config', 'team_performance',
   'scale_definitions', 'distribution_guide', 'reviewer_config',
   'sections', 'section_scores', 'development_actions',
+  'business_context',
 ]);
 
 function normalizeJsonFields(obj: Record<string, unknown>): Record<string, unknown> {
@@ -342,5 +343,108 @@ export async function generatePerformanceReport(projectId: string): Promise<ApiR
   return perfRequest('/reports/generate', {
     method: 'POST',
     body: JSON.stringify({ project_id: projectId }),
+  });
+}
+
+// ──────────────────────────────────────────────
+// 战略上下文富化 Context Enrichment
+// ──────────────────────────────────────────────
+
+export async function enrichPlanContext(
+  planKey: string,
+  contextType: string,
+  content: string,
+): Promise<ApiResponse<{ success: boolean; context_type: string }>> {
+  return perfRequest(`/plans/${encodeURIComponent(planKey)}/enrich-context`, {
+    method: 'POST',
+    body: JSON.stringify({ context_type: contextType, content }),
+  });
+}
+
+export async function bridgeStrategyData(
+  planKey: string,
+  projectId: string,
+): Promise<ApiResponse<{ success: boolean; imported_sections: string[]; context_summary: Record<string, unknown> }>> {
+  return perfRequest(`/plans/${encodeURIComponent(planKey)}/bridge-strategy`, {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId }),
+  });
+}
+
+// ──────────────────────────────────────────────
+// 战略目标 CRUD (Phase 3)
+// ──────────────────────────────────────────────
+
+export async function createStrategicGoal(data: Record<string, unknown>): Promise<ApiResponse<unknown>> {
+  return perfRequest('/strategic-goals', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listStrategicGoals(projectId?: string, goalType?: string): Promise<ApiResponse<unknown[]>> {
+  const params = new URLSearchParams();
+  if (projectId) params.set('project_id', projectId);
+  if (goalType) params.set('goal_type', goalType);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return perfRequest<unknown[]>(`/strategic-goals${query}`);
+}
+
+export async function updateStrategicGoal(key: string, data: Record<string, unknown>): Promise<ApiResponse<unknown>> {
+  return perfRequest(`/strategic-goals/${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function decomposeInitiative(
+  initiativeId: string,
+  planId: string = '',
+): Promise<ApiResponse<{ status: string; milestones_count: number; linked_kpis_count: number; linked_kpis: unknown[] }>> {
+  return perfRequest('/strategic-goals/decompose', {
+    method: 'POST',
+    body: JSON.stringify({ initiative_id: initiativeId, plan_id: planId }),
+  });
+}
+
+// ──────────────────────────────────────────────
+// 级联管理 (Phase 4)
+// ──────────────────────────────────────────────
+
+export async function cascadeGenerate(
+  planId: string,
+  orgUnitId: string,
+  cascadeMode: string = 'top_down',
+): Promise<ApiResponse<{ status: string; org_performances: number; position_performances: number }>> {
+  return perfRequest('/cascade/generate', {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId, org_unit_id: orgUnitId, cascade_mode: cascadeMode }),
+  }, 300000);
+}
+
+export async function getCascadeTree(
+  planId?: string,
+): Promise<ApiResponse<{ tree: unknown[]; total_org_perfs: number; total_pos_perfs: number }>> {
+  const query = planId ? `?plan_id=${encodeURIComponent(planId)}` : '';
+  return perfRequest(`/cascade/tree${query}`);
+}
+
+export async function decomposePeriod(
+  orgPerfId: string,
+  targetPeriods: string[] = ['Q1', 'Q2', 'Q3', 'Q4'],
+): Promise<ApiResponse<{ status: string; periods_created: number; periods: unknown[] }>> {
+  return perfRequest(`/org-perf/${encodeURIComponent(orgPerfId)}/decompose-period`, {
+    method: 'POST',
+    body: JSON.stringify({ org_perf_id: orgPerfId, target_periods: targetPeriods }),
+  });
+}
+
+export async function setParentOrg(
+  orgUnitKey: string,
+  parentOrgRef: string,
+): Promise<ApiResponse<{ success: boolean }>> {
+  return perfRequest(`/org-units/${encodeURIComponent(orgUnitKey)}/set-parent`, {
+    method: 'PATCH',
+    body: JSON.stringify({ parent_org_ref: parentOrgRef }),
   });
 }

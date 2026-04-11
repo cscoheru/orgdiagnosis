@@ -886,3 +886,542 @@ class TestGeneratePerformanceReportNode:
             state = {"task_id": "t1", "project_id": "proj1"}
             result = await generate_performance_report_node(state)
             assert result["results"]["performance_report"]["status"] == "failed"
+
+
+# ══════════════════════════════════════════════════════
+# Phase 2: Test _build_enriched_context
+# ══════════════════════════════════════════════════════
+
+from lib.domain.performance.nodes import _build_enriched_context
+
+
+class TestBuildEnrichedContext:
+    def test_empty_business_context_returns_client_name(self):
+        result = _build_enriched_context({"client_name": "测试客户"})
+        assert result == "客户: 测试客户"
+
+    def test_missing_client_name_returns_empty(self):
+        result = _build_enriched_context({})
+        assert result == "客户: "
+
+    def test_json_string_context_parsed(self):
+        ctx = json.dumps({"client_profile": "一家制造业企业"})
+        result = _build_enriched_context({"business_context": ctx, "client_name": "X"})
+        assert "## 客户概况" in result
+        assert "一家制造业企业" in result
+
+    def test_dict_context_with_single_section(self):
+        result = _build_enriched_context({
+            "business_context": {"client_profile": "大型企业"},
+            "client_name": "Y",
+        })
+        assert "## 客户概况" in result
+        assert "大型企业" in result
+
+    def test_dict_context_with_multiple_sections(self):
+        result = _build_enriched_context({
+            "business_context": {
+                "client_profile": "概况",
+                "business_review": "复盘",
+                "market_insights": "市场",
+            },
+        })
+        assert "## 客户概况" in result
+        assert "## 业务复盘" in result
+        assert "## 市场洞察" in result
+        # Sections appear in SECTION_LABELS order
+        pos_review = result.index("## 业务复盘")
+        pos_market = result.index("## 市场洞察")
+        assert pos_review < pos_market
+
+    def test_dict_context_all_keys_empty_returns_client_name(self):
+        result = _build_enriched_context({
+            "business_context": {"client_profile": "", "business_review": None},
+            "client_name": "Z",
+        })
+        assert result == "客户: Z"
+
+    def test_invalid_json_string_falls_back(self):
+        result = _build_enriched_context({
+            "business_context": "not json at all",
+            "client_name": "W",
+        })
+        assert result == "客户: W"
+
+    def test_swot_and_bsc_sections_rendered(self):
+        result = _build_enriched_context({
+            "business_context": {
+                "swot_data": "优势: ...",
+                "bsc_cards": "财务: ...",
+                "action_plans": "行动1",
+                "targets": "目标1",
+            },
+        })
+        assert "## SWOT 分析" in result
+        assert "## BSC 战略地图" in result
+        assert "## 行动计划" in result
+        assert "## 战略目标" in result
+
+
+# ══════════════════════════════════════════════════════
+# Phase 3: Test goal_decomposer
+# ══════════════════════════════════════════════════════
+
+from lib.domain.performance.goal_decomposer import decompose_initiative_node
+
+MOCK_AI_DECOMPOSE = json.dumps({
+    "milestones": [
+        {"phase": "阶段1", "date": "2026-03", "deliverable": "需求分析"},
+        {"phase": "阶段2", "date": "2026-06", "deliverable": "系统上线"},
+    ],
+    "linked_kpis": [
+        {"kpi_goal_name": "系统上线率", "target_value": 95, "unit": "%"},
+    ],
+})
+
+SAMPLE_INITIATIVE = {
+    "_id": "sys_objects/ini1",
+    "_key": "ini1",
+    "properties": {
+        "initiative_name": "数字化转型",
+        "description": "全面推进数字化",
+        "status": "进行中",
+        "start_date": "2026-01",
+        "end_date": "2026-12",
+    },
+}
+
+
+class TestDecomposeInitiativeNode:
+    @pytest.mark.asyncio
+    async def test_returns_failed_when_initiative_not_found(self):
+        bridge = _mock_bridge(get_object=AsyncMock(return_value=None))
+
+        with (
+            patch("lib.domain.performance.goal_decomposer._bridge", bridge),
+        ):
+            state = {"task_id": "t1", "initiative_id": "nonexistent"}
+            result = await decompose_initiative_node(state)
+            assert result["results"]["initiative_decomposition"]["status"] == "failed"
+            assert "不存在" in result["results"]["initiative_decomposition"]["error"]
+
+    @pytest.mark.asyncio
+    async def test_full_decompose_creates_kpis_and_relations(self):
+        bridge = _mock_bridge(
+            get_object=AsyncMock(side_effect=[SAMPLE_INITIATIVE, SAMPLE_PLAN]),
+            get_objects_by_model=AsyncMock(return_value=[]),
+            create_object=AsyncMock(return_value={
+                "_id": "sys_objects/kpi1", "_key": "kpi1",
+            }),
+        )
+        ai = _mock_ai_response(MOCK_AI_DECOMPOSE)
+
+        with (
+            patch("lib.domain.performance.goal_decomposer._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+            patch("lib.domain.performance.goal_decomposer.ObjectService") as MockObjSvc,
+            patch("lib.domain.performance.goal_decomposer.get_db"),
+        ):
+            mock_svc = MagicMock()
+            MockObjSvc.return_value = mock_svc
+            mock_svc.update_object = MagicMock()
+
+            state = {"task_id": "t1", "initiative_id": "ini1", "plan_id": "plan1"}
+            result = await decompose_initiative_node(state)
+
+            assert result["results"]["initiative_decomposition"]["status"] == "completed"
+            assert result["results"]["initiative_decomposition"]["milestones_count"] == 2
+            assert result["results"]["initiative_decomposition"]["linked_kpis_count"] == 1
+            # KPI object created
+            bridge.create_object.assert_called()
+            create_args = bridge.create_object.call_args
+            assert create_args[0][0] == "Strategic_Goal"
+            assert create_args[0][1]["goal_type"] == "operational_kpi"
+            # LINKED_KPI relation created
+            bridge.create_relation.assert_called()
+            rel_kwargs = bridge.create_relation.call_args[1]
+            assert rel_kwargs["relation_type"] == "Linked_KPI"
+            # Initiative updated with milestones
+            mock_svc.update_object.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_milestones_and_kpis_still_succeeds(self):
+        bridge = _mock_bridge(
+            get_object=AsyncMock(side_effect=[SAMPLE_INITIATIVE, SAMPLE_PLAN]),
+            get_objects_by_model=AsyncMock(return_value=[]),
+        )
+        ai = _mock_ai_response('{"milestones": [], "linked_kpis": []}')
+
+        with (
+            patch("lib.domain.performance.goal_decomposer._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+            patch("lib.domain.performance.goal_decomposer.ObjectService") as MockObjSvc,
+            patch("lib.domain.performance.goal_decomposer.get_db"),
+        ):
+            mock_svc = MagicMock()
+            MockObjSvc.return_value = mock_svc
+            mock_svc.update_object = MagicMock()
+
+            state = {"task_id": "t1", "initiative_id": "ini1", "plan_id": "plan1"}
+            result = await decompose_initiative_node(state)
+
+            assert result["results"]["initiative_decomposition"]["status"] == "completed"
+            assert result["results"]["initiative_decomposition"]["milestones_count"] == 0
+            assert result["results"]["initiative_decomposition"]["linked_kpis_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_no_plan_id_skips_enriched_context(self):
+        bridge = _mock_bridge(
+            get_object=AsyncMock(return_value=SAMPLE_INITIATIVE),
+            get_objects_by_model=AsyncMock(return_value=[]),
+        )
+        ai = _mock_ai_response('{"milestones": [], "linked_kpis": []}')
+
+        with (
+            patch("lib.domain.performance.goal_decomposer._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+            patch("lib.domain.performance.goal_decomposer.ObjectService") as MockObjSvc,
+            patch("lib.domain.performance.goal_decomposer.get_db"),
+        ):
+            mock_svc = MagicMock()
+            MockObjSvc.return_value = mock_svc
+            mock_svc.update_object = MagicMock()
+
+            state = {"task_id": "t1", "initiative_id": "ini1", "plan_id": ""}
+            result = await decompose_initiative_node(state)
+
+            assert result["results"]["initiative_decomposition"]["status"] == "completed"
+            # get_object only called once (for initiative, not plan)
+            assert bridge.get_object.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_exception_returns_failed(self):
+        bridge = _mock_bridge()
+        bridge.get_object = AsyncMock(side_effect=RuntimeError("DB error"))
+
+        with patch("lib.domain.performance.goal_decomposer._bridge", bridge):
+            state = {"task_id": "t1", "initiative_id": "ini1"}
+            result = await decompose_initiative_node(state)
+            assert result["results"]["initiative_decomposition"]["status"] == "failed"
+            assert "DB error" in result["results"]["initiative_decomposition"]["error"]
+
+
+# ══════════════════════════════════════════════════════
+# Phase 4: Test period_decomposer
+# ══════════════════════════════════════════════════════
+
+from lib.domain.performance.period_decomposer import decompose_period_node
+
+MOCK_AI_PERIOD_DECOMPOSE = json.dumps({
+    "periods": [
+        {"period_target": "2026-Q1", "strategic_kpis": [{"name": "Q1指标"}], "management_indicators": [], "team_development": [], "engagement_compliance": [], "dimension_weights": {"strategic": 50}},
+        {"period_target": "2026-Q2", "strategic_kpis": [{"name": "Q2指标"}], "management_indicators": [], "team_development": [], "engagement_compliance": [], "dimension_weights": {"strategic": 50}},
+        {"period_target": "2026-Q3", "strategic_kpis": [{"name": "Q3指标"}], "management_indicators": [], "team_development": [], "engagement_compliance": [], "dimension_weights": {"strategic": 50}},
+        {"period_target": "2026-Q4", "strategic_kpis": [{"name": "Q4指标"}], "management_indicators": [], "team_development": [], "engagement_compliance": [], "dimension_weights": {"strategic": 50}},
+    ],
+})
+
+SAMPLE_ANNUAL_ORG_PERF = {
+    "_id": "sys_objects/op1",
+    "_key": "op1",
+    "properties": {
+        "org_unit_ref": "sys_objects/org1",
+        "org_unit_name": "技术部",
+        "plan_ref": "sys_objects/plan1",
+        "project_id": "proj1",
+        "strategic_kpis": [{"name": "年度指标"}],
+        "management_indicators": [],
+        "team_development": [],
+        "engagement_compliance": [],
+        "dimension_weights": {"strategic": 50},
+    },
+}
+
+
+class TestDecomposePeriodNode:
+    @pytest.mark.asyncio
+    async def test_creates_quarterly_perfs_with_relations(self):
+        bridge = _mock_bridge(
+            get_object=AsyncMock(return_value=SAMPLE_ANNUAL_ORG_PERF),
+            create_object=AsyncMock(return_value={
+                "_id": "sys_objects/qp1", "_key": "qp1",
+            }),
+        )
+        ai = _mock_ai_response(MOCK_AI_PERIOD_DECOMPOSE)
+
+        with (
+            patch("lib.domain.performance.period_decomposer._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+        ):
+            state = {"task_id": "t1", "org_perf_id": "op1", "target_periods": ["Q1", "Q2", "Q3", "Q4"]}
+            result = await decompose_period_node(state)
+
+            assert result["results"]["period_decomposition"]["status"] == "completed"
+            assert result["results"]["period_decomposition"]["periods_created"] == 4
+            # Each period creates a child + DECOMPOSED_FROM relation
+            assert bridge.create_object.call_count == 4
+            assert bridge.create_relation.call_count == 4
+            # Verify child has DECOMPOSED_FROM relation
+            rel_call = bridge.create_relation.call_args
+            assert rel_call[1]["relation_type"] == "Decomposed_From"
+
+    @pytest.mark.asyncio
+    async def test_returns_failed_when_org_perf_not_found(self):
+        bridge = _mock_bridge(get_object=AsyncMock(return_value=None))
+
+        with patch("lib.domain.performance.period_decomposer._bridge", bridge):
+            state = {"task_id": "t1", "org_perf_id": "nonexistent"}
+            result = await decompose_period_node(state)
+            assert result["results"]["period_decomposition"]["status"] == "failed"
+            assert "不存在" in result["results"]["period_decomposition"]["error"]
+
+    @pytest.mark.asyncio
+    async def test_empty_periods_still_succeeds(self):
+        bridge = _mock_bridge(
+            get_object=AsyncMock(return_value=SAMPLE_ANNUAL_ORG_PERF),
+        )
+        ai = _mock_ai_response('{"periods": []}')
+
+        with (
+            patch("lib.domain.performance.period_decomposer._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+        ):
+            state = {"task_id": "t1", "org_perf_id": "op1"}
+            result = await decompose_period_node(state)
+            assert result["results"]["period_decomposition"]["status"] == "completed"
+            assert result["results"]["period_decomposition"]["periods_created"] == 0
+
+    @pytest.mark.asyncio
+    async def test_exception_returns_failed(self):
+        bridge = _mock_bridge()
+        bridge.get_object = AsyncMock(side_effect=RuntimeError("fail"))
+
+        with patch("lib.domain.performance.period_decomposer._bridge", bridge):
+            state = {"task_id": "t1", "org_perf_id": "op1"}
+            result = await decompose_period_node(state)
+            assert result["results"]["period_decomposition"]["status"] == "failed"
+
+
+# ══════════════════════════════════════════════════════
+# Phase 4: Test cascade_orchestrator
+# ══════════════════════════════════════════════════════
+
+from lib.domain.performance.cascade_orchestrator import generate_full_cascade
+
+SAMPLE_ROOT_ORG = {
+    "_id": "sys_objects/root1",
+    "_key": "root1",
+    "properties": {"unit_name": "总公司", "unit_type": "公司", "level": 1},
+}
+
+SAMPLE_CHILD_ORG = {
+    "_id": "sys_objects/child1",
+    "_key": "child1",
+    "properties": {"unit_name": "技术部", "unit_type": "职能部门", "level": 2, "parent_org_ref": "root1"},
+}
+
+
+class TestCascadeOrchestrator:
+    @pytest.mark.asyncio
+    async def test_single_root_generates_one_org_perf(self):
+        bridge = _mock_bridge(
+            get_object=AsyncMock(side_effect=[SAMPLE_PLAN, SAMPLE_ROOT_ORG]),
+            get_objects_by_model=AsyncMock(side_effect=[[], []]),
+            create_object=AsyncMock(return_value={
+                "_id": "sys_objects/op1", "_key": "op1",
+            }),
+        )
+        ai = _mock_ai_response(MOCK_AI_ORG_PERF)
+
+        mock_pos_node = AsyncMock(return_value={
+            "results": {"position_performance": {"status": "completed", "count": 0}},
+        })
+
+        with (
+            patch("lib.domain.performance.cascade_orchestrator._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+            patch("lib.domain.performance.cascade_orchestrator.get_org_tree", new_callable=AsyncMock, return_value=[{
+                "_key": "root1", "properties": SAMPLE_ROOT_ORG["properties"], "children": [],
+            }]),
+            patch("lib.domain.performance.cascade_orchestrator.generate_position_performance_node", mock_pos_node),
+        ):
+            state = {"task_id": "t1", "plan_id": "plan1", "org_unit_id": "root1", "cascade_mode": "top_down"}
+            result = await generate_full_cascade(state)
+
+            assert result["results"]["cascade"]["status"] == "completed"
+            assert result["results"]["cascade"]["org_performances"] == 1
+            # Verify perf_type = "company" for level 1
+            create_call = bridge.create_object.call_args
+            assert create_call[0][1]["perf_type"] == "company"
+
+    @pytest.mark.asyncio
+    async def test_nested_orgs_create_decomposed_from_relations(self):
+        org_tree = [{
+            "_key": "root1",
+            "properties": SAMPLE_ROOT_ORG["properties"],
+            "children": [{
+                "_key": "child1",
+                "properties": SAMPLE_CHILD_ORG["properties"],
+                "children": [],
+            }],
+        }]
+
+        bridge = _mock_bridge(
+            get_object=AsyncMock(side_effect=[
+                SAMPLE_PLAN,        # plan read
+                SAMPLE_ROOT_ORG,    # parent context for child
+            ]),
+            get_objects_by_model=AsyncMock(side_effect=[[], []]),
+            create_object=AsyncMock(side_value=[
+                {"_id": "sys_objects/op1", "_key": "op1"},  # root org perf
+                {"_id": "sys_objects/op2", "_key": "op2"},  # child org perf
+            ]),
+        )
+        ai = _mock_ai_response(MOCK_AI_ORG_PERF)
+
+        mock_pos_node = AsyncMock(return_value={
+            "results": {"position_performance": {"status": "completed", "count": 0}},
+        })
+
+        with (
+            patch("lib.domain.performance.cascade_orchestrator._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+            patch("lib.domain.performance.cascade_orchestrator.get_org_tree", new_callable=AsyncMock, return_value=org_tree),
+            patch("lib.domain.performance.cascade_orchestrator.generate_position_performance_node", mock_pos_node),
+        ):
+            state = {"task_id": "t1", "plan_id": "plan1", "org_unit_id": "root1"}
+            result = await generate_full_cascade(state)
+
+            assert result["results"]["cascade"]["org_performances"] == 2
+            # DECOMPOSED_FROM should be created for child (not root)
+            assert bridge.create_relation.call_count >= 1
+            rel_call = bridge.create_relation.call_args
+            assert rel_call[1]["relation_type"] == "Decomposed_From"
+
+    @pytest.mark.asyncio
+    async def test_empty_plan_id_does_not_error(self):
+        bridge = _mock_bridge(
+            get_objects_by_model=AsyncMock(side_effect=[[], []]),
+            create_object=AsyncMock(return_value={
+                "_id": "sys_objects/op1", "_key": "op1",
+            }),
+        )
+        ai = _mock_ai_response(MOCK_AI_ORG_PERF)
+
+        with (
+            patch("lib.domain.performance.cascade_orchestrator._bridge", bridge),
+            patch("app.services.ai_client.ai_client", ai),
+            patch("lib.domain.performance.cascade_orchestrator.get_org_tree", new_callable=AsyncMock, return_value=[{
+                "_key": "root1", "properties": SAMPLE_ROOT_ORG["properties"], "children": [],
+            }]),
+            patch("lib.domain.performance.cascade_orchestrator.generate_position_performance_node", new_callable=AsyncMock, return_value={
+                "results": {"position_performance": {"status": "completed", "count": 0}},
+            }),
+        ):
+            state = {"task_id": "t1", "plan_id": "", "org_unit_id": "root1"}
+            result = await generate_full_cascade(state)
+            assert result["results"]["cascade"]["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_ai_exception_returns_failed(self):
+        bridge = _mock_bridge()
+        bridge.get_object = AsyncMock(side_effect=RuntimeError("AI fail"))
+
+        with (
+            patch("lib.domain.performance.cascade_orchestrator._bridge", bridge),
+            patch("lib.domain.performance.cascade_orchestrator.get_org_tree", new_callable=AsyncMock, return_value=[]),
+        ):
+            state = {"task_id": "t1", "plan_id": "plan1", "org_unit_id": "root1"}
+            result = await generate_full_cascade(state)
+            assert result["results"]["cascade"]["status"] == "failed"
+            assert "AI fail" in result["results"]["cascade"]["error"]
+
+
+# ══════════════════════════════════════════════════════
+# Phase 4: Test hierarchy_utils
+# ══════════════════════════════════════════════════════
+
+from lib.workflow.hierarchy_utils import get_org_tree, get_goal_cascade_chain
+
+
+class TestHierarchyUtils:
+    @pytest.mark.asyncio
+    async def test_get_org_tree_root_not_found_returns_empty(self):
+        bridge = _mock_bridge(get_object=AsyncMock(return_value=None))
+        result = await get_org_tree(bridge, "nonexistent")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_org_tree_single_root_no_children(self):
+        bridge = _mock_bridge(
+            get_object=AsyncMock(return_value=SAMPLE_ROOT_ORG),
+            get_objects_by_model=AsyncMock(return_value=[SAMPLE_ROOT_ORG]),
+        )
+        result = await get_org_tree(bridge, "root1")
+        assert len(result) == 1
+        assert result[0]["_key"] == "root1"
+        assert result[0]["children"] == []
+
+    @pytest.mark.asyncio
+    async def test_get_org_tree_with_children(self):
+        child_with_parent = {
+            "_id": "sys_objects/child1",
+            "_key": "child1",
+            "properties": {"unit_name": "子部门", "parent_org_ref": "root1"},
+        }
+        bridge = _mock_bridge(
+            get_object=AsyncMock(side_effect=[
+                SAMPLE_ROOT_ORG,   # root lookup
+                child_with_parent,  # child recursive lookup
+            ]),
+            get_objects_by_model=AsyncMock(return_value=[SAMPLE_ROOT_ORG, child_with_parent]),
+        )
+        result = await get_org_tree(bridge, "root1")
+        assert len(result) == 1
+        assert len(result[0]["children"]) == 1
+        assert result[0]["children"][0]["_key"] == "child1"
+
+    @pytest.mark.asyncio
+    async def test_get_goal_cascade_chain_delegates_to_bridge(self):
+        bridge = _mock_bridge(
+            get_ancestors=AsyncMock(return_value=[
+                {"_id": "sys_objects/parent1", "_key": "parent1"},
+                {"_id": "sys_objects/grandparent1", "_key": "grandparent1"},
+            ]),
+        )
+        result = await get_goal_cascade_chain(bridge, "goal1")
+        assert len(result) == 2
+        assert result[0]["_key"] == "parent1"
+        bridge.get_ancestors.assert_called_once_with("sys_objects/goal1", "Decomposed_From", 10)
+
+
+# ══════════════════════════════════════════════════════
+# Phase 1: Test KernelBridge new methods
+# ══════════════════════════════════════════════════════
+
+class TestKernelBridgeNewMethods:
+    @pytest.mark.asyncio
+    async def test_get_objects_by_field_returns_matching(self):
+        from lib.workflow.kernel_bridge import KernelBridge
+
+        bridge = KernelBridge()
+        mock_result = [{"_key": "obj1", "properties": {"status": "active"}}]
+
+        with patch.object(bridge, "_run_sync", new_callable=AsyncMock, return_value=mock_result):
+            result = await bridge.get_objects_by_field("Org_Performance", "status", "active")
+            assert len(result) == 1
+            assert result[0]["_key"] == "obj1"
+
+    @pytest.mark.asyncio
+    async def test_get_ancestors_returns_chain(self):
+        from lib.workflow.kernel_bridge import KernelBridge
+
+        bridge = KernelBridge()
+        mock_result = [
+            {"_id": "sys_objects/parent1", "_key": "parent1"},
+        ]
+
+        with patch.object(bridge, "_run_sync", new_callable=AsyncMock, return_value=mock_result):
+            result = await bridge.get_ancestors("sys_objects/child1", "Decomposed_From")
+            assert len(result) == 1
+            assert result[0]["_key"] == "parent1"

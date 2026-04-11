@@ -25,6 +25,14 @@ vi.mock('lucide-react', () => ({
   Target: () => <svg data-testid="icon-target" />,
   Trash2: () => <svg data-testid="icon-trash2" />,
   Edit3: () => <svg data-testid="icon-edit3" />,
+  // Icons used by embedded ContextEnrichmentPanel
+  FileText: () => <svg data-testid="icon-filetext" />,
+  Upload: () => <svg data-testid="icon-upload" />,
+  CheckCircle: () => <svg data-testid="icon-checkcircle" />,
+  Circle: () => <svg data-testid="icon-circle" />,
+  ArrowDownToLine: () => <svg data-testid="icon-arrowdown" />,
+  Save: () => <svg data-testid="icon-save" />,
+  X: () => <svg data-testid="icon-x" />,
 }));
 
 vi.mock('../../../components/performance/InlineCreateModal', () => ({
@@ -46,6 +54,7 @@ const mockPlans: PerformancePlan[] = [
     _key: 'plan1',
     properties: {
       plan_name: '测试方案',
+      project_id: 'proj1',
       client_name: '客户A',
       industry: '科技',
       methodology: 'KPI',
@@ -58,6 +67,7 @@ const mockPlans: PerformancePlan[] = [
     _key: 'plan2',
     properties: {
       plan_name: '执行方案',
+      project_id: 'proj1',
       client_name: '客户B',
       methodology: 'OKR',
       cycle_type: '季度',
