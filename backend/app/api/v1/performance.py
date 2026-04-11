@@ -782,9 +782,14 @@ def bridge_strategy_data(
         except (json.JSONDecodeError, TypeError):
             ctx = {}
 
-    # 查找项目下的战略目标
+    imported_any = False
+
+    # 查找战略目标（Strategic_Goal 无 project_id 字段，直接使用全部）
     goals = svc.list_objects("Strategic_Goal", limit=100) or []
+    # 优先按 project_id 过滤，若无匹配则使用全部
     project_goals = [g for g in goals if g.get("properties", {}).get("project_id") == req.project_id]
+    if not project_goals:
+        project_goals = goals
 
     if project_goals:
         target_lines = []
@@ -795,6 +800,7 @@ def bridge_strategy_data(
                 f"目标值: {p.get('target_value', '')}, 状态: {p.get('status', '')})"
             )
         ctx["targets"] = "\n".join(target_lines)
+        imported_any = True
 
     # 查找市场环境数据
     markets = svc.list_objects("Market_Context", limit=50) or []
@@ -812,6 +818,7 @@ def bridge_strategy_data(
             insights_parts.append(f"增长率: {mp['growth_rate']}%")
         if insights_parts:
             ctx["market_insights"] = "\n\n".join(insights_parts)
+            imported_any = True
 
     # 查找战略举措
     initiatives = svc.list_objects("Strategic_Initiative", limit=50) or []
@@ -824,6 +831,15 @@ def bridge_strategy_data(
                 f"描述: {ip.get('description', '')})"
             )
         ctx["strategic_direction"] = "\n".join(init_lines)
+        imported_any = True
+
+    # 未导入任何数据时返回提示
+    if not imported_any:
+        return {
+            "success": False,
+            "imported_sections": [],
+            "message": "暂无战略解码数据可导入。请先在「战略解码」模块中完成战略目标设定，或直接在下方编辑框中粘贴内容。",
+        }
 
     # Merge with existing properties to pass required field validation
     existing_props = plan.get("properties", {})

@@ -222,6 +222,6 @@ async def _generate_positions_for_org(
     result_state = await generate_position_performance_node(pos_state)
     result = result_state.get("results", {}).get("position_performance", {})
 
-    if result.get("status") === "completed":
+    if result.get("status") == "completed":
         return result.get("positions", [])
     return []

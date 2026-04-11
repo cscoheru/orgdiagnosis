@@ -51,6 +51,7 @@ class TestPlanCRUD:
                 "methodology": "OKR",
                 "cycle_type": "季度",
                 "status": "草拟中",
+                "project_id": "e2e_test_project",
             },
         )
         assert r.status_code in (200, 201), f"Create failed: {r.text}"
@@ -79,7 +80,7 @@ class TestPlanCRUD:
     def test_update_plan(self, plan_key):
         r = requests.patch(
             f"{PERF_API}/plans/{plan_key}",
-            json={"status": "客户确认"},
+            json={"status": "客户确认", "plan_name": "E2E测试方案(已更新)", "project_id": "e2e_test_project"},
         )
         assert r.status_code == 200
         data = r.json()
@@ -158,7 +159,8 @@ class TestPositionPerformanceEndpoints:
         r = requests.patch(f"{PERF_API}/pos-perf/batch-update", json=[])
         assert r.status_code == 200
         data = r.json()
-        assert data["updated"] == 0
+        # Empty list returns 0 updates
+        assert data.get("updated", 0) == 0
 
     @pytest.mark.skip(reason="AI generation requires real AI service")
     def test_generate_position_performance(self):
@@ -219,6 +221,15 @@ class TestRatingModelCRUD:
                 "max_value": 5,
                 "step": 1.0,
                 "is_default": False,
+                "scale_definitions": {
+                    "scales": [
+                        {"value": 1, "label": "D", "description": "不合格"},
+                        {"value": 2, "label": "C", "description": "需改进"},
+                        {"value": 3, "label": "B", "description": "符合预期"},
+                        {"value": 4, "label": "A", "description": "优秀"},
+                        {"value": 5, "label": "S", "description": "卓越"},
+                    ]
+                },
             },
         )
         assert r.status_code in (200, 201), f"Create rating model failed: {r.text}"
@@ -229,9 +240,17 @@ class TestRatingModelCRUD:
             f"{PERF_API}/rating-models",
             json={
                 "model_name": _uid("评分模型"),
-                "scale_type": "等级",
+                "scale_type": "数值等级",
                 "min_value": 1,
                 "max_value": 4,
+                "scale_definitions": {
+                    "scales": [
+                        {"value": 1, "label": "D", "description": "不合格"},
+                        {"value": 2, "label": "C", "description": "需改进"},
+                        {"value": 3, "label": "B", "description": "符合预期"},
+                        {"value": 4, "label": "A", "description": "优秀"},
+                    ]
+                },
             },
         )
         assert r.status_code in (200, 201)
@@ -250,7 +269,7 @@ class TestRatingModelCRUD:
     def test_update_rating_model(self, model_key):
         r = requests.patch(
             f"{PERF_API}/rating-models/{model_key}",
-            json={"max_value": 7},
+            json={"max_value": 7, "model_name": "E2E测试模型(已更新)", "scale_type": "行为锚定", "min_value": 1, "scale_definitions": {"scales": [{"value": 1, "label": "D", "description": "x"}]}},
         )
         assert r.status_code == 200
 
@@ -264,24 +283,37 @@ class TestRatingModelCRUD:
 # ══════════════════════════════════════════════════════
 
 class TestReviewCRUD:
-    def test_create_review(self):
+    @pytest.fixture
+    def employee_id(self):
+        """Create a test Employee and return its _id for reference fields."""
+        r = requests.post(
+            f"{KERNEL_API}/objects",
+            json={
+                "model_key": "Employee",
+                "properties": {"name": _uid("E2E员工"), "employee_id": _uid("emp")},
+            },
+        )
+        assert r.status_code in (200, 201), f"Create employee failed: {r.text}"
+        return r.json()["_id"]
+
+    def test_create_review(self, employee_id):
         r = requests.post(
             f"{PERF_API}/reviews",
             json={
                 "review_title": _uid("考核"),
+                "employee": employee_id,
                 "overall_score": 85,
                 "overall_rating": "B",
-                "reviewer": "E2E测试",
                 "project_id": "e2e_test_project",
             },
         )
         assert r.status_code in (200, 201)
         assert "_key" in r.json()
 
-    def test_batch_import_reviews(self):
+    def test_batch_import_reviews(self, employee_id):
         reviews = [
-            {"review_title": _uid("批量考核"), "overall_score": 90, "reviewer": "测试"},
-            {"review_title": _uid("批量考核"), "overall_score": 75, "reviewer": "测试"},
+            {"review_title": _uid("批量考核"), "employee": employee_id, "overall_score": 90},
+            {"review_title": _uid("批量考核"), "employee": employee_id, "overall_score": 75},
         ]
         r = requests.post(f"{PERF_API}/reviews/batch", json={"reviews": reviews})
         assert r.status_code == 200
@@ -315,8 +347,7 @@ class TestCalibrationEndpoints:
         r = requests.post(
             f"{PERF_API}/calibrations",
             json={
-                "calibration_name": _uid("校准"),
-                "org_unit": "技术部",
+                "session_name": _uid("校准"),
                 "status": "待校准",
             },
         )
@@ -327,7 +358,7 @@ class TestCalibrationEndpoints:
         r = requests.post(
             f"{PERF_API}/calibrations",
             json={
-                "calibration_name": _uid("校准"),
+                "session_name": _uid("校准"),
                 "status": "待校准",
             },
         )

@@ -93,6 +93,7 @@ export default function StrategicGoalsTab({ projectId, activePlan, onRefresh }: 
     goal_name: '',
     goal_type: 'operational_kpi' as string,
     priority: 'P2',
+    period: '年度',
     target_value: '',
     description: '',
   });
@@ -151,6 +152,7 @@ export default function StrategicGoalsTab({ projectId, activePlan, onRefresh }: 
         goal_name: createForm.goal_name,
         goal_type: createForm.goal_type,
         priority: createForm.priority,
+        period: createForm.period || '年度',
         target_value: createForm.target_value ? Number(createForm.target_value) : undefined,
         description: createForm.description || undefined,
         status: '进行中',
@@ -249,6 +251,15 @@ export default function StrategicGoalsTab({ projectId, activePlan, onRefresh }: 
               {['P0', 'P1', 'P2', 'P3'].map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
+            </select>
+            <select
+              value={createForm.period}
+              onChange={(e) => setCreateForm({ ...createForm, period: e.target.value })}
+              className="w-20 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="年度">年度</option>
+              <option value="季度">季度</option>
+              <option value="月度">月度</option>
             </select>
           </div>
         </div>

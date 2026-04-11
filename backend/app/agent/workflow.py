@@ -124,7 +124,12 @@ class ConsultingAgentWorkflow:
 
     def _make_config(self, session_id: str) -> dict:
         """构建 LangGraph config (thread_id = session_id)"""
-        return {"configurable": {"thread_id": f"agent-{session_id}"}}
+        return {
+            "configurable": {"thread_id": f"agent-{session_id}"},
+            "run_name": f"咨询Agent-{session_id}",
+            "tags": ["agent", "consulting", "human-in-the-loop"],
+            "metadata": {"session_id": session_id},
+        }
 
     # ─── 公开接口 ───
 

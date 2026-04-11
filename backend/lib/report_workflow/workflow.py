@@ -196,7 +196,12 @@ class ReportWorkflowManager:
             # 注意：ainvoke 会执行到中断点后返回
             result = await self.app.ainvoke(
                 initial_state,
-                config={"configurable": {"thread_id": task_id}}
+                config={
+                    "configurable": {"thread_id": task_id},
+                    "run_name": f"报告生成-{task_id[:8]}",
+                    "tags": ["report", "generation", "multi-level"],
+                    "metadata": {"task_id": task_id},
+                }
             )
 
             # 更新存储的状态 (此时应该是 MODULES_READY 状态)

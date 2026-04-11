@@ -307,7 +307,7 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
               <span className="text-xs text-gray-400">({goals.length}个)</span>
             </div>
             <button
-              onClick={() => setShowGoalModal(true)}
+              onClick={() => { setEditingGoal(null); setShowGoalModal(true); }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
             >
               <Plus size={12} />

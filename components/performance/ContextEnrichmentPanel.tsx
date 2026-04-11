@@ -93,10 +93,12 @@ export default function ContextEnrichmentPanel({ plan, onUpdated }: Props) {
     setError(null);
     try {
       const res = await bridgeStrategyData(plan._key, plan.properties.project_id);
-      if (res.success && res.data) {
+      if (res.success && res.data && (res.data as Record<string, unknown>).success !== false) {
         await onUpdated();
       } else {
-        setError(res.error || '导入失败');
+        const payload = res.data as Record<string, string> | undefined;
+        const msg = payload?.message || res.error || '导入失败';
+        setError(msg);
       }
     } finally { setImporting(false); }
   };

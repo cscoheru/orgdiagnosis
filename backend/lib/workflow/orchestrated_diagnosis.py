@@ -421,7 +421,12 @@ async def run_orchestrated_diagnosis(
 
     result = await app.ainvoke(
         initial_state,
-        config={"configurable": {"thread_id": task_id}},
+        config={
+            "configurable": {"thread_id": task_id},
+            "run_name": f"五维诊断-{task_id}",
+            "tags": ["diagnosis", "orchestrated", "five-dimension"],
+            "metadata": {"task_id": task_id, "domain_count": 5},
+        },
     )
 
     return result

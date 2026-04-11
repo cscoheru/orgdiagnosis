@@ -3,14 +3,19 @@
 
 支持多个 OpenAI 兼容 API 提供商 (DashScope/通义千问, DeepSeek, 等)。
 通过 AI_PROVIDER 环境变量切换提供商。
+
+内部使用 langchain_openai.ChatOpenAI，确保所有 LLM 调用
+可被 LangSmith 自动追踪 (LANGCHAIN_TRACING_V2=true)。
 """
 import os
 import json
 import re
 import logging
 from typing import Dict, Any, Optional, List
-import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.callbacks import Callbacks
 
 # 确保 dotenv 已加载（config.py 负责加载，import 触发）
 import app.config  # noqa: F401
@@ -21,17 +26,17 @@ logger = logging.getLogger(__name__)
 PROVIDERS = {
     "dashscope": {
         "api_key_env": "DASHSCOPE_API_KEY",
-        "api_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "api_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "qwen-plus",
     },
     "deepseek": {
         "api_key_env": "DEEPSEEK_API_KEY",
-        "api_url": "https://api.deepseek.com/v1/chat/completions",
+        "api_url": "https://api.deepseek.com/v1",
         "model": "deepseek-chat",
     },
 }
 
-# 兼容旧配置：优先使用新配置，fallback 到旧配置
+
 def _detect_provider() -> str:
     """自动检测可用的 AI 提供商"""
     env_provider = os.getenv("AI_PROVIDER", "").lower()
@@ -48,34 +53,54 @@ def _detect_provider() -> str:
 
 
 class AIClient:
-    """统一 AI 客户端"""
+    """统一 AI 客户端
+
+    内部使用 ChatOpenAI 实例，所有调用自动被 LangSmith 追踪。
+    公开 API 保持不变: chat(), chat_json(), is_configured()。
+    """
 
     def __init__(self, provider: Optional[str] = None):
         self.provider = provider or _detect_provider()
         config = PROVIDERS[self.provider]
 
-        # API Key: 优先从提供商对应 env 读取，fallback 到旧配置
+        # API Key: 优先从提供商对应 env 读取
         self.api_key = (
             os.getenv(config["api_key_env"], "")
             or os.getenv("ANTHROPIC_API_KEY", "")
         )
-        # API URL: 优先提供商配置，fallback 到自定义 URL
-        self.api_url = os.getenv("AI_API_URL", "") or config["api_url"]
+        # API URL (base_url): 优先提供商配置，fallback 到自定义 URL
+        base_url = os.getenv("AI_API_URL", "") or config["api_url"]
         # Model: 优先 env 配置，fallback 到提供商默认
         self.default_model = os.getenv("AI_MODEL", "") or config["model"]
 
         self.timeout = int(os.getenv("AI_TIMEOUT", "90"))
 
-        logger.info(f"AIClient initialized: provider={self.provider}, model={self.default_model}")
+        # 构建 ChatOpenAI 实例
+        self._llm: Optional[ChatOpenAI] = None
+        self._base_url = base_url
+
+        logger.info(
+            f"AIClient initialized: provider={self.provider}, "
+            f"model={self.default_model}, base_url={base_url}"
+        )
+
+    @property
+    def llm(self) -> ChatOpenAI:
+        """懒加载 ChatOpenAI 实例 (首次调用时创建)"""
+        if self._llm is None:
+            self._llm = ChatOpenAI(
+                model=self.default_model,
+                api_key=self.api_key,
+                base_url=self._base_url,
+                timeout=self.timeout,
+                max_tokens=4096,
+                temperature=0.3,
+            )
+        return self._llm
 
     def is_configured(self) -> bool:
         return bool(self.api_key) and self.api_key != "your-api-key"
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True
-    )
     async def chat(
         self,
         system_prompt: str,
@@ -86,6 +111,7 @@ class AIClient:
         temperature: float = 0.3,
         max_tokens: int = 4096,
         timeout: Optional[int] = None,
+        callbacks: Optional[Callbacks] = None,
     ) -> str:
         """
         发送聊天请求，返回 AI 文本响应。
@@ -98,58 +124,58 @@ class AIClient:
             temperature: 生成温度
             max_tokens: 最大 token 数
             timeout: 请求超时秒数
+            callbacks: LangChain callbacks (LangSmith 自动注入)
 
         Returns:
             AI 响应文本
 
         Raises:
             ValueError: API 未配置或返回空内容
-            httpx.HTTPStatusError: API 返回非成功状态码
         """
         if not self.is_configured():
             raise ValueError(f"AI API 未配置 (provider={self.provider})")
 
-        use_model = model or self.default_model
-        use_timeout = timeout or self.timeout
-
-        # 使用传入的 messages 或构建默认的
+        # 构建消息列表
         if messages:
-            api_messages = messages
+            lc_messages = []
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role == "system":
+                    lc_messages.append(SystemMessage(content=content))
+                elif role == "assistant":
+                    lc_messages.append(AIMessage(content=content))
+                else:
+                    lc_messages.append(HumanMessage(content=content))
         else:
-            api_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+            lc_messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
             ]
 
-        async with httpx.AsyncClient(timeout=use_timeout, trust_env=False) as client:
-            response = await client.post(
-                self.api_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}",
-                },
-                json={
-                    "model": use_model,
-                    "messages": api_messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                },
+        # 按需覆盖参数
+        use_model = model or self.default_model
+        llm = self.llm
+        if model and model != self.default_model:
+            llm = ChatOpenAI(
+                model=use_model,
+                api_key=self.api_key,
+                base_url=self._base_url,
+                timeout=timeout or self.timeout,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
 
-            if response.status_code == 429:
-                raise Exception("API 限流 (429)")
-            if response.status_code == 402:
-                raise Exception("API 余额不足 (402)")
+        config = {}
+        if callbacks:
+            config["callbacks"] = callbacks
+        response = await llm.ainvoke(lc_messages, config=config if config else None)
+        content = response.content if hasattr(response, "content") else str(response)
 
-            response.raise_for_status()
+        if not content:
+            raise ValueError("API 返回内容为空")
 
-            result = response.json()
-            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-            if not content:
-                raise ValueError("API 返回内容为空")
-
-            return content
+        return content
 
     async def chat_json(
         self,
