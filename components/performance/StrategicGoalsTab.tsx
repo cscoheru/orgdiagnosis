@@ -159,7 +159,7 @@ export default function StrategicGoalsTab({ projectId, activePlan, onRefresh }: 
       });
       if (res.success) {
         setShowCreate(false);
-        setCreateForm({ goal_name: '', goal_type: 'operational_kpi', priority: 'P2', target_value: '', description: '' });
+        setCreateForm({ goal_name: '', goal_type: 'operational_kpi', priority: 'P2', period: '年度', target_value: '', description: '' });
         await fetchData();
         await onRefresh();
       } else {
