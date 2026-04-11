@@ -18,6 +18,7 @@ import {
   Sparkles,
   Brain,
   Target,
+  FileOutput,
 } from 'lucide-react';
 
 interface DashboardShellProps {
@@ -63,6 +64,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         { name: '智能共创', href: `/projects/${currentProjectId}/cowork`, icon: <Sparkles size={18} /> },
         { name: '能力研讨', href: `/projects/${currentProjectId}/competency`, icon: <Brain size={18} /> },
         { name: '战略解码', href: `/projects/${currentProjectId}/strategy`, icon: <Target size={18} /> },
+        { name: '报告输出', href: `/projects/${currentProjectId}/report`, icon: <FileOutput size={18} /> },
+        { name: '绩效管理', href: `/projects/${currentProjectId}/performance`, icon: <Target size={18} /> },
       ],
     }] : []),
     {
