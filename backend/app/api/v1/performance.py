@@ -685,7 +685,11 @@ def enrich_plan_context(
 
     ctx[req.context_type] = req.content
 
-    obj = svc.update_object(key, ObjectUpdate(properties={"business_context": ctx}))
+    # Merge with existing properties to pass required field validation
+    existing_props = plan.get("properties", {})
+    merged_props = {**existing_props, "business_context": ctx}
+
+    obj = svc.update_object(key, ObjectUpdate(properties=merged_props))
     if not obj:
         raise HTTPException(status_code=500, detail="更新失败")
     return {"success": True, "context_type": req.context_type}
@@ -821,7 +825,11 @@ def bridge_strategy_data(
             )
         ctx["strategic_direction"] = "\n".join(init_lines)
 
-    obj = svc.update_object(key, ObjectUpdate(properties={"business_context": ctx}))
+    # Merge with existing properties to pass required field validation
+    existing_props = plan.get("properties", {})
+    merged_props = {**existing_props, "business_context": ctx}
+
+    obj = svc.update_object(key, ObjectUpdate(properties=merged_props))
     if not obj:
         raise HTTPException(status_code=500, detail="更新失败")
 

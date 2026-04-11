@@ -66,6 +66,9 @@ export default function PerformancePage() {
         setPlans(planList);
         if (!activePlan && planList.length > 0) {
           setActivePlan(planList[0]);
+        } else if (activePlan) {
+          const updated = planList.find((p: { _key: string }) => p._key === activePlan._key);
+          if (updated) setActivePlan(updated);
         }
       }
       if (overviewRes.success && overviewRes.data) {
