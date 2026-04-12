@@ -1793,7 +1793,7 @@ def _post_with_retry(url, payload, max_retries=3, verbose=False, label=""):
 def seed_categories(verbose=False):
     """Seed Metric_Category objects with retry and dedup."""
     url = f"{BASE_URL}/objects"
-    list_url = f"{BASE_URL}/objects/Metric_Category"
+    list_url = f"{BASE_URL}/objects?model_key=Metric_Category"
     # Fetch existing category names to avoid duplicates
     existing = set()
     try:
@@ -1831,7 +1831,7 @@ def seed_categories(verbose=False):
 def seed_templates(verbose=False):
     """Seed Metric_Template objects with retry, rate limiting, and dedup."""
     url = f"{BASE_URL}/objects"
-    list_url = f"{BASE_URL}/objects/Metric_Template"
+    list_url = f"{BASE_URL}/objects?model_key=Metric_Template"
     # Fetch existing metric names to avoid duplicates
     existing = set()
     try:
