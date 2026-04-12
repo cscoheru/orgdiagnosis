@@ -39,6 +39,10 @@ class RelationType(str, Enum):
     GOAL_ALIGNED = "Goal_Aligned"                # 部门绩效→战略目标对齐
     ASSESSES_COMPETENCY = "Assesses_Competency"  # 岗位绩效→胜任力评估
 
+    # Metrics Library Relations
+    USES_METRIC_TEMPLATE = "Uses_Metric_Template"    # Org/Position_Performance → Metric_Template
+    BELONGS_TO_CATEGORY = "Belongs_To_Category"      # Metric_Template → Metric_Category
+
     # Hierarchy & Goal Cascade Relations (Phase 1)
     PARENT_ORG = "Parent_Org"                  # 组织层级 (上级部门→下级部门)
     DECOMPOSED_FROM = "Decomposed_From"        # 目标分解链 (下级绩效→上级绩效)

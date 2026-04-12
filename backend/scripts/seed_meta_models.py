@@ -292,6 +292,47 @@ META_MODELS = [
         "description": "绩效 — 校准会话 (强制分布、九宫格、评级标准化)",
     },
 
+    # ========== 绩效指标库 Metrics Library (2) ==========
+    {
+        "model_key": "Metric_Category",
+        "name": "指标分类",
+        "fields": [
+            {"field_name": "category_name", "field_type": "string", "is_required": True, "description": "分类名称"},
+            {"field_name": "category_type", "field_type": "enum", "is_required": True, "enum_options": ["industry", "dimension", "level", "custom"], "description": "分类类型"},
+            {"field_name": "parent_category_ref", "field_type": "reference", "reference_model": "Metric_Category", "is_required": False, "description": "上级分类 (支持层级)"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "分类描述"},
+            {"field_name": "display_order", "field_type": "integer", "is_required": False, "default_value": 0, "description": "排序"},
+            {"field_name": "icon", "field_type": "string", "is_required": False, "description": "图标名"},
+        ],
+        "description": "指标库 — 指标分类体系 (行业/维度/层级/自定义)",
+    },
+    {
+        "model_key": "Metric_Template",
+        "name": "指标模板",
+        "fields": [
+            {"field_name": "metric_name", "field_type": "string", "is_required": True, "description": "指标名称"},
+            {"field_name": "metric_formula", "field_type": "text", "is_required": False, "description": "计算公式/方式"},
+            {"field_name": "description", "field_type": "text", "is_required": False, "description": "详细说明"},
+            {"field_name": "dimension", "field_type": "enum", "is_required": True, "enum_options": ["财务", "客户", "内部流程", "学习与成长", "战略", "运营", "人才发展", "胜任力"], "description": "所属维度 (BSC四维+扩展)"},
+            {"field_name": "applicable_level", "field_type": "enum", "is_required": True, "enum_options": ["组织级", "部门级", "岗位级"], "description": "适用层级"},
+            {"field_name": "industries", "field_type": "array", "is_required": False, "description": "适用行业列表"},
+            {"field_name": "source", "field_type": "enum", "is_required": False, "enum_options": ["best_practice", "ai_generated", "user_created"], "default_value": "best_practice", "description": "来源"},
+            {"field_name": "default_weight", "field_type": "float", "is_required": False, "default_value": 10.0, "description": "建议权重 (%)"},
+            {"field_name": "unit", "field_type": "string", "is_required": False, "description": "计量单位"},
+            {"field_name": "target_template", "field_type": "string", "is_required": False, "description": "目标值模板 (如 >=95%)"},
+
+            {"field_name": "evaluation_criteria", "field_type": "text", "is_required": False, "description": "评估标准"},
+            {"field_name": "data_source_hint", "field_type": "text", "is_required": False, "description": "数据来源提示"},
+            {"field_name": "tags", "field_type": "array", "is_required": False, "description": "标签"},
+            {"field_name": "org_dimension_mapping", "field_type": "enum", "is_required": False, "enum_options": ["strategic_kpis", "management_indicators", "team_development", "engagement_compliance"], "description": "映射到 Org_Performance 的维度"},
+            {"field_name": "pos_section_mapping", "field_type": "enum", "is_required": False, "enum_options": ["performance_goals", "competency_items", "values_items", "development_goals"], "description": "映射到 Position_Performance 的分区"},
+            {"field_name": "status", "field_type": "enum", "is_required": False, "enum_options": ["published", "draft"], "default_value": "published", "description": "状态: published=已发布可搜索, draft=草稿仅管理页可见"},
+            {"field_name": "is_verified", "field_type": "boolean", "is_required": False, "default_value": False, "description": "是否经专家审核"},
+            {"field_name": "usage_count", "field_type": "integer", "is_required": False, "default_value": 0, "description": "被引用次数"},
+        ],
+        "description": "指标库 — 绩效指标模板 (含行业/维度/层级分类，支持从指标库应用到绩效方案)",
+    },
+
     # ========== 薪酬 Compensation (3) ==========
     {
         "model_key": "Salary_Band",

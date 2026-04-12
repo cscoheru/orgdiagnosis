@@ -70,6 +70,22 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Kernel: failed to seed real benchmarks: {e}")
 
+        # Seed metric library (performance metrics templates) via background thread
+        # Must run AFTER server is ready to accept HTTP requests
+        import asyncio
+        import threading
+        def _seed_metric_library_thread():
+            import time
+            time.sleep(3)  # Wait for server to be ready
+            try:
+                import scripts.seed_metric_library as seed_ml
+                cat_ok = seed_ml.seed_categories(verbose=False)
+                tpl_ok, tpl_total = seed_ml.seed_templates(verbose=False)
+                logger.info(f"Kernel: metric library seeded ({cat_ok} categories, {tpl_ok}/{tpl_total} templates)")
+            except Exception as e:
+                logger.warning(f"Kernel: failed to seed metric library: {e}")
+        threading.Thread(target=_seed_metric_library_thread, daemon=True).start()
+
     # 注册内置工具和 hook（装饰器在 import 时自动执行）
     try:
         import app.tools.builtin  # noqa: F401

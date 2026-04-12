@@ -566,6 +566,8 @@ export type MetricDimension =
 
 export type MetricLevel = '组织级' | '部门级' | '岗位级';
 
+export type MetricStatus = 'published' | 'draft';
+
 export type MetricSource = 'best_practice' | 'ai_generated' | 'user_created';
 
 export type OrgDimensionMapping =
@@ -595,6 +597,7 @@ export interface MetricTemplate {
   applicable_level: MetricLevel;
   industries: string[];
   source: MetricSource;
+  status: MetricStatus;
   default_weight: number;
   unit: string;
   target_template: string;

@@ -17,6 +17,12 @@ const settingsSections = [
     icon: '⚙️',
   },
   {
+    name: '指标库管理',
+    description: '行业分类、维度分类、层级分类及绩效指标模板的维护和管理',
+    href: '/settings/metrics',
+    icon: '📊',
+  },
+  {
     name: 'AI 配置',
     description: 'AI 模型选择、提示词模板和参数调优',
     href: '/settings/ai',

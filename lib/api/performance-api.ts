@@ -462,6 +462,15 @@ export async function listMetricCategories(
   return perfRequest(`/metric-categories${query}`);
 }
 
+export async function createMetricCategory(
+  data: Partial<MetricCategory>,
+): Promise<ApiResponse<{ success: boolean; _key: string }>> {
+  return perfRequest('/metric-categories', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function listMetricTemplates(
   params?: {
     keyword?: string;
@@ -470,6 +479,7 @@ export async function listMetricTemplates(
     industry?: string;
     tag?: string;
     source?: string;
+    status?: string;
     org_dim?: string;
     pos_sec?: string;
     limit?: number;
@@ -483,6 +493,7 @@ export async function listMetricTemplates(
   if (params?.industry) sp.set('industry', params.industry);
   if (params?.tag) sp.set('tag', params.tag);
   if (params?.source) sp.set('source', params.source);
+  if (params?.status) sp.set('status', params.status);
   if (params?.org_dim) sp.set('org_dim', params.org_dim);
   if (params?.pos_sec) sp.set('pos_sec', params.pos_sec);
   if (params?.limit) sp.set('limit', String(params.limit));

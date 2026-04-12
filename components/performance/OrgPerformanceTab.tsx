@@ -15,10 +15,11 @@ import {
 } from '@/lib/api/performance-api';
 import type { PerformancePlan, OrgPerformance, MetricTemplate } from '@/types/performance';
 import { ORG_PERF_STATUS_LABELS } from '@/types/performance';
-import { Sparkles, Plus, Target, Pencil, Save, X, Trash2 } from 'lucide-react';
+import { Sparkles, Plus, Target, Pencil, Save, X, Trash2, Search } from 'lucide-react';
 import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
 import InlineCreateModal from './InlineCreateModal';
 import MetricPicker from './MetricPicker';
+import type { PickerContext } from './MetricPicker';
 
 interface Props {
   projectId: string;
@@ -42,6 +43,20 @@ interface OrgPerfEditData {
   team_development: KPIItem[];
   engagement_compliance: KPIItem[];
 }
+
+interface CompanyDimConfig {
+  key: 'strategic_kpis' | 'management_indicators';
+  label: string;
+  headerBg: string;
+  itemBg: string;
+  defaultWeight: number;
+  bscDimension: string;
+}
+
+const COMPANY_DIMENSIONS: CompanyDimConfig[] = [
+  { key: 'strategic_kpis',        label: '财务指标',   headerBg: 'bg-blue-600',   itemBg: 'bg-blue-50/60',   defaultWeight: 25, bscDimension: '财务' },
+  { key: 'management_indicators', label: '战略指标',   headerBg: 'bg-green-600',  itemBg: 'bg-green-50/60',  defaultWeight: 25, bscDimension: '战略' },
+];
 
 /* ── Constants ── */
 
@@ -69,12 +84,81 @@ const DIMENSIONS: DimensionConfig[] = [
 
 /* ── Component ── */
 
+function MetricItemEditor({
+  item,
+  idx,
+  dimKey,
+  itemBg,
+  pickerContext,
+  onUpdateItem,
+  onRemoveItem,
+  onReplaceFromTemplate,
+}: {
+  item: KPIItem;
+  idx: number;
+  dimKey: keyof OrgPerfEditData;
+  itemBg: string;
+  pickerContext: PickerContext;
+  onUpdateItem: (dimKey: keyof OrgPerfEditData, idx: number, field: string, value: string | number) => void;
+  onRemoveItem: (dimKey: keyof OrgPerfEditData, idx: number) => void;
+  onReplaceFromTemplate: (dimKey: keyof OrgPerfEditData, idx: number, template: MetricTemplate) => void;
+}) {
+  return (
+    <div className={`${itemBg} px-3 py-2 group`}>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-1">
+          <MetricPicker
+            context={pickerContext}
+            onSelect={(tpl) => onReplaceFromTemplate(dimKey, idx, tpl)}
+            onManualAdd={() => {}}
+          >
+            <button className="p-0.5 text-gray-400 hover:text-indigo-500 flex-shrink-0" title="从指标库选择替换">
+              <Search size={11} />
+            </button>
+          </MetricPicker>
+          <input
+            type="text"
+            value={item.name}
+            onChange={(e) => onUpdateItem(dimKey, idx, 'name', e.target.value)}
+            placeholder="指标名称"
+            className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+          />
+          <button onClick={() => onRemoveItem(dimKey, idx)} className="p-0.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
+            <Trash2 size={11} />
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={item.weight}
+            onChange={(e) => onUpdateItem(dimKey, idx, 'weight', Number(e.target.value))}
+            className="w-14 text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-center"
+            min={0} max={100}
+          />
+          <span className="text-[10px] text-gray-400">%</span>
+          <input
+            type="text"
+            value={item.target || ''}
+            onChange={(e) => onUpdateItem(dimKey, idx, 'target', e.target.value)}
+            placeholder="目标值"
+            className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: Props) {
   const [orgPerformances, setOrgPerformances] = useState<OrgPerformance[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Separate company vs department
+  const companyPerfs = orgPerformances.filter(op => op.properties.perf_type === 'company');
+  const deptPerfs = orgPerformances.filter(op => op.properties.perf_type !== 'company');
 
   // Inline editing
   const [editKey, setEditKey] = useState<string | null>(null);
@@ -85,6 +169,7 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
   const [selectedOrgUnit, setSelectedOrgUnit] = useState<string>('');
   const [goals, setGoals] = useState<KernelObject[]>([]);
   const [showDeptModal, setShowDeptModal] = useState(false);
+  const [creatingCompany, setCreatingCompany] = useState(false);
 
   /* ── Fetch ── */
 
@@ -128,6 +213,42 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
       if (res.success) { await fetchOrgPerformances(); await onRefresh(); }
       else setError(res.error || '生成失败');
     } finally { setGenerating(false); }
+  };
+
+  const handleCreateCompany = async () => {
+    if (!activePlan || companyPerfs.length > 0) return;
+    setCreatingCompany(true);
+    setError(null);
+    try {
+      // Create company-level org performance via kernel API
+      const { API_BASE_URL } = await import('@/lib/api-config');
+      const res = await fetch(`${API_BASE_URL}/api/v1/kernel/objects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_key: 'Org_Performance',
+          properties: {
+            org_unit_ref: '__company__',
+            org_unit_name: '公司绩效',
+            plan_ref: activePlan._key,
+            project_id: projectId,
+            strategic_kpis: [],
+            management_indicators: [],
+            team_development: [],
+            engagement_compliance: [],
+            dimension_weights: { strategic: 50, management: 50, team_development: 0, engagement: 0 },
+            status: '待确认',
+            perf_type: 'company',
+          },
+        }),
+      });
+      if (res.ok) {
+        await fetchOrgPerformances();
+        await onRefresh();
+      } else {
+        setError('创建公司绩效失败');
+      }
+    } finally { setCreatingCompany(false); }
   };
 
   const startEdit = (op: OrgPerformance) => {
@@ -185,6 +306,18 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
     if (!editData) return;
     const items = [...editData[dimKey]] as KPIItem[];
     items.splice(idx, 1);
+    setEditData({ ...editData, [dimKey]: items });
+  };
+
+  const replaceFromTemplate = (dimKey: keyof OrgPerfEditData, idx: number, template: MetricTemplate) => {
+    if (!editData) return;
+    const items = [...editData[dimKey]] as KPIItem[];
+    items[idx] = {
+      ...items[idx],
+      name: template.metric_name,
+      weight: template.default_weight || items[idx].weight,
+      target: template.target_template || items[idx].target,
+    };
     setEditData({ ...editData, [dimKey]: items });
   };
 
@@ -299,11 +432,136 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
         <div>
           <div className="px-1 py-2 mb-3">
             <span className="text-xs font-medium text-gray-500">STEP 2</span>
-            <span className="text-xs text-gray-400 ml-2">生成结果 ({orgPerformances.length}个部门)</span>
+            <span className="text-xs text-gray-400 ml-2">生成结果 ({orgPerformances.length}个)</span>
           </div>
 
+          {/* ═══ Company Performance ═══ */}
+          {companyPerfs.length > 0 ? (
+            companyPerfs.map((op) => {
+              const p = op.properties;
+              const editing = isEditing(op._key);
+
+              return (
+                <div key={op._key} className="border border-blue-200 rounded-xl bg-white overflow-hidden mb-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-blue-50/80 border-b border-blue-100">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-medium text-gray-900 text-sm">公司绩效</h4>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">公司/BU</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        (p.status as string) === 'draft' ? 'bg-gray-100 text-gray-500' :
+                        (p.status as string) === 'active' ? 'bg-green-100 text-green-700' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {ORG_PERF_STATUS_LABELS[p.status] || p.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {editing ? (
+                        <>
+                          <button onClick={cancelEdit} disabled={saving} className="flex items-center gap-1 px-2.5 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50">
+                            <X size={12} /> 取消
+                          </button>
+                          <button onClick={saveEdit} disabled={saving} className="flex items-center gap-1 px-2.5 py-1 text-xs text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50">
+                            <Save size={12} /> {saving ? '保存中...' : '保存'}
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => startEdit(op)} className="flex items-center gap-1 px-2.5 py-1 text-xs text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100">
+                          <Pencil size={12} /> 编辑
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2-Column Grid: 财务 + 战略 */}
+                  <div className="flex">
+                    {COMPANY_DIMENSIONS.map((dim) => {
+                      const items = editing
+                        ? (editData?.[dim.key] as KPIItem[] || [])
+                        : (((p as unknown as Record<string, unknown>)[dim.key] as KPIItem[]) || []);
+
+                      return (
+                        <div key={dim.key} className="flex-1 min-w-0 border-r border-gray-100 last:border-r-0">
+                          <div className={`${dim.headerBg} text-white px-3 py-2 text-center`}>
+                            <div className="text-xs font-semibold">{dim.label}</div>
+                            <div className="text-[10px] opacity-80">{dim.defaultWeight}%</div>
+                          </div>
+                          <div className="divide-y divide-gray-50">
+                            {items.length === 0 && (
+                              <div className="px-3 py-4 text-center text-xs text-gray-400">暂无指标</div>
+                            )}
+                            {items.map((item, idx) => (
+                              editing ? (
+                                <MetricItemEditor
+                                  key={idx}
+                                  item={item}
+                                  idx={idx}
+                                  dimKey={dim.key}
+                                  itemBg={dim.itemBg}
+                                  pickerContext={{ type: 'company', bscDimension: dim.bscDimension as '财务' | '战略' }}
+                                  onUpdateItem={updateItem}
+                                  onRemoveItem={removeItem}
+                                  onReplaceFromTemplate={replaceFromTemplate}
+                                />
+                              ) : (
+                                <div key={idx} className={`${dim.itemBg} px-3 py-2`}>
+                                  <div className="text-xs font-medium text-gray-800 truncate">{item.name}</div>
+                                  <div className="text-[10px] text-gray-500 mt-0.5">
+                                    <span className="font-medium">{item.weight}%</span>
+                                    {item.target && <span className="ml-1.5">{item.target}</span>}
+                                  </div>
+                                </div>
+                              )
+                            ))}
+                            {editing && (
+                              <div className="px-3 py-1.5">
+                                <MetricPicker
+                                  context={{ type: 'company', bscDimension: dim.bscDimension as '财务' | '战略' }}
+                                  onSelect={(tpl) => addFromTemplate(dim.key, tpl, dim.defaultWeight)}
+                                  onManualAdd={() => addItem(dim.key, dim.defaultWeight)}
+                                >
+                                  <button className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700">
+                                    <Plus size={10} /> 添加指标
+                                  </button>
+                                </MetricPicker>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="border border-dashed border-blue-200 rounded-xl p-4 mb-4 bg-blue-50/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-medium text-gray-700">公司绩效</span>
+                  <span className="text-xs text-gray-400 ml-2">全公司层面的财务和战略指标</span>
+                </div>
+                <button
+                  onClick={handleCreateCompany}
+                  disabled={creatingCompany}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <Plus size={12} /> {creatingCompany ? '创建中...' : '新建公司绩效'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ Department Performance ═══ */}
+          {deptPerfs.length > 0 && (
+            <div className="mb-2">
+              <span className="text-xs font-medium text-gray-500">部门绩效</span>
+            </div>
+          )}
+
           <div className="space-y-4">
-            {orgPerformances.map((op) => {
+            {deptPerfs.map((op) => {
               const p = op.properties;
               const editing = isEditing(op._key);
               const dw = p.dimension_weights || {};
@@ -364,50 +622,27 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
                               <div className="px-3 py-4 text-center text-xs text-gray-400">暂无指标</div>
                             )}
                             {items.map((item, idx) => (
-                              <div key={idx} className={`${dim.itemBg} px-3 py-2 group`}>
-                                {editing ? (
-                                  <div className="space-y-1.5">
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        type="text"
-                                        value={item.name}
-                                        onChange={(e) => updateItem(dim.key, idx, 'name', e.target.value)}
-                                        placeholder="指标名称"
-                                        className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-                                      />
-                                      <button onClick={() => removeItem(dim.key, idx)} className="p-0.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
-                                        <Trash2 size={11} />
-                                      </button>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="number"
-                                        value={item.weight}
-                                        onChange={(e) => updateItem(dim.key, idx, 'weight', Number(e.target.value))}
-                                        className="w-14 text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-center"
-                                        min={0}
-                                        max={100}
-                                      />
-                                      <span className="text-[10px] text-gray-400">%</span>
-                                      <input
-                                        type="text"
-                                        value={item.target || ''}
-                                        onChange={(e) => updateItem(dim.key, idx, 'target', e.target.value)}
-                                        placeholder="目标值"
-                                        className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-                                      />
-                                    </div>
+                              editing ? (
+                                <MetricItemEditor
+                                  key={idx}
+                                  item={item}
+                                  idx={idx}
+                                  dimKey={dim.key}
+                                  itemBg={dim.itemBg}
+                                  pickerContext={{ type: 'org', dimension: dim.key as 'strategic_kpis' | 'management_indicators' | 'team_development' | 'engagement_compliance' }}
+                                  onUpdateItem={updateItem}
+                                  onRemoveItem={removeItem}
+                                  onReplaceFromTemplate={replaceFromTemplate}
+                                />
+                              ) : (
+                                <div key={idx} className={`${dim.itemBg} px-3 py-2`}>
+                                  <div className="text-xs font-medium text-gray-800 truncate">{item.name}</div>
+                                  <div className="text-[10px] text-gray-500 mt-0.5">
+                                    <span className="font-medium">{item.weight}%</span>
+                                    {item.target && <span className="ml-1.5">{item.target}</span>}
                                   </div>
-                                ) : (
-                                  <div>
-                                    <div className="text-xs font-medium text-gray-800 truncate">{item.name}</div>
-                                    <div className="text-[10px] text-gray-500 mt-0.5">
-                                      <span className="font-medium">{item.weight}%</span>
-                                      {item.target && <span className="ml-1.5">{item.target}</span>}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                                </div>
+                              )
                             ))}
 
                             {/* Add item button (edit mode) */}
@@ -440,7 +675,7 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
 
       {!generating && !loading && orgPerformances.length === 0 && (
         <div className="text-center py-8 text-gray-400">
-          <p className="text-sm">选择部门并点击 AI 生成，即可创建部门绩效</p>
+          <p className="text-sm">新建公司绩效或选择部门并点击 AI 生成，即可创建绩效</p>
         </div>
       )}
 

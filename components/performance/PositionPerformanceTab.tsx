@@ -16,7 +16,7 @@ import {
 } from '@/lib/api/performance-api';
 import type { PerformancePlan, OrgPerformance, PositionPerformance, MetricTemplate } from '@/types/performance';
 import { POS_PERF_STATUS_LABELS } from '@/types/performance';
-import { Sparkles, Users, Crown, Plus, Briefcase, Pencil, Save, X, Trash2 } from 'lucide-react';
+import { Sparkles, Users, Crown, Plus, Briefcase, Pencil, Save, X, Trash2, Search } from 'lucide-react';
 import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
 import InlineCreateModal from './InlineCreateModal';
 import MetricPicker from './MetricPicker';
@@ -247,6 +247,25 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
     if (!editData) return;
     const items = [...editData[dimKey]];
     items.splice(idx, 1);
+    setEditData({ ...editData, [dimKey]: items });
+  };
+
+  const replaceFromTemplate = (dimKey: EditDimKey, idx: number, template: MetricTemplate) => {
+    if (!editData) return;
+    const items = [...editData[dimKey]];
+    const existing = items[idx];
+    items[idx] = {
+      name: template.metric_name,
+      weight: template.default_weight || existing.weight,
+      standard: template.evaluation_criteria || existing.standard,
+      _raw: {
+        ...(existing._raw || {}),
+        evaluation_criteria: template.evaluation_criteria,
+        target: template.target_template,
+        metric: template.metric_formula,
+        unit: template.unit,
+      },
+    };
     setEditData({ ...editData, [dimKey]: items });
   };
 
@@ -487,12 +506,23 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
                                   <td className="border border-gray-300 px-3 py-2 text-gray-500">{section.label}</td>
                                   <td className="border border-gray-300 px-3 py-2">
                                     {editing ? (
-                                      <input
-                                        type="text"
-                                        value={item.name}
-                                        onChange={(e) => updateItem(section.itemsKey, idx, 'name', e.target.value)}
-                                        className="w-full text-xs bg-transparent border-0 border-b border-dashed border-gray-300 focus:border-indigo-500 focus:ring-0 px-0 py-0.5 outline-none"
-                                      />
+                                      <div className="flex items-center gap-1">
+                                        <MetricPicker
+                                          context={{ type: 'pos', section: section.itemsKey as 'performance_goals' | 'competency_items' | 'values_items' | 'development_goals' }}
+                                          onSelect={(tpl) => replaceFromTemplate(section.itemsKey, idx, tpl)}
+                                          onManualAdd={() => {}}
+                                        >
+                                          <button className="p-0.5 text-gray-300 hover:text-indigo-500 flex-shrink-0" title="从指标库选择替换">
+                                            <Search size={11} />
+                                          </button>
+                                        </MetricPicker>
+                                        <input
+                                          type="text"
+                                          value={item.name}
+                                          onChange={(e) => updateItem(section.itemsKey, idx, 'name', e.target.value)}
+                                          className="flex-1 text-xs bg-transparent border-0 border-b border-dashed border-gray-300 focus:border-indigo-500 focus:ring-0 px-0 py-0.5 outline-none"
+                                        />
+                                      </div>
                                     ) : (
                                       <span className="font-medium text-gray-800">{item.name}</span>
                                     )}

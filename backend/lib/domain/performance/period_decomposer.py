@@ -88,6 +88,15 @@ async def decompose_period_node(state: dict[str, Any]) -> dict[str, Any]:
             temperature=0.3,
         )
 
+        # 检查 AI 响应是否解析成功
+        if result.get("parse_error"):
+            raw = result.get("raw_response", "")
+            logger.warning("[绩效领域] AI 响应解析失败, raw=%s", raw[:500])
+            return set_domain_result(state, "period_decomposition", {
+                "status": "failed",
+                "error": f"AI 响应格式错误，无法解析为 JSON: {raw[:200]}",
+            })
+
         # 3. 创建子 Org_Performance
         periods = result.get("periods", [])
         created = []

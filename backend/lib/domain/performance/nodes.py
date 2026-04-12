@@ -71,11 +71,21 @@ async def _call_ai(
 
     try:
         if isinstance(raw_result, str):
+            # 去除 markdown 代码块包裹
+            text = raw_result.strip()
+            if text.startswith("```"):
+                first_newline = text.find("\n")
+                if first_newline >= 0:
+                    text = text[first_newline + 1:]
+                if text.endswith("```"):
+                    text = text[:-3]
+                text = text.strip()
+
             # 尝试从返回文本中提取 JSON
-            json_start = raw_result.find("{")
-            json_end = raw_result.rfind("}") + 1
+            json_start = text.find("{")
+            json_end = text.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
-                result = json.loads(raw_result[json_start:json_end])
+                result = json.loads(text[json_start:json_end])
             else:
                 result = {"raw_response": raw_result, "parse_error": True}
         elif isinstance(raw_result, dict):

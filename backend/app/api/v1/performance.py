@@ -1003,6 +1003,359 @@ def set_parent_org(key: str, req: SetParentOrgRequest, db: Any = Depends(get_db)
     return {"success": True, "org_unit": key, "parent": req.parent_org_ref}
 
 
+# ═══════════════════════════════════════════════════════════════
+# 指标库 API (Metrics Library)
+# ═══════════════════════════════════════════════════════════════
+
+class MetricTemplateCreateRequest(BaseModel):
+    """创建指标模板"""
+    metric_name: str
+    dimension: str = ""
+    applicable_level: str = ""
+    industries: list[str] = []
+    default_weight: float = 10.0
+    unit: str = ""
+    target_template: str = ""
+    evaluation_criteria: str = ""
+    description: str = ""
+    metric_formula: str = ""
+    data_source_hint: str = ""
+    tags: list[str] = []
+    org_dimension_mapping: str = ""
+    pos_section_mapping: str = ""
+    source: str = "user_created"
+    status: str = "draft"
+
+
+class MetricTemplateApplyRequest(BaseModel):
+    """从指标库应用到绩效方案"""
+    plan_id: str
+    org_unit_id: str
+    template_keys: list[str]  # Metric_Template 的 _key 列表
+    mode: str = "org"  # "org" 或 "pos"
+
+
+class AiSuggestRequest(BaseModel):
+    """AI 建议指标"""
+    plan_id: str
+    org_unit_id: str
+    context: str = ""
+
+
+@router.get("/metric-categories", summary="获取指标分类列表")
+def list_metric_categories(
+    category_type: Optional[str] = Query(None, description="分类类型过滤: industry/dimension/level/custom"),
+    db: Any = Depends(get_db),
+):
+    """获取指标分类列表"""
+    svc = ObjectService(db)
+    results = svc.list_objects("Metric_Category", limit=200)
+
+    if category_type:
+        results = [r for r in results if r.get("properties", {}).get("category_type") == category_type]
+
+    # 按 display_order 排序
+    results.sort(key=lambda r: r.get("properties", {}).get("display_order", 999))
+    return [{"_key": r["_key"], **r.get("properties", {})} for r in results]
+
+
+@router.post("/metric-categories", summary="创建指标分类")
+def create_metric_category(
+    data: dict[str, Any] = Body(...),
+    db: Any = Depends(get_db),
+):
+    """创建指标分类"""
+    from app.models.kernel.meta_model import ObjectCreate
+    svc = ObjectService(db)
+    obj = svc.create_object(ObjectCreate(model_key="Metric_Category", properties=data))
+    return {"success": True, "_key": obj["_key"]}
+
+
+@router.get("/metric-templates", summary="搜索指标模板")
+def list_metric_templates(
+    keyword: Optional[str] = Query(None, description="关键词搜索"),
+    dimension: Optional[str] = Query(None, description="维度过滤"),
+    level: Optional[str] = Query(None, description="适用层级过滤"),
+    industry: Optional[str] = Query(None, description="行业过滤"),
+    tag: Optional[str] = Query(None, description="标签过滤"),
+    source: Optional[str] = Query(None, description="来源过滤"),
+    status: Optional[str] = Query(None, description="状态过滤 (published/draft/all)"),
+    org_dim: Optional[str] = Query(None, description="组织绩效维度映射过滤"),
+    pos_sec: Optional[str] = Query(None, description="岗位绩效分区映射过滤"),
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
+    db: Any = Depends(get_db),
+):
+    """搜索指标模板（支持多维度过滤，默认只返回已发布）"""
+    if status is None:
+        status = "published"
+
+    svc = ObjectService(db)
+    all_results = svc.list_objects("Metric_Template", limit=500)
+
+    # 过滤 (使用列表推导避免迭代中删除的 bug)
+    def match(r):
+        p = r.get("properties", {})
+        if keyword:
+            text = p.get("metric_name", "") + " " + p.get("description", "")
+            if keyword.lower() not in text.lower():
+                return False
+        if dimension and p.get("dimension") != dimension:
+            return False
+        if level and p.get("applicable_level") != level:
+            return False
+        if industry and industry not in p.get("industries", []):
+            return False
+        if tag and tag not in p.get("tags", []):
+            return False
+        if source and p.get("source") != source:
+            return False
+        if status and status != "all" and p.get("status") != status:
+            return False
+        if org_dim and p.get("org_dimension_mapping") != org_dim:
+            return False
+        if pos_sec and p.get("pos_section_mapping") != pos_sec:
+            return False
+        return True
+
+    results = [r for r in all_results if match(r)]
+
+    total = len(results)
+    results = results[offset:offset + limit]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "data": [{"_key": r["_key"], **r.get("properties", {})} for r in results],
+    }
+
+
+@router.get("/metric-templates/{key}", summary="获取指标模板详情")
+def get_metric_template(key: str, db: Any = Depends(get_db)):
+    """获取指标模板详情"""
+    svc = ObjectService(db)
+    obj = svc.get_object(key)
+    if not obj or obj.get("model_key") != "Metric_Template":
+        raise HTTPException(status_code=404, detail="指标模板不存在")
+    return {"_key": obj["_key"], **obj.get("properties", {})}
+
+
+@router.post("/metric-templates", summary="创建指标模板")
+def create_metric_template(req: MetricTemplateCreateRequest, db: Any = Depends(get_db)):
+    """创建指标模板（用户自定义）"""
+    from app.models.kernel.meta_model import ObjectCreate
+    svc = ObjectService(db)
+    props = req.model_dump(exclude_none=True)
+    obj = svc.create_object(ObjectCreate(model_key="Metric_Template", properties=props))
+    return {"success": True, "_key": obj["_key"]}
+
+
+@router.patch("/metric-templates/{key}", summary="更新指标模板")
+def update_metric_template(key: str, data: dict[str, Any] = Body(...), db: Any = Depends(get_db)):
+    """更新指标模板"""
+    from app.models.kernel.meta_model import ObjectUpdate
+    svc = ObjectService(db)
+    existing = svc.get_object(key)
+    if not existing or existing.get("model_key") != "Metric_Template":
+        raise HTTPException(status_code=404, detail="指标模板不存在")
+    obj = svc.update_object(key, ObjectUpdate(properties=data))
+    return {"success": True, "_key": obj["_key"]}
+
+
+@router.delete("/metric-templates/{key}", summary="删除指标模板")
+def delete_metric_template(key: str, db: Any = Depends(get_db)):
+    """删除指标模板（仅允许 user_created 来源）"""
+    svc = ObjectService(db)
+    existing = svc.get_object(key)
+    if not existing or existing.get("model_key") != "Metric_Template":
+        raise HTTPException(status_code=404, detail="指标模板不存在")
+    source = existing.get("properties", {}).get("source", "")
+    if source not in ("user_created",):
+        raise HTTPException(status_code=403, detail="仅允许删除用户创建的指标模板")
+    svc.delete_object(key)
+    return {"success": True}
+
+
+@router.post("/metric-templates/apply", summary="从指标库应用到绩效方案")
+def apply_metric_templates(req: MetricTemplateApplyRequest, db: Any = Depends(get_db)):
+    """从指标库选取指标，结构化组装为 Org_Performance 或 Position_Performance。
+
+    纯结构化操作，不调用 AI。
+    """
+    from app.models.kernel.meta_model import ObjectCreate
+    svc = ObjectService(db)
+
+    # 1. 加载所有选中的指标模板
+    templates = []
+    for key in req.template_keys:
+        obj = svc.get_object(key)
+        if not obj or obj.get("model_key") != "Metric_Template":
+            continue
+        templates.append(obj)
+
+    if not templates:
+        raise HTTPException(status_code=400, detail="未找到有效的指标模板")
+
+    # 2. 读取绩效方案获取 project_id
+    plan = svc.get_object(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="绩效方案不存在")
+    project_id = plan.get("properties", {}).get("project_id", "")
+
+    # 3. 读取组织单元
+    org_unit = svc.get_object(req.org_unit_id)
+    org_unit_name = org_unit.get("properties", {}).get("unit_name", "") if org_unit else ""
+
+    if req.mode == "org":
+        # 4a. 按 org_dimension_mapping 分组
+        groups: dict[str, list] = {
+            "strategic_kpis": [],
+            "management_indicators": [],
+            "team_development": [],
+            "engagement_compliance": [],
+        }
+        for tpl in templates:
+            p = tpl.get("properties", {})
+            dim = p.get("org_dimension_mapping", "management_indicators")
+            if dim not in groups:
+                dim = "management_indicators"
+            groups[dim].append({
+                "name": p.get("metric_name", ""),
+                "metric": p.get("metric_formula", ""),
+                "weight": p.get("default_weight", 10),
+                "target": p.get("target_template", ""),
+                "unit": p.get("unit", ""),
+                "source_template": tpl["_key"],
+            })
+
+        # 5a. 计算维度权重
+        total_w = sum(
+            sum(item["weight"] for item in items)
+            for items in groups.values()
+        ) or 1
+        dim_weights = {
+            "strategic": round(sum(i["weight"] for i in groups["strategic_kpis"]) / total_w * 100),
+            "management": round(sum(i["weight"] for i in groups["management_indicators"]) / total_w * 100),
+            "team_development": round(sum(i["weight"] for i in groups["team_development"]) / total_w * 100),
+            "engagement": round(sum(i["weight"] for i in groups["engagement_compliance"]) / total_w * 100),
+        }
+
+        # 6a. 创建 Org_Performance
+        org_perf = svc.create_object(ObjectCreate(model_key="Org_Performance", properties={
+            "org_unit_ref": _ref(req.org_unit_id),
+            "org_unit_name": org_unit_name,
+            "plan_ref": _ref(req.plan_id),
+            "project_id": project_id,
+            "strategic_kpis": groups["strategic_kpis"] or [],
+            "management_indicators": groups["management_indicators"] or [],
+            "team_development": groups["team_development"] or [],
+            "engagement_compliance": groups["engagement_compliance"] or [],
+            "dimension_weights": dim_weights,
+            "period": "年度",
+            "status": "待确认",
+            "perf_type": "department",
+        }))
+
+        return {
+            "success": True,
+            "mode": "org",
+            "org_perf_key": org_perf["_key"],
+            "dimensions": {k: len(v) for k, v in groups.items()},
+            "dimension_weights": dim_weights,
+        }
+
+    else:
+        raise HTTPException(status_code=400, detail="目前仅支持 org 模式，pos 模式开发中")
+
+
+@router.post("/metric-templates/ai-suggest", summary="AI 建议指标（轻量级）")
+async def ai_suggest_metrics(req: AiSuggestRequest, db: Any = Depends(get_db)):
+    """AI 建议指标（返回 3-5 个，不持久化）。
+
+    读取方案上下文 + 行业信息，从指标库检索匹配模板作为参考，
+    AI 生成/定制建议，返回建议列表供用户审核。
+    """
+    from app.services.ai_client import AIClient
+
+    svc = ObjectService(db)
+
+    # 1. 读取方案上下文
+    plan = svc.get_object(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="绩效方案不存在")
+    plan_props = plan.get("properties", {})
+    industry = plan_props.get("industry", "")
+    client_name = plan_props.get("client_name", "")
+    context = req.context or ""
+
+    # 2. 从指标库检索匹配模板
+    existing = svc.list_objects("Metric_Template", limit=500)
+    matched = []
+    for r in existing:
+        p = r.get("properties", {})
+        if industry and industry in p.get("industries", []):
+            matched.append(p)
+    # 最多取 10 个参考
+    ref_metrics = matched[:10]
+
+    # 3. 调用 AI
+    ai = AIClient()
+    prompt = f"""你是一位资深的绩效管理顾问。请为以下场景建议 3-5 个绩效指标。
+
+行业: {industry}
+客户: {client_name}
+补充说明: {context}
+
+参考指标库中的指标（格式: 名称|维度|层级|权重）:
+{chr(10).join(f"- {m.get('metric_name','')}|{m.get('dimension','')}|{m.get('applicable_level','')}|{m.get('default_weight',10)}%" for m in ref_metrics)}
+
+请以 JSON 格式输出建议指标:
+[
+  {{
+    "metric_name": "指标名称",
+    "dimension": "维度",
+    "applicable_level": "层级",
+    "default_weight": 10,
+    "unit": "计量单位",
+    "target_template": "目标值模板",
+    "evaluation_criteria": "评估标准",
+    "org_dimension_mapping": "strategic_kpis",
+    "reason": "推荐理由"
+  }}
+]
+
+要求:
+1. 指标要具体、可量化
+2. 优先参考指标库中匹配的行业指标
+3. 权重合计建议 100
+4. 给出推荐理由"""
+
+    try:
+        result = await ai.chat("你是一位资深的绩效管理顾问。", prompt, temperature=0.3)
+        if isinstance(result, str):
+            # 尝试解析 JSON
+            text = result.strip()
+            if text.startswith("```"):
+                first_nl = text.find("\n")
+                if first_nl >= 0:
+                    text = text[first_nl + 1:]
+                if text.endswith("```"):
+                    text = text[:-3]
+                text = text.strip()
+            import json
+            suggestions = json.loads(text)
+        else:
+            suggestions = result
+
+        return {
+            "success": True,
+            "suggestions": suggestions,
+            "ref_count": len(ref_metrics),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 建议失败: {str(e)}")
+
+
 def _ref(key: str) -> str:
     """将裸 _key 转为 sys_objects/ 引用格式"""
     if not key:
