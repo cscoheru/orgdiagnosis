@@ -32,6 +32,8 @@ interface SectionItem {
   name: string;
   weight: number;
   standard: string;
+  /** Preserve all original fields from the backend (metric, unit, evaluation_criteria, etc.) */
+  _raw?: Record<string, unknown>;
 }
 
 type EditDimKey = 'performance_goals' | 'competency_items' | 'values_items' | 'development_goals';
@@ -78,6 +80,7 @@ function extractItems(p: Record<string, unknown>, itemsKey: string, standardKey:
     name: String(item.name || ''),
     weight: Number(item.weight || 0),
     standard: String(item[standardKey] || ''),
+    _raw: { ...item } as Record<string, unknown>,
   }));
 }
 
@@ -176,7 +179,33 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
     setError(null);
     try {
       const { _key, ...fields } = editData;
-      const res = await updatePositionPerformance(_key, fields);
+
+      // Reconstruct full items: merge edited fields back into original raw data
+      const reconstructed: Record<string, unknown> = {};
+      for (const dimKey of ['performance_goals', 'competency_items', 'values_items', 'development_goals'] as const) {
+        const items = fields[dimKey];
+        const standardKeyMap: Record<string, string> = {
+          performance_goals: 'target',
+          competency_items: 'required_level',
+          values_items: 'description',
+          development_goals: 'timeline',
+        };
+        const stdKey = standardKeyMap[dimKey];
+        reconstructed[dimKey] = items.map(item => {
+          if (item._raw) {
+            // Merge edited fields into original data
+            const merged: Record<string, unknown> = { ...item._raw, name: item.name, weight: item.weight };
+            merged[stdKey] = item.standard;
+            return merged;
+          }
+          // New item added by user — no raw data
+          const result: Record<string, unknown> = { name: item.name, weight: item.weight };
+          result[stdKey] = item.standard;
+          return result;
+        });
+      }
+
+      const res = await updatePositionPerformance(_key, reconstructed);
       if (res.success) { await fetchPositions(); cancelEdit(); }
       else setError(res.error || '保存失败');
     } finally { setSaving(false); }
@@ -192,7 +221,7 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
   const addItem = (dimKey: EditDimKey, defaultWeight: number) => {
     if (!editData) return;
     const items = [...editData[dimKey]];
-    items.push({ name: '', weight: defaultWeight, standard: '' });
+    items.push({ name: '', weight: defaultWeight, standard: '' }); // no _raw — new item
     setEditData({ ...editData, [dimKey]: items });
   };
 
