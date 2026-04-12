@@ -50,6 +50,18 @@ async def lifespan(app: FastAPI):
         upgrade_meta_models()
         logger.info("Kernel: meta-models seeded + upgraded (demo mode)")
 
+    # Production 模式下升级 meta-models（添加新字段，不覆盖已有数据）
+    if not kernel_settings.is_demo_mode:
+        try:
+            from scripts.seed_meta_models import upgrade_meta_models
+            upgrade_meta_models()
+            logger.info("Kernel: meta-models upgraded (production mode)")
+        except Exception as e:
+            logger.warning(f"Kernel: failed to upgrade meta-models: {e}")
+
+    # Seed metric library (both demo and production, dedup logic prevents duplicates)
+    if kernel_settings.is_demo_mode:
+
         # Seed Agent blueprints (logic nodes + benchmark templates)
         try:
             from app.agent.seed_blueprints import seed_all as seed_generic_blueprints
@@ -70,21 +82,21 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Kernel: failed to seed real benchmarks: {e}")
 
-        # Seed metric library (performance metrics templates) via background thread
-        # Must run AFTER server is ready to accept HTTP requests
-        import asyncio
-        import threading
-        def _seed_metric_library_thread():
-            import time
-            time.sleep(3)  # Wait for server to be ready
-            try:
-                import scripts.seed_metric_library as seed_ml
-                cat_ok = seed_ml.seed_categories(verbose=False)
-                tpl_ok, tpl_total = seed_ml.seed_templates(verbose=False)
-                logger.info(f"Kernel: metric library seeded ({cat_ok} categories, {tpl_ok}/{tpl_total} templates)")
-            except Exception as e:
-                logger.warning(f"Kernel: failed to seed metric library: {e}")
-        threading.Thread(target=_seed_metric_library_thread, daemon=True).start()
+    # Seed metric library (performance metrics templates) via background thread
+    # Must run AFTER server is ready to accept HTTP requests
+    # Dedup logic ensures no duplicates on restart
+    import threading
+    def _seed_metric_library_thread():
+        import time
+        time.sleep(3)  # Wait for server to be ready
+        try:
+            import scripts.seed_metric_library as seed_ml
+            cat_ok = seed_ml.seed_categories(verbose=False)
+            tpl_ok, tpl_total = seed_ml.seed_templates(verbose=False)
+            logger.info(f"Kernel: metric library seeded ({cat_ok} categories, {tpl_ok}/{tpl_total} templates)")
+        except Exception as e:
+            logger.warning(f"Kernel: failed to seed metric library: {e}")
+    threading.Thread(target=_seed_metric_library_thread, daemon=True).start()
 
     # 注册内置工具和 hook（装饰器在 import 时自动执行）
     try:

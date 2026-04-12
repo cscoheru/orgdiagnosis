@@ -1791,10 +1791,30 @@ def _post_with_retry(url, payload, max_retries=3, verbose=False, label=""):
 
 
 def seed_categories(verbose=False):
-    """Seed Metric_Category objects with retry."""
+    """Seed Metric_Category objects with retry and dedup."""
     url = f"{BASE_URL}/objects"
+    list_url = f"{BASE_URL}/objects/Metric_Category"
+    # Fetch existing category names to avoid duplicates
+    existing = set()
+    try:
+        r = requests.get(list_url, timeout=10)
+        if r.ok:
+            data = r.json()
+            if isinstance(data, list):
+                for obj in data:
+                    existing.add(obj.get("properties", {}).get("category_name", ""))
+    except Exception:
+        pass
+
+    if verbose:
+        print(f"  Existing categories: {len(existing)}")
+
     success = 0
+    skipped = 0
     for cat in CATEGORIES:
+        if cat["category_name"] in existing:
+            skipped += 1
+            continue
         payload = {
             "model_key": "Metric_Category",
             "properties": cat,
@@ -1803,26 +1823,50 @@ def seed_categories(verbose=False):
         if _post_with_retry(url, payload, verbose=verbose, label=label):
             success += 1
         time.sleep(0.05)
+    if verbose and skipped:
+        print(f"  Skipped {skipped} existing categories")
     return success
 
 
 def seed_templates(verbose=False):
-    """Seed Metric_Template objects with retry and rate limiting."""
+    """Seed Metric_Template objects with retry, rate limiting, and dedup."""
     url = f"{BASE_URL}/objects"
+    list_url = f"{BASE_URL}/objects/Metric_Template"
+    # Fetch existing metric names to avoid duplicates
+    existing = set()
+    try:
+        r = requests.get(list_url, timeout=30)
+        if r.ok:
+            data = r.json()
+            if isinstance(data, list):
+                for obj in data:
+                    existing.add(obj.get("properties", {}).get("metric_name", ""))
+    except Exception:
+        pass
+
+    if verbose:
+        print(f"  Existing templates: {len(existing)}")
+
     total = 0
     success = 0
+    skipped = 0
     batch_delay = 0.05  # 50ms between requests to avoid rate limiting
 
     # General metrics
     for metric in GENERAL_METRICS:
         metric["industries"] = metric.get("industries", [])
+        name = metric["metric_name"]
+        if name in existing:
+            skipped += 1
+            continue
         payload = {
             "model_key": "Metric_Template",
             "properties": metric,
         }
         total += 1
-        if _post_with_retry(url, payload, verbose=verbose, label=metric['metric_name']):
+        if _post_with_retry(url, payload, verbose=verbose, label=name):
             success += 1
+            existing.add(name)
         time.sleep(batch_delay)
 
     if verbose:
@@ -1834,6 +1878,10 @@ def seed_templates(verbose=False):
     for industry_name, metrics in INDUSTRY_METRICS.items():
         ind_success = 0
         for metric in metrics:
+            name = metric["metric_name"]
+            if name in existing:
+                skipped += 1
+                continue
             # Add industry to industries list
             industries = list(metric.get("industries", []))
             if industry_name not in industries:
@@ -1845,9 +1893,10 @@ def seed_templates(verbose=False):
                 "properties": metric,
             }
             industry_total += 1
-            label = f"[{industry_name}] {metric['metric_name']}"
+            label = f"[{industry_name}] {name}"
             if _post_with_retry(url, payload, verbose=verbose, label=label):
                 ind_success += 1
+                existing.add(name)
             time.sleep(batch_delay)
         industry_success += ind_success
         if verbose:
@@ -1857,7 +1906,7 @@ def seed_templates(verbose=False):
     success += industry_success
 
     if verbose:
-        print(f"\n  Total templates: {success}/{total}")
+        print(f"\n  Total templates: {success}/{total}, skipped {skipped} existing")
 
     return success, total
 

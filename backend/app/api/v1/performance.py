@@ -1110,8 +1110,11 @@ def list_metric_templates(
             return False
         if source and p.get("source") != source:
             return False
-        if status and status != "all" and p.get("status") != status:
-            return False
+        # status 过滤: 字段不存在时视为 published
+        if status and status != "all":
+            obj_status = p.get("status") or "published"
+            if obj_status != status:
+                return False
         if org_dim and p.get("org_dimension_mapping") != org_dim:
             return False
         if pos_sec and p.get("pos_section_mapping") != pos_sec:
