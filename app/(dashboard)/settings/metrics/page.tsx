@@ -98,22 +98,35 @@ function TemplatesSection() {
   const [industry, setIndustry] = useState('');
   const [status, setStatus] = useState('all');
 
-  // Fetch
+  // Fetch — 自动分页加载全部数据
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listMetricTemplates({
-        keyword: keyword || undefined,
-        dimension: dimension || undefined,
-        level: level || undefined,
-        industry: industry || undefined,
-        status: status || undefined,
-        limit: 200,
-      });
-      if (res.success && res.data) {
-        setTemplates(res.data.data);
-        setTotal(res.data.total);
+      const PAGE_SIZE = 200;
+      let allData: MetricTemplate[] = [];
+      let offset = 0;
+      let firstTotal = 0;
+
+      while (true) {
+        const res = await listMetricTemplates({
+          keyword: keyword || undefined,
+          dimension: dimension || undefined,
+          level: level || undefined,
+          industry: industry || undefined,
+          status: status || undefined,
+          limit: PAGE_SIZE,
+          offset,
+        });
+        if (!res.success || !res.data) break;
+        const batch = res.data.data || [];
+        allData = [...allData, ...batch];
+        if (offset === 0) firstTotal = res.data.total || 0;
+        if (batch.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
       }
+
+      setTemplates(allData);
+      setTotal(firstTotal);
     } finally {
       setLoading(false);
     }
