@@ -31,14 +31,12 @@ import ReviewTemplateTab from './ReviewTemplateTab';
 import CascadeTreeTab from './CascadeTreeTab';
 import AnalyticsTab from './AnalyticsTab';
 import ReportTab from './ReportTab';
-import MetricLibraryTab from './MetricLibraryTab';
 
-type TabId = 'plan' | 'goals' | 'org-perf' | 'pos-perf' | 'template' | 'cascade' | 'analytics' | 'report' | 'metrics';
+type TabId = 'plan' | 'goals' | 'org-perf' | 'pos-perf' | 'template' | 'cascade' | 'analytics' | 'report';
 
 const TABS: { id: TabId; name: string }[] = [
   { id: 'plan', name: '方案概览' },
   { id: 'goals', name: '战略目标' },
-  { id: 'metrics', name: '指标库' },
   { id: 'org-perf', name: '组织绩效' },
   { id: 'pos-perf', name: '岗位绩效' },
   { id: 'template', name: '考核表单' },
@@ -139,14 +137,6 @@ export default function PerformancePage() {
 
       {activeTab === 'goals' && (
         <StrategicGoalsTab
-          projectId={projectId}
-          activePlan={activePlan}
-          onRefresh={refreshData}
-        />
-      )}
-
-      {activeTab === 'metrics' && (
-        <MetricLibraryTab
           projectId={projectId}
           activePlan={activePlan}
           onRefresh={refreshData}

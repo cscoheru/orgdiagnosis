@@ -14,11 +14,12 @@ import {
   generatePositionPerformance,
   updatePositionPerformance,
 } from '@/lib/api/performance-api';
-import type { PerformancePlan, OrgPerformance, PositionPerformance } from '@/types/performance';
+import type { PerformancePlan, OrgPerformance, PositionPerformance, MetricTemplate } from '@/types/performance';
 import { POS_PERF_STATUS_LABELS } from '@/types/performance';
 import { Sparkles, Users, Crown, Plus, Briefcase, Pencil, Save, X, Trash2 } from 'lucide-react';
 import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
 import InlineCreateModal from './InlineCreateModal';
+import MetricPicker from './MetricPicker';
 
 interface Props {
   projectId: string;
@@ -222,6 +223,23 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
     if (!editData) return;
     const items = [...editData[dimKey]];
     items.push({ name: '', weight: defaultWeight, standard: '' }); // no _raw — new item
+    setEditData({ ...editData, [dimKey]: items });
+  };
+
+  const addFromTemplate = (dimKey: EditDimKey, template: MetricTemplate, defaultWeight: number) => {
+    if (!editData) return;
+    const items = [...editData[dimKey]];
+    items.push({
+      name: template.metric_name,
+      weight: template.default_weight || defaultWeight,
+      standard: template.evaluation_criteria || '',
+      _raw: {
+        evaluation_criteria: template.evaluation_criteria,
+        target: template.target_template,
+        metric: template.metric_formula,
+        unit: template.unit,
+      },
+    });
     setEditData({ ...editData, [dimKey]: items });
   };
 
@@ -441,12 +459,17 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
                                   {section.label}
                                   <span className="ml-2 text-gray-500 font-normal">({weight}%)</span>
                                   {editing && (
-                                    <button
-                                      onClick={() => addItem(section.itemsKey, section.defaultWeight)}
-                                      className="ml-3 inline-flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700 font-normal"
+                                    <MetricPicker
+                                      context={{ type: 'pos', section: section.itemsKey as 'performance_goals' | 'competency_items' | 'values_items' | 'development_goals' }}
+                                      onSelect={(tpl) => addFromTemplate(section.itemsKey, tpl, section.defaultWeight)}
+                                      onManualAdd={() => addItem(section.itemsKey, section.defaultWeight)}
                                     >
-                                      <Plus size={11} /> 添加指标
-                                    </button>
+                                      <button
+                                        className="ml-3 inline-flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700 font-normal"
+                                      >
+                                        <Plus size={11} /> 添加指标
+                                      </button>
+                                    </MetricPicker>
                                   )}
                                 </td>
                               </tr>

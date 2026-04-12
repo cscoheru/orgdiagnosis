@@ -13,11 +13,12 @@ import {
   listOrgPerformances,
   updateOrgPerformance,
 } from '@/lib/api/performance-api';
-import type { PerformancePlan, OrgPerformance } from '@/types/performance';
+import type { PerformancePlan, OrgPerformance, MetricTemplate } from '@/types/performance';
 import { ORG_PERF_STATUS_LABELS } from '@/types/performance';
 import { Sparkles, Plus, Target, Pencil, Save, X, Trash2 } from 'lucide-react';
 import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
 import InlineCreateModal from './InlineCreateModal';
+import MetricPicker from './MetricPicker';
 
 interface Props {
   projectId: string;
@@ -166,6 +167,17 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
     if (!editData) return;
     const items = [...editData[dimKey]] as KPIItem[];
     items.push({ name: '', weight: defaultWeight, target: '' });
+    setEditData({ ...editData, [dimKey]: items });
+  };
+
+  const addFromTemplate = (dimKey: keyof OrgPerfEditData, template: MetricTemplate, defaultWeight: number) => {
+    if (!editData) return;
+    const items = [...editData[dimKey]] as KPIItem[];
+    items.push({
+      name: template.metric_name,
+      weight: template.default_weight || defaultWeight,
+      target: template.target_template || '',
+    });
     setEditData({ ...editData, [dimKey]: items });
   };
 
@@ -401,12 +413,17 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
                             {/* Add item button (edit mode) */}
                             {editing && (
                               <div className="px-3 py-1.5">
-                                <button
-                                  onClick={() => addItem(dim.key, dim.defaultWeight)}
-                                  className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700"
+                                <MetricPicker
+                                  context={{ type: 'org', dimension: dim.key as 'strategic_kpis' | 'management_indicators' | 'team_development' | 'engagement_compliance' }}
+                                  onSelect={(tpl) => addFromTemplate(dim.key, tpl, dim.defaultWeight)}
+                                  onManualAdd={() => addItem(dim.key, dim.defaultWeight)}
                                 >
-                                  <Plus size={10} /> 添加指标
-                                </button>
+                                  <button
+                                    className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700"
+                                  >
+                                    <Plus size={10} /> 添加指标
+                                  </button>
+                                </MetricPicker>
                               </div>
                             )}
                           </div>

@@ -470,6 +470,8 @@ export async function listMetricTemplates(
     industry?: string;
     tag?: string;
     source?: string;
+    org_dim?: string;
+    pos_sec?: string;
     limit?: number;
     offset?: number;
   },
@@ -481,6 +483,8 @@ export async function listMetricTemplates(
   if (params?.industry) sp.set('industry', params.industry);
   if (params?.tag) sp.set('tag', params.tag);
   if (params?.source) sp.set('source', params.source);
+  if (params?.org_dim) sp.set('org_dim', params.org_dim);
+  if (params?.pos_sec) sp.set('pos_sec', params.pos_sec);
   if (params?.limit) sp.set('limit', String(params.limit));
   if (params?.offset) sp.set('offset', String(params.offset));
   const query = sp.toString();
