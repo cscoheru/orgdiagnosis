@@ -1097,16 +1097,16 @@ def list_metric_templates(
     def match(r):
         p = r.get("properties", {})
         if keyword:
-            text = p.get("metric_name", "") + " " + p.get("description", "")
-            if keyword.lower() not in text.lower():
+            # 精准匹配：仅搜索 metric_name
+            if keyword.lower() not in (p.get("metric_name") or "").lower():
                 return False
         if dimension and p.get("dimension") != dimension:
             return False
         if level and p.get("applicable_level") != level:
             return False
-        if industry and industry not in p.get("industries", []):
+        if industry and industry not in (p.get("industries") or []):
             return False
-        if tag and tag not in p.get("tags", []):
+        if tag and tag not in (p.get("tags") or []):
             return False
         if source and p.get("source") != source:
             return False
