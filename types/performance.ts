@@ -555,3 +555,56 @@ export const DEFAULT_SECTION_WEIGHTS: SectionWeights = {
   values: 10,
   development: 10,
 };
+
+// ============================================
+// 指标库 (Metrics Library)
+// ============================================
+
+export type MetricDimension =
+  | '财务' | '客户' | '内部流程' | '学习与成长'
+  | '战略' | '运营' | '人才发展' | '胜任力';
+
+export type MetricLevel = '组织级' | '部门级' | '岗位级';
+
+export type MetricSource = 'best_practice' | 'ai_generated' | 'user_created';
+
+export type OrgDimensionMapping =
+  | 'strategic_kpis' | 'management_indicators'
+  | 'team_development' | 'engagement_compliance';
+
+export type PosSectionMapping =
+  | 'performance_goals' | 'competency_items'
+  | 'values_items' | 'development_goals';
+
+export type CategoryType = 'industry' | 'dimension' | 'level' | 'custom';
+
+export interface MetricCategory {
+  _key?: string;
+  category_name: string;
+  category_type: CategoryType;
+  parent_category_ref?: string;
+  description?: string;
+  display_order?: number;
+  icon?: string;
+}
+
+export interface MetricTemplate {
+  _key: string;
+  metric_name: string;
+  dimension: MetricDimension;
+  applicable_level: MetricLevel;
+  industries: string[];
+  source: MetricSource;
+  default_weight: number;
+  unit: string;
+  target_template: string;
+  evaluation_criteria?: string;
+  description?: string;
+  metric_formula?: string;
+  data_source_hint?: string;
+  tags: string[];
+  org_dimension_mapping?: OrgDimensionMapping;
+  pos_section_mapping?: PosSectionMapping;
+  is_verified?: boolean;
+  usage_count?: number;
+}

@@ -3,7 +3,7 @@
 /**
  * 绩效管理咨询 — 主页面
  *
- * 8 个 Tab:
+ * 9 个 Tab:
  * 1. 方案概览 — 创建/查看绩效方案
  * 2. 战略目标 — 管理战略目标 + AI 分解举措
  * 3. 组织绩效 — AI 生成部门四维度绩效
@@ -12,6 +12,7 @@
  * 6. 级联分解 — 目标层级分解 + 周期管理
  * 7. 数据分析 — 评分分布、偏差分析
  * 8. 报告生成 — AI 生成咨询报告
+ * 9. 指标库 — 绩效指标库浏览/搜索/应用
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -30,12 +31,14 @@ import ReviewTemplateTab from './ReviewTemplateTab';
 import CascadeTreeTab from './CascadeTreeTab';
 import AnalyticsTab from './AnalyticsTab';
 import ReportTab from './ReportTab';
+import MetricLibraryTab from './MetricLibraryTab';
 
-type TabId = 'plan' | 'goals' | 'org-perf' | 'pos-perf' | 'template' | 'cascade' | 'analytics' | 'report';
+type TabId = 'plan' | 'goals' | 'org-perf' | 'pos-perf' | 'template' | 'cascade' | 'analytics' | 'report' | 'metrics';
 
 const TABS: { id: TabId; name: string }[] = [
   { id: 'plan', name: '方案概览' },
   { id: 'goals', name: '战略目标' },
+  { id: 'metrics', name: '指标库' },
   { id: 'org-perf', name: '组织绩效' },
   { id: 'pos-perf', name: '岗位绩效' },
   { id: 'template', name: '考核表单' },
@@ -136,6 +139,14 @@ export default function PerformancePage() {
 
       {activeTab === 'goals' && (
         <StrategicGoalsTab
+          projectId={projectId}
+          activePlan={activePlan}
+          onRefresh={refreshData}
+        />
+      )}
+
+      {activeTab === 'metrics' && (
+        <MetricLibraryTab
           projectId={projectId}
           activePlan={activePlan}
           onRefresh={refreshData}

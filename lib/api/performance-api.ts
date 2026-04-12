@@ -24,6 +24,8 @@ import type {
   BatchUpdateItem,
   BatchUpdateResult,
   NineBoxData,
+  MetricCategory,
+  MetricTemplate,
 } from '@/types/performance';
 
 export type {
@@ -447,4 +449,101 @@ export async function setParentOrg(
     method: 'PATCH',
     body: JSON.stringify({ parent_org_ref: parentOrgRef }),
   });
+}
+
+// ──────────────────────────────────────────────
+// 指标库 (Metrics Library)
+// ──────────────────────────────────────────────
+
+export async function listMetricCategories(
+  categoryType?: string,
+): Promise<ApiResponse<MetricCategory[]>> {
+  const query = categoryType ? `?category_type=${encodeURIComponent(categoryType)}` : '';
+  return perfRequest(`/metric-categories${query}`);
+}
+
+export async function listMetricTemplates(
+  params?: {
+    keyword?: string;
+    dimension?: string;
+    level?: string;
+    industry?: string;
+    tag?: string;
+    source?: string;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<ApiResponse<{ total: number; data: MetricTemplate[] }>> {
+  const sp = new URLSearchParams();
+  if (params?.keyword) sp.set('keyword', params.keyword);
+  if (params?.dimension) sp.set('dimension', params.dimension);
+  if (params?.level) sp.set('level', params.level);
+  if (params?.industry) sp.set('industry', params.industry);
+  if (params?.tag) sp.set('tag', params.tag);
+  if (params?.source) sp.set('source', params.source);
+  if (params?.limit) sp.set('limit', String(params.limit));
+  if (params?.offset) sp.set('offset', String(params.offset));
+  const query = sp.toString();
+  return perfRequest(`/metric-templates${query ? `?${query}` : ''}`);
+}
+
+export async function getMetricTemplate(
+  key: string,
+): Promise<ApiResponse<MetricTemplate>> {
+  return perfRequest(`/metric-templates/${encodeURIComponent(key)}`);
+}
+
+export async function createMetricTemplate(
+  data: Partial<MetricTemplate>,
+): Promise<ApiResponse<{ success: boolean; _key: string }>> {
+  return perfRequest('/metric-templates', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateMetricTemplate(
+  key: string,
+  data: Partial<MetricTemplate>,
+): Promise<ApiResponse<{ success: boolean; _key: string }>> {
+  return perfRequest(`/metric-templates/${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteMetricTemplate(
+  key: string,
+): Promise<ApiResponse<{ success: boolean }>> {
+  return perfRequest(`/metric-templates/${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function applyMetricTemplates(
+  planId: string,
+  orgUnitId: string,
+  templateKeys: string[],
+  mode: string = 'org',
+): Promise<ApiResponse<{ success: boolean; org_perf_key?: string }>> {
+  return perfRequest('/metric-templates/apply', {
+    method: 'POST',
+    body: JSON.stringify({
+      plan_id: planId,
+      org_unit_id: orgUnitId,
+      template_keys: templateKeys,
+      mode,
+    }),
+  });
+}
+
+export async function aiSuggestMetrics(
+  planId: string,
+  orgUnitId: string,
+  context: string = '',
+): Promise<ApiResponse<{ suggestions: unknown[]; ref_count: number }>> {
+  return perfRequest('/metric-templates/ai-suggest', {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId, org_unit_id: orgUnitId, context }),
+  }, 60000);
 }
