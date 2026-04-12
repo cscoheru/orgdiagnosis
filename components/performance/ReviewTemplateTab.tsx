@@ -101,6 +101,26 @@ export default function ReviewTemplateTab({ projectId, activePlan, onRefresh }: 
     } finally { setGenerating(false); }
   };
 
+  const handleBatchGenerate = async () => {
+    if (positions.length === 0) return;
+    setGenerating(true);
+    setError(null);
+    let successCount = 0;
+    try {
+      for (const pos of positions) {
+        const res = await generateReviewTemplate({ pos_perf_id: pos._key });
+        if (res.success) successCount++;
+      }
+      if (successCount > 0) {
+        await fetchTemplates();
+        await onRefresh();
+      }
+      if (successCount < positions.length) {
+        setError(`成功生成 ${successCount}/${positions.length} 个考核表单`);
+      }
+    } finally { setGenerating(false); }
+  };
+
   const startEdit = (tpl: ReviewTemplate) => {
     const p = tpl.properties;
     setEditKey(tpl._key);
@@ -239,7 +259,21 @@ export default function ReviewTemplateTab({ projectId, activePlan, onRefresh }: 
         </div>
       ) : templates.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
-          <p>尚未生成考核表单模板</p>
+          {positions.length > 0 ? (
+            <>
+              <p className="mb-3">已生成 {positions.length} 个岗位绩效，但尚未生成考核表单模板</p>
+              <button
+                onClick={handleBatchGenerate}
+                disabled={generating}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Sparkles size={14} />
+                {generating ? `正在生成 (0/${positions.length})...` : `一键为 ${positions.length} 个岗位生成考核表单`}
+              </button>
+            </>
+          ) : (
+            <p>尚未生成考核表单模板，请先在「岗位绩效」中生成岗位绩效</p>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
