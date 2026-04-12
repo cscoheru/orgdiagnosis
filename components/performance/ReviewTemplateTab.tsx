@@ -72,7 +72,7 @@ export default function ReviewTemplateTab({ projectId, activePlan, onRefresh }: 
 
   const fetchPositions = useCallback(async () => {
     if (!activePlan) return;
-    const res = await listPositionPerformances(activePlan._key);
+    const res = await listPositionPerformances(undefined, activePlan._key);
     if (res.success && res.data) setPositions(Array.isArray(res.data) ? res.data : []);
   }, [activePlan]);
 
