@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from app.api import (
     upload, analyze, diagnosis, export_pdf, langgraph_diagnosis,
     requirement, report, knowledge, projects, layout, knowledge_v2, folders,
-    templates, orders, feature_flags, memory, tasks,
+    templates, orders, feature_flags, memory, tasks, ai_chat,
 )
 from lib.api import files as lib_files
 from app.api.v1.kernel import router as kernel_router
@@ -24,6 +24,7 @@ api_router = APIRouter()
 
 # 注册各模块路由
 api_router.include_router(upload.router, prefix="/upload", tags=["文件上传"])
+api_router.include_router(ai_chat.router, prefix="/ai", tags=["AI Chat"])
 api_router.include_router(analyze.router, prefix="/analyze", tags=["AI 分析"])
 api_router.include_router(diagnosis.router, prefix="/diagnosis", tags=["诊断管理"])
 api_router.include_router(export_pdf.router, prefix="/export", tags=["PDF 导出"])

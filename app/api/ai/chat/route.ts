@@ -1,27 +1,38 @@
-'use client';
-
 /**
- * AI Chat API — Backend proxy for Zhipu AI.
+ * AI Chat API — Proxy to backend AIClient (DashScope/DeepSeek).
  *
- * Reuses org-diagnosis's AI service to proxy Zhipu/GLM calls.
  * The strategy decoding components call POST /api/ai/chat with { messages }.
+ * This route proxies the request to the backend Python API.
  */
-
-import { callZhipuAPI, type ZhipuMessage } from '@/lib/zhipu-api';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { messages } = body as { messages: ZhipuMessage[] };
+    const { messages } = body as { messages: Array<{ role: string; content: string }> };
 
     if (!messages || !Array.isArray(messages)) {
       return Response.json({ error: 'messages array required' }, { status: 400 });
     }
 
-    // Use empty apiKey to force backend proxy mode
-    const content = await callZhipuAPI('', messages);
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const response = await fetch(`${backendUrl}/api/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messages }),
+    });
 
-    return Response.json({ content });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return Response.json(
+        { error: errorData.detail || `Backend error: ${response.status}` },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    return Response.json({ content: data.content });
   } catch (error: unknown) {
     console.error('AI chat API error:', error);
     return Response.json(
