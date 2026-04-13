@@ -179,8 +179,8 @@ export default function Step1Review() {
 
   // 下一步
   const handleNext = () => {
-    if (!rootCause.trim()) {
-      alert('请先完成深度诊断并提取根因');
+    if (!goals.trim() || !actuals.trim()) {
+      alert('请输入去年目标和实际完成数据');
       return;
     }
     handleSave();
@@ -470,7 +470,7 @@ export default function Step1Review() {
         </button>
         <button
           onClick={handleNext}
-          disabled={!rootCause}
+          disabled={!goals.trim() || !actuals.trim()}
           className="px-8 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed
                      text-white font-medium rounded-lg flex items-center gap-2 transition-all duration-200"
         >
