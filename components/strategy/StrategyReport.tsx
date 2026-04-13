@@ -1,8 +1,201 @@
 'use client';
 
 import { useStore } from '@/lib/store';
-import { Copy, ArrowLeft, CheckCircle, Printer } from 'lucide-react';
+import { Copy, ArrowLeft, CheckCircle, Printer, Download, FileJson, FileText } from 'lucide-react';
 import { useState } from 'react';
+
+function generateMarkdownReport(data: any): string {
+  let report = '# 企业战略解码报告\n\n';
+  report += `**生成时间:** ${new Date().toLocaleString('zh-CN')}\n\n`;
+
+  // Section 1: 业绩复盘
+  if (data.step1) {
+    report += '## 一、业绩复盘\n\n';
+    report += `**去年目标:**\n${data.step1.goals}\n\n`;
+    report += `**实际完成:**\n${data.step1.actuals}\n\n`;
+    if (data.step1.summary) {
+      report += `**复盘总结:**\n${data.step1.summary}\n\n`;
+    }
+    if (data.step1.rootCause) {
+      report += `**核心短板:** ${data.step1.rootCause}\n\n`;
+    }
+    if (data.step1.dimensions && data.step1.dimensions.length > 0) {
+      report += '**3力3平台归因:**\n';
+      data.step1.dimensions.forEach(d => {
+        if (d.isHighlighted) {
+          report += `- **${d.name}** (${d.score}%): ${d.reason}\n`;
+        }
+      });
+      report += '\n';
+    }
+  }
+
+  // Section 2: 市场与机会
+  if (data.step2) {
+    report += '## 二、市场与机会\n\n';
+
+    if (data.step2.customerInsight?.kbf?.length > 0) {
+      report += '### 客户需求洞察\n';
+      report += `**关键购买因素 (KBF):** ${data.step2.customerInsight.kbf.join('、')}\n\n`;
+    }
+
+    if (data.step2.competitorAnalysis?.advantages?.length > 0) {
+      report += '### 竞对优势分析\n';
+      data.step2.competitorAnalysis.advantages.forEach(a => {
+        report += `- ${a.competitorName}: ${a.advantage}\n`;
+      });
+      report += '\n';
+    }
+
+    if (data.step2.ksfDimensions?.length > 0) {
+      report += '### 关键成功要素 (KSF)\n';
+      data.step2.ksfDimensions.forEach(ksf => {
+        report += `- **${ksf.name}**: ${ksf.reasoning}\n`;
+      });
+      report += '\n';
+    }
+
+    if (data.step2.benchmarkScores?.length > 0) {
+      report += '### 竞争力对标\n';
+      data.step2.benchmarkScores.forEach(bs => {
+        const gap = bs.myScore - bs.competitorScore;
+        const indicator = gap > 0 ? '▲' : gap < 0 ? '▼' : '●';
+        report += `- ${bs.dimensionName}: 我方${bs.myScore} vs 竞对${bs.competitorScore} (${indicator}${Math.abs(gap)})\n`;
+      });
+      report += '\n';
+    }
+
+    if (data.step2.swot) {
+      report += '### SWOT 分析\n';
+      report += `- **优势:** ${data.step2.swot.strengths.join('、')}\n`;
+      report += `- **劣势:** ${data.step2.swot.weaknesses.join('、')}\n`;
+      report += `- **机会:** ${data.step2.swot.opportunities.join('、')}\n`;
+      report += `- **威胁:** ${data.step2.swot.threats.join('、')}\n\n`;
+    }
+
+    if (data.step2.towsStrategies) {
+      report += '### TOWS 交叉策略\n';
+      if (data.step2.towsStrategies.so?.length) {
+        report += '**SO (增长策略):** ' + data.step2.towsStrategies.so.join('；') + '\n';
+      }
+      if (data.step2.towsStrategies.wo?.length) {
+        report += '**WO (转型策略):** ' + data.step2.towsStrategies.wo.join('；') + '\n';
+      }
+      if (data.step2.towsStrategies.st?.length) {
+        report += '**ST (多元化策略):** ' + data.step2.towsStrategies.st.join('；') + '\n';
+      }
+      if (data.step2.towsStrategies.wt?.length) {
+        report += '**WT (防御策略):** ' + data.step2.towsStrategies.wt.join('；') + '\n';
+      }
+      report += '\n';
+    }
+
+    if (data.step2.strategicDirection) {
+      report += `**战略方向:** ${data.step2.strategicDirection}\n\n`;
+    }
+
+    if (data.step2.productCustomerMatrix) {
+      const m = data.step2.productCustomerMatrix;
+      report += '### 产品-客户矩阵 (Ansoff)\n';
+      if (m.marketPenetration?.length) report += `- **市场渗透**: ${m.marketPenetration.join('、')}\n`;
+      if (m.productDevelopment?.length) report += `- **产品开发**: ${m.productDevelopment.join('、')}\n`;
+      if (m.marketDevelopment?.length) report += `- **市场开发**: ${m.marketDevelopment.join('、')}\n`;
+      if (m.diversification?.length) report += `- **多元化**: ${m.diversification.join('、')}\n`;
+      report += '\n';
+    }
+  }
+
+  // Section 3: 年度目标
+  if (data.step3) {
+    report += '## 三、年度目标\n\n';
+
+    if (data.step3.calculatedTargets) {
+      const { base, standard, challenge } = data.step3.calculatedTargets;
+      report += '| 目标档位 | 金额 |\n|---------|------|\n';
+      report += `| 保底目标 | ${base.toLocaleString()} 万 |\n`;
+      report += `| 达标目标 | ${standard.toLocaleString()} 万 |\n`;
+      report += `| 挑战目标 | ${challenge.toLocaleString()} 万 |\n\n`;
+      report += `信心指数: ${data.step3.confidenceIndex}%\n\n`;
+    }
+
+    if (data.step3.matrixData) {
+      const md = data.step3.matrixData;
+      if (md.oldClients.length || md.newClients.length) {
+        report += '### 客户-产品矩阵\n';
+        report += `**客户群:** ${[...md.oldClients, ...md.newClients].join('、')}\n`;
+        report += `**产品线:** ${[...md.oldProducts, ...md.newProducts].join('、')}\n\n`;
+      }
+    }
+
+    if (data.step3.targets && data.step3.targets.length > 0) {
+      report += '**目标明细:**\n';
+      data.step3.targets.forEach((target, idx) => {
+        const typeLabel = target.type === 'revenue' ? '营收' : target.type === 'market' ? '市场' : '其他';
+        report += `${idx + 1}. **${target.name}** (${typeLabel}) — ${target.description}\n`;
+      });
+      report += '\n';
+    }
+  }
+
+  // Section 4: 执行方案
+  if (data.step4) {
+    report += '## 四、执行方案\n\n';
+
+    if (data.step4.actionPlanTable && data.step4.actionPlanTable.length > 0) {
+      report += '### 3力3平台行动计划表\n\n';
+      report += '| # | 客户群 | 产品 | 营收目标 | 销售力 | 产品力 | 交付力 | 人力 | 财务&资产 | 数字化&流程 |\n';
+      report += '|---|--------|------|---------|--------|--------|--------|------|----------|------------|\n';
+      data.step4.actionPlanTable.forEach(row => {
+        report += `| ${row.seqNumber} | ${row.customerGroup} | ${row.product} | ${row.revenueTarget} | ${row.salesForce} | ${row.productForce} | ${row.deliveryForce} | ${row.hr} | ${row.financeAssets} | ${row.digitalProcess} |\n`;
+      });
+      report += '\n';
+    }
+
+    if (data.step4.strategyMap && typeof data.step4.strategyMap === 'object') {
+      const sm = data.step4.strategyMap as any;
+      if (sm.theme) {
+        report += '### 战略主题\n';
+        report += `**${sm.theme}**: ${sm.themeDescription || ''}\n\n`;
+      }
+    }
+
+    if (data.step4?.keyBattles && data.step4.keyBattles.length > 0) {
+      report += '**关键战役:**\n';
+      data.step4.keyBattles.forEach((battle, idx) => {
+        report += `${idx + 1}. **${battle.name}** — ${battle.owner}\n`;
+        report += `   ${battle.description}\n\n`;
+      });
+    }
+
+    if (data.step4?.quarterlyActions && data.step4.quarterlyActions?.length > 0) {
+      const actionsList = data.step4.quarterlyActions;
+      report += '**季度行动计划:**\n';
+      ['Q1', 'Q2', 'Q3', 'Q4'].forEach(quarter => {
+        const actions = actionsList.filter(a => a.quarter === quarter);
+        if (actions.length > 0) {
+          report += `\n**${quarter}:**\n`;
+          actions.forEach(action => {
+            report += `- ${action.action} (${action.deadline})\n`;
+          });
+        }
+      });
+    }
+  }
+
+  return report;
+}
+
+function downloadFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const dateStamp = () => new Date().toISOString().slice(0, 10);
 
 export default function ReportPage() {
   const { data, setStep } = useStore();
@@ -13,201 +206,29 @@ export default function ReportPage() {
   };
 
   const handleCopyReport = () => {
-    let report = '# 企业战略解码报告\n\n';
-    report += `**生成时间:** ${new Date().toLocaleString('zh-CN')}\n\n`;
-
-    // Section 1: 业绩复盘
-    if (data.step1) {
-      report += '## 一、业绩复盘\n\n';
-      report += `**去年目标:**\n${data.step1.goals}\n\n`;
-      report += `**实际完成:**\n${data.step1.actuals}\n\n`;
-      if (data.step1.summary) {
-        report += `**复盘总结:**\n${data.step1.summary}\n\n`;
-      }
-      if (data.step1.rootCause) {
-        report += `**核心短板:** ${data.step1.rootCause}\n\n`;
-      }
-      if (data.step1.dimensions && data.step1.dimensions.length > 0) {
-        report += '**3力3平台归因:**\n';
-        data.step1.dimensions.forEach(d => {
-          if (d.isHighlighted) {
-            report += `- **${d.name}** (${d.score}%): ${d.reason}\n`;
-          }
-        });
-        report += '\n';
-      }
-    }
-
-    // Section 2: 市场与机会
-    if (data.step2) {
-      report += '## 二、市场与机会\n\n';
-
-      // 客户需求洞察
-      if (data.step2.customerInsight?.kbf?.length > 0) {
-        report += '### 客户需求洞察\n';
-        report += `**关键购买因素 (KBF):** ${data.step2.customerInsight.kbf.join('、')}\n\n`;
-      }
-
-      // 竞对分析
-      if (data.step2.competitorAnalysis?.advantages?.length > 0) {
-        report += '### 竞对优势分析\n';
-        data.step2.competitorAnalysis.advantages.forEach(a => {
-          report += `- ${a.competitorName}: ${a.advantage}\n`;
-        });
-        report += '\n';
-      }
-
-      // KSF 维度
-      if (data.step2.ksfDimensions?.length > 0) {
-        report += '### 关键成功要素 (KSF)\n';
-        data.step2.ksfDimensions.forEach(ksf => {
-          report += `- **${ksf.name}**: ${ksf.reasoning}\n`;
-        });
-        report += '\n';
-      }
-
-      // 竞争对标
-      if (data.step2.benchmarkScores?.length > 0) {
-        report += '### 竞争力对标\n';
-        data.step2.benchmarkScores.forEach(bs => {
-          const gap = bs.myScore - bs.competitorScore;
-          const indicator = gap > 0 ? '▲' : gap < 0 ? '▼' : '●';
-          report += `- ${bs.dimensionName}: 我方${bs.myScore} vs 竞对${bs.competitorScore} (${indicator}${Math.abs(gap)})\n`;
-        });
-        report += '\n';
-      }
-
-      // SWOT
-      if (data.step2.swot) {
-        report += '### SWOT 分析\n';
-        report += `- **优势:** ${data.step2.swot.strengths.join('、')}\n`;
-        report += `- **劣势:** ${data.step2.swot.weaknesses.join('、')}\n`;
-        report += `- **机会:** ${data.step2.swot.opportunities.join('、')}\n`;
-        report += `- **威胁:** ${data.step2.swot.threats.join('、')}\n\n`;
-      }
-
-      // TOWS
-      if (data.step2.towsStrategies) {
-        report += '### TOWS 交叉策略\n';
-        if (data.step2.towsStrategies.so?.length) {
-          report += '**SO (增长策略):** ' + data.step2.towsStrategies.so.join('；') + '\n';
-        }
-        if (data.step2.towsStrategies.wo?.length) {
-          report += '**WO (转型策略):** ' + data.step2.towsStrategies.wo.join('；') + '\n';
-        }
-        if (data.step2.towsStrategies.st?.length) {
-          report += '**ST (多元化策略):** ' + data.step2.towsStrategies.st.join('；') + '\n';
-        }
-        if (data.step2.towsStrategies.wt?.length) {
-          report += '**WT (防御策略):** ' + data.step2.towsStrategies.wt.join('；') + '\n';
-        }
-        report += '\n';
-      }
-
-      // 战略方向
-      if (data.step2.strategicDirection) {
-        report += `**战略方向:** ${data.step2.strategicDirection}\n\n`;
-      }
-
-      // 产品-客户矩阵
-      if (data.step2.productCustomerMatrix) {
-        const m = data.step2.productCustomerMatrix;
-        report += '### 产品-客户矩阵 (Ansoff)\n';
-        if (m.marketPenetration?.length) report += `- **市场渗透**: ${m.marketPenetration.join('、')}\n`;
-        if (m.productDevelopment?.length) report += `- **产品开发**: ${m.productDevelopment.join('、')}\n`;
-        if (m.marketDevelopment?.length) report += `- **市场开发**: ${m.marketDevelopment.join('、')}\n`;
-        if (m.diversification?.length) report += `- **多元化**: ${m.diversification.join('、')}\n`;
-        report += '\n';
-      }
-    }
-
-    // Section 3: 年度目标
-    if (data.step3) {
-      report += '## 三、年度目标\n\n';
-
-      // 三档目标
-      if (data.step3.calculatedTargets) {
-        const { base, standard, challenge } = data.step3.calculatedTargets;
-        report += '| 目标档位 | 金额 |\n|---------|------|\n';
-        report += `| 保底目标 | ${base.toLocaleString()} 万 |\n`;
-        report += `| 达标目标 | ${standard.toLocaleString()} 万 |\n`;
-        report += `| 挑战目标 | ${challenge.toLocaleString()} 万 |\n\n`;
-        report += `信心指数: ${data.step3.confidenceIndex}%\n\n`;
-      }
-
-      // 矩阵数据
-      if (data.step3.matrixData) {
-        const md = data.step3.matrixData;
-        if (md.oldClients.length || md.newClients.length) {
-          report += '### 客户-产品矩阵\n';
-          report += `**客户群:** ${[...md.oldClients, ...md.newClients].join('、')}\n`;
-          report += `**产品线:** ${[...md.oldProducts, ...md.newProducts].join('、')}\n\n`;
-        }
-      }
-
-      // 兼容旧字段
-      if (data.step3.targets && data.step3.targets.length > 0) {
-        report += '**目标明细:**\n';
-        data.step3.targets.forEach((target, idx) => {
-          const typeLabel = target.type === 'revenue' ? '营收' : target.type === 'market' ? '市场' : '其他';
-          report += `${idx + 1}. **${target.name}** (${typeLabel}) — ${target.description}\n`;
-        });
-        report += '\n';
-      }
-    }
-
-    // Section 4: 执行方案
-    if (data.step4) {
-      report += '## 四、执行方案\n\n';
-
-      // 3力3平台行动计划表
-      if (data.step4.actionPlanTable && data.step4.actionPlanTable.length > 0) {
-        report += '### 3力3平台行动计划表\n\n';
-        report += '| # | 客户群 | 产品 | 营收目标 | 销售力 | 产品力 | 交付力 | 人力 | 财务&资产 | 数字化&流程 |\n';
-        report += '|---|--------|------|---------|--------|--------|--------|------|----------|------------|\n';
-        data.step4.actionPlanTable.forEach(row => {
-          report += `| ${row.seqNumber} | ${row.customerGroup} | ${row.product} | ${row.revenueTarget} | ${row.salesForce} | ${row.productForce} | ${row.deliveryForce} | ${row.hr} | ${row.financeAssets} | ${row.digitalProcess} |\n`;
-        });
-        report += '\n';
-      }
-
-      // 战略地图摘要
-      if (data.step4.strategyMap && typeof data.step4.strategyMap === 'object') {
-        const sm = data.step4.strategyMap as any;
-        if (sm.theme) {
-          report += '### 战略主题\n';
-          report += `**${sm.theme}**: ${sm.themeDescription || ''}\n\n`;
-        }
-      }
-
-      // 兼容旧字段
-      if (data.step4?.keyBattles && data.step4.keyBattles.length > 0) {
-        report += '**关键战役:**\n';
-        data.step4.keyBattles.forEach((battle, idx) => {
-          report += `${idx + 1}. **${battle.name}** — ${battle.owner}\n`;
-          report += `   ${battle.description}\n\n`;
-        });
-      }
-
-      if (data.step4?.quarterlyActions && data.step4.quarterlyActions?.length > 0) {
-        const actionsList = data.step4.quarterlyActions;
-        report += '**季度行动计划:**\n';
-        ['Q1', 'Q2', 'Q3', 'Q4'].forEach(quarter => {
-          const actions = actionsList.filter(a => a.quarter === quarter);
-          if (actions.length > 0) {
-            report += `\n**${quarter}:**\n`;
-            actions.forEach(action => {
-              report += `- ${action.action} (${action.deadline})\n`;
-            });
-          }
-        });
-      }
-    }
-
+    const report = generateMarkdownReport(data);
     navigator.clipboard.writeText(report).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleDownloadJSON = () => {
+    const exportData = {
+      version: '1.0',
+      generatedAt: new Date().toISOString(),
+      report: data,
+    };
+    downloadFile(
+      JSON.stringify(exportData, null, 2),
+      `战略解码报告_${dateStamp()}.json`,
+      'application/json'
+    );
+  };
+
+  const handleDownloadMD = () => {
+    const md = generateMarkdownReport(data);
+    downloadFile(md, `战略解码报告_${dateStamp()}.md`, 'text/markdown;charset=utf-8');
   };
 
   const step3 = data.step3;
@@ -220,12 +241,12 @@ export default function ReportPage() {
         <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
           战略解码报告
         </h2>
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <button
             onClick={handleCopyReport}
-            className="px-4 py-2 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300
-                       hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2
-                       transition-all duration-200"
+            className="px-3 py-2 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300
+                       hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg flex items-center gap-1.5
+                       transition-all duration-200 text-sm"
           >
             {copied ? (
               <>
@@ -235,17 +256,35 @@ export default function ReportPage() {
             ) : (
               <>
                 <Copy className="w-4 h-4" />
-                复制报告
+                复制
               </>
             )}
           </button>
           <button
+            onClick={handleDownloadMD}
+            className="px-3 py-2 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300
+                       hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg flex items-center gap-1.5
+                       transition-all duration-200 text-sm"
+          >
+            <FileText className="w-4 h-4" />
+            导出 MD
+          </button>
+          <button
+            onClick={handleDownloadJSON}
+            className="px-3 py-2 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300
+                       hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg flex items-center gap-1.5
+                       transition-all duration-200 text-sm"
+          >
+            <FileJson className="w-4 h-4" />
+            导出 JSON
+          </button>
+          <button
             onClick={handlePrint}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg
-                       flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg
+                       flex items-center gap-1.5 transition-all duration-200 shadow-md hover:shadow-lg text-sm"
           >
             <Printer className="w-4 h-4" />
-            打印/导出PDF
+            打印/PDF
           </button>
         </div>
       </div>
@@ -345,7 +384,7 @@ export default function ReportPage() {
                   </div>
                 )}
 
-                {/* KSF 维度 */}
+                {/* KSF */}
                 {step2.ksfDimensions && step2.ksfDimensions.length > 0 && (
                   <div>
                     <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">关键成功要素 (KSF)</h5>
@@ -480,7 +519,6 @@ export default function ReportPage() {
                 三、年度目标
               </h4>
               <div className="space-y-4">
-                {/* 三档目标 */}
                 {step3.calculatedTargets && (
                   <div className="grid grid-cols-3 gap-4">
                     <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 text-center">
@@ -507,14 +545,12 @@ export default function ReportPage() {
                   </div>
                 )}
 
-                {/* 信心指数 */}
                 {step3.confidenceIndex && (
                   <div className="text-sm text-gray-600 dark:text-slate-400">
                     信心指数: <span className="font-semibold">{step3.confidenceIndex}%</span>
                   </div>
                 )}
 
-                {/* 兼容旧 targets */}
                 {step3.targets && step3.targets.length > 0 && (
                   <div className="space-y-3">
                     {step3.targets.map((target, idx) => (
@@ -545,7 +581,6 @@ export default function ReportPage() {
                 四、执行方案
               </h4>
               <div className="space-y-6">
-                {/* 3力3平台行动计划表 */}
                 {step4.actionPlanTable && step4.actionPlanTable.length > 0 && (
                   <div>
                     <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">3力3平台行动计划表</h5>
@@ -586,7 +621,6 @@ export default function ReportPage() {
                   </div>
                 )}
 
-                {/* 战略地图摘要 */}
                 {step4.strategyMap && typeof step4.strategyMap === 'object' && (step4.strategyMap as any).theme && (
                   <div>
                     <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">战略主题</h5>
@@ -603,7 +637,6 @@ export default function ReportPage() {
                   </div>
                 )}
 
-                {/* 兼容旧字段 */}
                 {step4?.keyBattles && step4.keyBattles.length > 0 && (
                   <div>
                     <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">关键战役</h5>
