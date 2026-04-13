@@ -431,8 +431,8 @@ export function BSCBoard({ initialCapsules, step3Data, onSave }: BSCBoardProps) 
           }}
           className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
             connectMode
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'bg-secondary text-secondary-foreground hover:bg-muted'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
           }`}
         >
           <Link2Off className="h-4 w-4" />

@@ -145,7 +145,7 @@ export function DiagnosticChat({
               <div
                 className={`max-w-[80%] rounded-2xl px-4 py-3 ${
                   message.role === 'user'
-                    ? 'bg-primary-500 text-white'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-gray-100'
                 }`}
               >
@@ -208,13 +208,13 @@ export function DiagnosticChat({
               disabled={isLoading || isExtracting}
               className="flex-1 px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg
                          bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-100
-                         focus:outline-none focus:ring-2 focus:ring-primary-500
+                         focus:outline-none focus:ring-2 focus:ring-blue-500
                          disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button
               onClick={handleSend}
               disabled={!inputValue.trim() || isLoading || isExtracting}
-              className="px-4 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed
+              className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed
                          text-white rounded-lg transition-colors"
             >
               <Send className="w-5 h-5" />

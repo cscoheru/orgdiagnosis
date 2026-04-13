@@ -309,7 +309,7 @@ export default function Step3Target() {
             {/* SWOT 摘要 */}
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-                <Target className="w-4 h-4 text-primary-500" />
+                <Target className="w-4 h-4 text-blue-500" />
                 SWOT 摘要（来自 Step 2）
               </h3>
               <div className="space-y-2 text-sm">
@@ -366,18 +366,18 @@ export default function Step3Target() {
             {/* 战略方向 */}
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-primary-500" />
+                <TrendingUp className="w-4 h-4 text-blue-500" />
                 战略方向
               </h3>
-              <div className="p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
-                <p className="text-sm font-medium text-primary-900 dark:text-primary-100">
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
                   {strategicDirection === 'expansion' ? '扩张型' :
                    strategicDirection === 'diversification' ? '多元化' :
                    strategicDirection === 'stability' ? '稳定型' :
                    strategicDirection === 'defensive' ? '收缩型' : strategicDirection}
                 </p>
                 {productMatrix && (
-                  <p className="text-xs text-primary-700 dark:text-primary-300 mt-2">
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
                     基于 Step 2 的安索夫矩阵分析
                   </p>
                 )}
@@ -488,7 +488,7 @@ export default function Step3Target() {
                   value="revenue"
                   checked={dataUnit === 'revenue'}
                   onChange={() => setDataUnit('revenue')}
-                  className="w-4 h-4 text-primary-500"
+                  className="w-4 h-4 text-blue-500"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">预计营收 (万元)</span>
               </label>
@@ -499,7 +499,7 @@ export default function Step3Target() {
                   value="sales"
                   checked={dataUnit === 'sales'}
                   onChange={() => setDataUnit('sales')}
-                  className="w-4 h-4 text-primary-500"
+                  className="w-4 h-4 text-blue-500"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">预计销量 (件/套)</span>
               </label>
@@ -731,7 +731,7 @@ export default function Step3Target() {
           </button>
           <button
             onClick={handleNext}
-            className="px-8 py-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg flex items-center gap-2 transition-all duration-200"
+            className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center gap-2 transition-all duration-200"
           >
             下一步：任务分解
             <ArrowRight className="w-4 h-4" />

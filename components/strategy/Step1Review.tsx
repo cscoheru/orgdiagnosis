@@ -280,7 +280,7 @@ export default function Step1Review() {
             rows={10}
             className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg
                        bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-gray-100
-                       focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                        resize-none transition-all duration-200"
           />
         </div>
@@ -296,7 +296,7 @@ export default function Step1Review() {
             rows={10}
             className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg
                        bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-gray-100
-                       focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                        resize-none transition-all duration-200"
           />
         </div>

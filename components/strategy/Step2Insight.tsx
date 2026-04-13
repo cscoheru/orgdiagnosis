@@ -705,7 +705,7 @@ export default function Step2Insight() {
         </div>
         <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2 mb-3">
           <div
-            className="bg-primary-500 h-2 rounded-full transition-all duration-500"
+            className="bg-blue-600 h-2 rounded-full transition-all duration-500"
             style={{ width: `${progress.percentage}%` }}
           />
         </div>
@@ -746,7 +746,7 @@ export default function Step2Insight() {
       {/* ========== 阶段 1: 数据收集与深度分析 ========== */}
       <div className="mb-8">
         <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary-500 text-white text-sm">1</span>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm">1</span>
           数据收集与深度分析
         </h3>
 
@@ -755,7 +755,7 @@ export default function Step2Insight() {
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6">
             <label className="flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
               <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-primary-500" />
+                <TrendingUp className="w-4 h-4 text-blue-500" />
                 行业趋势
               </div>
             </label>
@@ -766,7 +766,7 @@ export default function Step2Insight() {
               rows={4}
               className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg
                          bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-gray-100
-                         focus:outline-none focus:ring-2 focus:ring-primary-500
+                         focus:outline-none focus:ring-2 focus:ring-blue-500
                          resize-none transition-all duration-200"
             />
 
@@ -1150,7 +1150,7 @@ export default function Step2Insight() {
           {/* 1.4 本公司信息 */}
           <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg p-6">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-              <Award className="w-4 h-4 text-primary-500" />
+              <Award className="w-4 h-4 text-blue-500" />
               本公司详细信息
             </label>
             <textarea
@@ -1160,7 +1160,7 @@ export default function Step2Insight() {
               rows={5}
               className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg
                          bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-gray-100
-                         focus:outline-none focus:ring-2 focus:ring-primary-500
+                         focus:outline-none focus:ring-2 focus:ring-blue-500
                          resize-none transition-all duration-200"
             />
 
@@ -1307,7 +1307,7 @@ export default function Step2Insight() {
       {/* ========== 阶段 2: KSF 提炼（带推导理由） ========== */}
       <div className="mb-8">
         <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary-500 text-white text-sm">2</span>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm">2</span>
           提炼行业关键成功要素 (KSF)
           <span className="ml-2 text-xs font-normal text-gray-500 dark:text-slate-400">
             公式：KSF = 满足客户 KBF 的能力 + 抵御竞对 CSF 的能力
@@ -1336,7 +1336,7 @@ export default function Step2Insight() {
           <button
             onClick={handleExtractKSF}
             disabled={isAnalyzingKSF || ksfLocked || !kbfLocked || !analysisLocked}
-            className="px-8 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed
+            className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed
                        text-white font-semibold rounded-lg flex items-center gap-2 transition-all duration-200"
           >
             {isAnalyzingKSF ? (
@@ -1372,7 +1372,7 @@ export default function Step2Insight() {
                   key={dim.id}
                   className={`p-4 rounded-lg border-2 transition-all ${
                     ksfLocked
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                       : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700'
                   }`}
                 >
@@ -1390,7 +1390,7 @@ export default function Step2Insight() {
                           onBlur={() => setEditingDimension(null)}
                           onKeyPress={(e) => e.key === 'Enter' && setEditingDimension(null)}
                           className="bg-white dark:bg-slate-800 px-3 py-1 rounded text-sm
-                                     focus:outline-none focus:ring-2 focus:ring-primary-500 font-semibold"
+                                     focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
                           autoFocus
                         />
                       ) : (
@@ -1450,7 +1450,7 @@ export default function Step2Insight() {
                   onChange={(e) => setNewDimensionName(e.target.value)}
                   placeholder="添加自定义维度..."
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg
-                             bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                             bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   onKeyPress={(e) => e.key === 'Enter' && handleAddDimension()}
                 />
                 <button
@@ -1478,7 +1478,7 @@ export default function Step2Insight() {
                 <span className="text-sm font-medium">维度已锁定</span>
                 <button
                   onClick={() => setKsfLocked(false)}
-                  className="ml-4 text-sm text-gray-600 dark:text-slate-400 hover:text-primary-500"
+                  className="ml-4 text-sm text-gray-600 dark:text-slate-400 hover:text-blue-500"
                 >
                   解锁
                 </button>
@@ -1492,7 +1492,7 @@ export default function Step2Insight() {
       {ksfLocked && (
         <div className="mb-8">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary-500 text-white text-sm">3</span>
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm">3</span>
             竞争力对标打分
           </h3>
 
@@ -1500,7 +1500,7 @@ export default function Step2Insight() {
             <button
               onClick={handleBenchmark}
               disabled={isBenchmarking}
-              className="px-8 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed
+              className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed
                          text-white font-semibold rounded-lg flex items-center gap-2 transition-all duration-200"
             >
               {isBenchmarking ? (
@@ -1596,7 +1596,7 @@ export default function Step2Insight() {
                       {!benchmarkLocked && (
                         <button
                           onClick={() => setBenchmarkLocked(true)}
-                          className="mt-3 w-full py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
+                          className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                         >
                           确认评分
                         </button>
@@ -1612,7 +1612,7 @@ export default function Step2Insight() {
                   <span className="text-sm font-medium">对标分析已完成</span>
                   <button
                     onClick={() => setBenchmarkLocked(false)}
-                    className="ml-4 text-sm text-gray-600 dark:text-slate-400 hover:text-primary-500"
+                    className="ml-4 text-sm text-gray-600 dark:text-slate-400 hover:text-blue-500"
                   >
                     重新调整
                   </button>
@@ -1627,7 +1627,7 @@ export default function Step2Insight() {
       {benchmarkLocked && (
         <div className="mb-8">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary-500 text-white text-sm">4</span>
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm">4</span>
             SWOT 分析生成
           </h3>
 
@@ -1635,7 +1635,7 @@ export default function Step2Insight() {
             <div className="flex justify-center mb-6">
               <button
                 onClick={handleGenerateSWOT}
-                className="px-8 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg flex items-center gap-2 transition-all duration-200"
+                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center gap-2 transition-all duration-200"
               >
                 <Target className="w-5 h-5" />
                 生成 SWOT 矩阵
@@ -1653,7 +1653,7 @@ export default function Step2Insight() {
                   {!swotLocked && swot.strengths.length > 0 && (
                     <button
                       onClick={handleLockSwot}
-                      className="text-sm px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg flex items-center gap-2 transition-colors"
+                      className="text-sm px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors"
                     >
                       <Check className="w-4 h-4" />
                       锁定编辑
@@ -1662,7 +1662,7 @@ export default function Step2Insight() {
                   {swotLocked && (
                     <button
                       onClick={() => setSwotLocked(false)}
-                      className="text-sm text-gray-600 dark:text-slate-400 hover:text-primary-500 flex items-center gap-2"
+                      className="text-sm text-gray-600 dark:text-slate-400 hover:text-blue-500 flex items-center gap-2"
                     >
                       <Edit2 className="w-4 h-4" />
                       解锁编辑
@@ -2106,8 +2106,7 @@ export default function Step2Insight() {
           </button>
           <button
             onClick={handleNext}
-            disabled={strategicPoints.length === 0}
-            className="px-8 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg flex items-center gap-2 transition-all duration-200"
+            className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg flex items-center gap-2 transition-all duration-200"
           >
             下一步
             <ChevronRight className="w-4 h-4" />
