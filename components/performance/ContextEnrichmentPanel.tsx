@@ -92,14 +92,127 @@ export default function ContextEnrichmentPanel({ plan, onUpdated }: Props) {
     setImporting(true);
     setError(null);
     try {
-      const res = await bridgeStrategyData(plan._key, plan.properties.project_id);
-      if (res.success && res.data && (res.data as Record<string, unknown>).success !== false) {
+      const projectId = plan.properties.project_id;
+      const lsKey = `strategy_data_${projectId}`;
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(lsKey) : null;
+
+      if (raw) {
+        // 从 localStorage 读取战略解码数据并映射到 4 个上下文分区
+        const data = JSON.parse(raw);
+        const mappings: Record<string, string> = {};
+
+        // step1 → business_review
+        if (data.step1) {
+          const parts: string[] = [];
+          if (data.step1.goals) parts.push(`去年目标:\n${data.step1.goals}`);
+          if (data.step1.actuals) parts.push(`实际完成:\n${data.step1.actuals}`);
+          if (data.step1.summary) parts.push(`复盘总结:\n${data.step1.summary}`);
+          if (data.step1.rootCause) parts.push(`核心短板:\n${data.step1.rootCause}`);
+          if (data.step1.dimensions?.length > 0) {
+            const dimLines = data.step1.dimensions
+              .filter((d: any) => d.isHighlighted)
+              .map((d: any) => `- ${d.name} (${d.score}%): ${d.reason}`);
+            if (dimLines.length) parts.push(`3力3平台归因:\n${dimLines.join('\n')}`);
+          }
+          if (parts.length) mappings['business_review'] = parts.join('\n\n');
+        }
+
+        // step2 → market_insights + strategic_direction
+        if (data.step2) {
+          const parts: string[] = [];
+          if (data.step2.swot) {
+            parts.push(`SWOT分析:\n- 优势: ${data.step2.swot.strengths?.join('、')}\n- 劣势: ${data.step2.weaknesses?.join('、')}\n- 机会: ${data.step2.swot.opportunities?.join('、')}\n- 威胁: ${data.step2.threats?.join('、')}`);
+          }
+          if (data.step2.ksfDimensions?.length) {
+            parts.push(`关键成功要素(KSF):\n${data.step2.ksfDimensions.map((k: any) => `- ${k.name}: ${k.reasoning}`).join('\n')}`);
+          }
+          if (data.step2.benchmarkScores?.length) {
+            parts.push(`竞争力对标:\n${data.step2.benchmarkScores.map((b: any) => `- ${b.dimensionName}: 我方${b.myScore} vs 竞对${b.competitorScore}`).join('\n')}`);
+          }
+          if (data.step2.towsStrategies) {
+            const towLines: string[] = [];
+            if (data.step2.towsStrategies.so?.length) towLines.push(`SO增长: ${data.step2.towsStrategies.so.join('；')}`);
+            if (data.step2.towsStrategies.wo?.length) towLines.push(`WO转型: ${data.step2.towsStrategies.wo.join('；')}`);
+            if (data.step2.towsStrategies.st?.length) towLines.push(`ST多元化: ${data.step2.towsStrategies.st.join('；')}`);
+            if (data.step2.towsStrategies.wt?.length) towLines.push(`WT防御: ${data.step2.towsStrategies.wt.join('；')}`);
+            if (towLines.length) parts.push(`TOWS交叉策略:\n${towLines.join('\n')}`);
+          }
+          if (data.step2.strategicDirection) parts.push(`战略方向: ${data.step2.strategicDirection}`);
+          if (data.step2.productCustomerMatrix) {
+            const m = data.step2.productCustomerMatrix;
+            const ansoffLines: string[] = [];
+            if (m.marketPenetration?.length) ansoffLines.push(`市场渗透: ${m.marketPenetration.join('、')}`);
+            if (m.productDevelopment?.length) ansoffLines.push(`产品开发: ${m.productDevelopment.join('、')}`);
+            if (m.marketDevelopment?.length) ansoffLines.push(`市场开发: ${m.marketDevelopment.join('、')}`);
+            if (m.diversification?.length) ansoffLines.push(`多元化: ${m.diversification.join('、')}`);
+            if (ansoffLines.length) parts.push(`安索夫矩阵:\n${ansoffLines.join('\n')}`);
+          }
+          if (parts.length) mappings['market_insights'] = parts.join('\n\n');
+        }
+
+        // step3 → targets (附加到 strategic_direction)
+        if (data.step3) {
+          const parts: string[] = [];
+          if (data.step3.calculatedTargets) {
+            const { base, standard, challenge } = data.step3.calculatedTargets;
+            parts.push(`年度目标:\n- 保底: ${base.toLocaleString()}万\n- 达标: ${standard.toLocaleString()}万\n- 挑战: ${challenge.toLocaleString()}万`);
+            if (data.step3.confidenceIndex) parts.push(`信心指数: ${data.step3.confidenceIndex}%`);
+          }
+          if (data.step3.targets?.length) {
+            parts.push(`目标明细:\n${data.step3.targets.map((t: any) => `- ${t.name}: ${t.description}`).join('\n')}`);
+          }
+          if (parts.length) {
+            const existing = mappings['strategic_direction'] || '';
+            mappings['strategic_direction'] = existing ? `${existing}\n\n${parts.join('\n')}` : parts.join('\n');
+          }
+        }
+
+        // step4 → strategic_direction (行动计划)
+        if (data.step4) {
+          const parts: string[] = [];
+          if (data.step4.actionPlanTable?.length) {
+            parts.push('3力3平台行动计划表:');
+            data.step4.actionPlanTable.forEach((row: any) => {
+              parts.push(`- ${row.customerGroup}/${row.product}: 营收${row.revenueTarget}, 销售:${row.salesForce}, 产品:${row.productForce}, 交付:${row.deliveryForce}`);
+            });
+          }
+          if (data.step4.strategyMap && typeof data.step4.strategyMap === 'object') {
+            const sm = data.step4.strategyMap as any;
+            if (sm.theme) parts.push(`战略主题: ${sm.theme} — ${sm.themeDescription || ''}`);
+          }
+          if (parts.length) {
+            const existing = mappings['strategic_direction'] || '';
+            mappings['strategic_direction'] = existing ? `${existing}\n\n${parts.join('\n')}` : parts.join('\n');
+          }
+        }
+
+        if (Object.keys(mappings).length === 0) {
+          setError('战略解码数据为空，请先完成战略解码流程');
+          return;
+        }
+
+        // 逐个保存到后端
+        const sectionKeys = ['business_review', 'market_insights', 'strategic_direction'];
+        for (const sk of sectionKeys) {
+          if (mappings[sk]) {
+            await enrichPlanContext(plan._key, sk, mappings[sk]);
+          }
+        }
+
         await onUpdated();
       } else {
-        const payload = res.data as Record<string, string> | undefined;
-        const msg = payload?.message || res.error || '导入失败';
-        setError(msg);
+        // localStorage 无数据，尝试后端 API（兼容旧数据）
+        const res = await bridgeStrategyData(plan._key, plan.properties.project_id);
+        if (res.success && res.data && (res.data as Record<string, unknown>).success !== false) {
+          await onUpdated();
+        } else {
+          const payload = res.data as Record<string, string> | undefined;
+          const msg = payload?.message || res.error || '导入失败';
+          setError(msg);
+        }
       }
+    } catch (e: any) {
+      setError(e.message || '导入失败');
     } finally { setImporting(false); }
   };
 
