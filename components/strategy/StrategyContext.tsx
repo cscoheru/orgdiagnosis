@@ -59,13 +59,17 @@ export function StrategyStoreProvider({ sessionId, initialData, initialStep = 0,
   }, []);
 
   const setStep = useCallback((step: number | string) => {
+    // Step 组件用 1-based 编号 (setStep(1)=Step1, setStep(2)=Step2, ...)
+    // strategy page 用 0-based 索引 (activeStep 0=Step1, 1=Step2, ...)
+    // report 固定映射到 index 4
     if (step === 'report') {
       setCurrentStep(4);
       onStepChange?.(4);
     } else {
       const num = typeof step === 'number' ? step : 0;
-      setCurrentStep(num);
-      onStepChange?.(num);
+      const index = num - 1; // 1-based → 0-based
+      setCurrentStep(index);
+      onStepChange?.(index);
     }
   }, [onStepChange]);
 
