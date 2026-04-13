@@ -643,10 +643,8 @@ export default function Step2Insight() {
 
   // 下一步
   const handleNext = () => {
-    if (!matrixGenerated) {
-      alert('请完成所有分析步骤（包括产品-客户矩阵）后再进入下一步');
-      return;
-    }
+    // 保存并进入下一步，不强制要求必须完成所有子步骤
+    // 用户可以通过上方各区域的独立按钮按需生成
     handleSave();
     setStep(3);
   };
