@@ -183,12 +183,8 @@ export default function Step1Review() {
       alert('请输入去年目标和实际完成数据');
       return;
     }
-    // 还没生成归因地图 → 先生成
-    if (dimensions.length === 0) {
-      await handleAnalyze();
-      return;
-    }
-    // 已有归因地图 → 保存并进入 Step 2
+    // 直接保存并进入 Step 2，不强制要求先生成归因地图
+    // 用户可以通过上方独立的"生成归因地图"按钮按需生成
     handleSave();
     setStep(2);
   };
@@ -484,11 +480,6 @@ export default function Step1Review() {
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               生成中...
-            </>
-          ) : dimensions.length === 0 ? (
-            <>
-              <Sparkles className="w-4 h-4" />
-              生成归因地图
             </>
           ) : (
             <>
