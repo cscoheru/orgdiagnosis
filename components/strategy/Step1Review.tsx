@@ -496,6 +496,7 @@ export default function Step1Review() {
               <ChevronRight className="w-4 h-4" />
             </>
           )}
+        </button>
       </div>
 
       {/* 诊断聊天对话框 */}
