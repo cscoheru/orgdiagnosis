@@ -63,6 +63,11 @@ class BridgeStrategyRequest(BaseModel):
     project_id: str
 
 
+class GenerateCompanyPerfRequest(BaseModel):
+    """AI 生成公司绩效请求"""
+    plan_id: str
+
+
 class DecomposeInitiativeRequest(BaseModel):
     """战略举措分解请求"""
     initiative_id: str
@@ -162,6 +167,150 @@ def update_plan(key: str, data: dict[str, Any], db: Any = Depends(get_db)):
     if not obj:
         raise HTTPException(status_code=404, detail="绩效方案不存在")
     return obj
+
+
+# ── 组织绩效（公司级）─────────────────────────────────────
+
+@router.post("/org-perf/generate-company", summary="AI 生成公司绩效")
+async def generate_company_performance(
+    req: GenerateCompanyPerfRequest,
+    db: Any = Depends(get_db),
+):
+    """AI 生成公司级绩效（财务指标 + 战略指标）
+
+    读取绩效方案的 business_context（含三档目标、3力3平台计划），
+    结合 Strategic_Goal，AI 生成公司级 2 维度 KPI。
+    """
+    svc = ObjectService(db)
+
+    # 1. 读取绩效方案
+    plan = svc.get_object(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="绩效方案不存在")
+
+    props = plan.get("properties", {})
+    ctx = props.get("business_context", {}) or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except (json.JSONDecodeError, TypeError):
+            ctx = {}
+
+    # 2. 读取战略目标
+    goals = svc.list_objects("Strategic_Goal", limit=100) or []
+    project_goals = [g for g in goals if g.get("properties", {}).get("plan_ref") == req.plan_id]
+    if not project_goals:
+        project_goals = [g for g in goals if g.get("properties", {}).get("project_id") == props.get("project_id")]
+    if not project_goals:
+        project_goals = goals
+
+    goals_text = ""
+    if project_goals:
+        lines = []
+        for g in project_goals:
+            gp = g.get("properties", {})
+            lines.append(
+                f"- [{gp.get('priority', '')}] {gp.get('goal_name', '')} "
+                f"(目标值: {gp.get('target_value', '')}, 状态: {gp.get('status', '')})"
+            )
+            if gp.get("description"):
+                lines.append(f"  描述: {gp['description']}")
+        goals_text = "\n".join(lines)
+    else:
+        goals_text = "暂无战略目标"
+
+    # 3. 读取 3力3平台行动计划
+    action_plans_text = ""
+    action_plans_raw = ctx.get("action_plans", "")
+    if action_plans_raw:
+        try:
+            action_plans = json.loads(action_plans_raw) if isinstance(action_plans_raw, str) else action_plans_raw
+            if isinstance(action_plans, list) and len(action_plans) > 0:
+                plan_lines = []
+                for row in action_plans:
+                    plan_lines.append(
+                        f"- {row.get('customerGroup', '')}/{row.get('product', '')}: "
+                        f"营收{row.get('revenueTarget', 0)}万\n"
+                        f"  销售力: {row.get('salesForce', '')}\n"
+                        f"  产品力: {row.get('productForce', '')}\n"
+                        f"  交付力: {row.get('deliveryForce', '')}\n"
+                        f"  人力: {row.get('hr', '')}\n"
+                        f"  财务: {row.get('financeAssets', '')}\n"
+                        f"  数字化: {row.get('digitalProcess', '')}"
+                    )
+                action_plans_text = "\n".join(plan_lines)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # 4. 构建 prompt 并调用 AI
+    prompt = f"""你是一位资深的绩效管理顾问。请根据以下战略信息，为公司层面生成绩效指标。
+
+## 战略目标
+{goals_text}
+
+## 3力3平台行动计划
+{action_plans_text or '暂无'}
+
+## 业务背景
+{ctx.get('business_review', '')}
+
+## 市场洞察
+{ctx.get('market_insights', '')}
+
+## 战略方向
+{ctx.get('strategic_direction', '')}
+
+请生成以下 2 个维度的公司级绩效指标，以 JSON 格式返回：
+
+1. **strategic_kpis**（财务指标）: 4-6 个指标，每个包含 name, weight, target
+   - 基于三档目标设定营收/利润/回款等财务指标
+   - weight 总和 = 50%
+
+2. **management_indicators**（战略指标）: 4-6 个指标，每个包含 name, weight, target
+   - 基于 3力3平台行动计划设定战略举措指标
+   - weight 总和 = 50%
+
+返回格式（纯 JSON，不要 markdown）：
+{{
+  "strategic_kpis": [
+    {{"name": "指标名称", "weight": 25, "target": "目标值描述"}}
+  ],
+  "management_indicators": [
+    {{"name": "指标名称", "weight": 25, "target": "目标值描述"}}
+  ]
+}}"""
+
+    try:
+        from app.services.ai_client import AIClient
+        ai = AIClient()
+        result = await ai.chat_json(
+            system_prompt="你是一位绩效管理专家，请严格返回JSON格式。",
+            user_prompt=prompt,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 生成失败: {str(e)}")
+
+    # 5. 创建 Org_Performance 对象
+    from app.models.kernel.meta_model import ObjectUpdate
+
+    company_perf = svc.create_object("Org_Performance", {
+        "org_unit_ref": "__company__",
+        "org_unit_name": "公司绩效",
+        "plan_ref": req.plan_id,
+        "project_id": props.get("project_id", ""),
+        "strategic_kpis": result.get("strategic_kpis", []),
+        "management_indicators": result.get("management_indicators", []),
+        "team_development": [],
+        "engagement_compliance": [],
+        "dimension_weights": {"strategic": 50, "management": 50, "team_development": 0, "engagement": 0},
+        "status": "待确认",
+        "perf_type": "company",
+    })
+
+    if not company_perf:
+        raise HTTPException(status_code=500, detail="创建公司绩效失败")
+
+    return company_perf
 
 
 # ── 组织绩效（部门级）─────────────────────────────────────

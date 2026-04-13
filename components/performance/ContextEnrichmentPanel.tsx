@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import { enrichPlanContext, bridgeStrategyData } from '@/lib/api/performance-api';
+import { createObject, getObjectsByModel } from '@/lib/api/kernel-client';
 import type { PerformancePlan } from '@/types/performance';
 import { FileText, Upload, CheckCircle, Circle, ArrowDownToLine, Save, X } from 'lucide-react';
 
@@ -197,6 +198,83 @@ export default function ContextEnrichmentPanel({ plan, onUpdated }: Props) {
           if (mappings[sk]) {
             await enrichPlanContext(plan._key, sk, mappings[sk]);
           }
+        }
+
+        // 保存 actionPlanTable JSON 到 business_context.action_plans
+        if (data.step4?.actionPlanTable?.length) {
+          await enrichPlanContext(plan._key, 'action_plans', JSON.stringify(data.step4.actionPlanTable));
+        }
+
+        // 创建 Strategic_Goal 对象（避免重复导入）
+        const existingGoals = await getObjectsByModel('Strategic_Goal', 100);
+        const existingNames = new Set(
+          (Array.isArray(existingGoals.data) ? existingGoals.data : [])
+            .map((g: any) => g.properties?.goal_name)
+        );
+
+        const goalPromises: Promise<any>[] = [];
+
+        // 从三档目标创建战略目标
+        if (data.step3?.calculatedTargets) {
+          const { base, standard, challenge } = data.step3.calculatedTargets;
+          const growth = standard - base;
+
+          const goalDefs = [
+            { name: `总营收目标（达标）`, value: `${standard.toLocaleString()}万`, priority: 'P0', type: 'revenue_target' },
+            { name: `保底营收目标`, value: `${base.toLocaleString()}万`, priority: 'P1', type: 'revenue_target' },
+            { name: `挑战营收目标`, value: `${challenge.toLocaleString()}万`, priority: 'P1', type: 'revenue_target' },
+          ];
+          if (growth > 0) {
+            goalDefs.push({ name: `增量营收（新客户/新产品）`, value: `${growth.toLocaleString()}万`, priority: 'P1', type: 'revenue_target' });
+          }
+
+          for (const gd of goalDefs) {
+            if (!existingNames.has(gd.name)) {
+              goalPromises.push(
+                createObject('Strategic_Goal', {
+                  goal_name: gd.name,
+                  target_value: gd.value,
+                  priority: gd.priority,
+                  goal_type: gd.type,
+                  period: '年度',
+                  period_type: 'annual',
+                  status: '进行中',
+                  progress: 0,
+                  project_id: plan.properties.project_id,
+                  plan_ref: plan._key,
+                })
+              );
+            }
+          }
+        }
+
+        // 从行动计划表创建每行战略目标
+        if (data.step4?.actionPlanTable?.length) {
+          for (const row of data.step4.actionPlanTable) {
+            const goalName = `${row.customerGroup} - ${row.product} 营收目标`;
+            if (!existingNames.has(goalName)) {
+              goalPromises.push(
+                createObject('Strategic_Goal', {
+                  goal_name: goalName,
+                  target_value: `${row.revenueTarget}万`,
+                  priority: 'P2',
+                  goal_type: 'revenue_target',
+                  period: '年度',
+                  period_type: 'annual',
+                  status: '进行中',
+                  progress: 0,
+                  description: `销售力: ${row.salesForce}; 产品力: ${row.productForce}; 交付力: ${row.deliveryForce}; 人力: ${row.hr}; 财务: ${row.financeAssets}; 数字化: ${row.digitalProcess}`,
+                  project_id: plan.properties.project_id,
+                  plan_ref: plan._key,
+                })
+              );
+            }
+          }
+        }
+
+        // 并发创建所有目标
+        if (goalPromises.length > 0) {
+          await Promise.allSettled(goalPromises);
         }
 
         await onUpdated();

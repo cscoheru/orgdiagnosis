@@ -373,6 +373,15 @@ export async function bridgeStrategyData(
   });
 }
 
+export async function generateCompanyPerformance(
+  planId: string,
+): Promise<ApiResponse<any>> {
+  return perfRequest('/org-perf/generate-company', {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId }),
+  });
+}
+
 // ──────────────────────────────────────────────
 // 战略目标 CRUD (Phase 3)
 // ──────────────────────────────────────────────

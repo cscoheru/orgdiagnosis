@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   generateOrgPerformance,
+  generateCompanyPerformance,
   listOrgPerformances,
   updateOrgPerformance,
 } from '@/lib/api/performance-api';
@@ -220,33 +221,12 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
     setCreatingCompany(true);
     setError(null);
     try {
-      // Create company-level org performance via kernel API
-      const { API_BASE_URL } = await import('@/lib/api-config');
-      const res = await fetch(`${API_BASE_URL}/api/v1/kernel/objects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model_key: 'Org_Performance',
-          properties: {
-            org_unit_ref: '__company__',
-            org_unit_name: '公司绩效',
-            plan_ref: activePlan._key,
-            project_id: projectId,
-            strategic_kpis: [],
-            management_indicators: [],
-            team_development: [],
-            engagement_compliance: [],
-            dimension_weights: { strategic: 50, management: 50, team_development: 0, engagement: 0 },
-            status: '待确认',
-            perf_type: 'company',
-          },
-        }),
-      });
-      if (res.ok) {
+      const res = await generateCompanyPerformance(activePlan._key);
+      if (res.success) {
         await fetchOrgPerformances();
         await onRefresh();
       } else {
-        setError('创建公司绩效失败');
+        setError(res.error || '生成公司绩效失败');
       }
     } finally { setCreatingCompany(false); }
   };
@@ -371,6 +351,11 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
           </div>
 
           {/* Department Selection + Generate */}
+          {companyPerfs.length === 0 && (
+            <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg mb-2">
+              请先在下方生成公司绩效，再生成部门绩效
+            </p>
+          )}
           <div className="flex items-end gap-3">
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-700 mb-1.5">选择部门</label>
@@ -397,8 +382,9 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
             </div>
             <button
               onClick={handleGenerate}
-              disabled={!selectedOrgUnit || generating}
+              disabled={!selectedOrgUnit || generating || companyPerfs.length === 0}
               className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+              title={companyPerfs.length === 0 ? '请先生成公司绩效' : ''}
             >
               <Sparkles size={14} />
               {generating ? 'AI 生成中...' : 'AI 生成部门绩效'}
@@ -547,7 +533,7 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
                   disabled={creatingCompany}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  <Plus size={12} /> {creatingCompany ? '创建中...' : '新建公司绩效'}
+                  <Sparkles size={12} /> {creatingCompany ? 'AI 生成中...' : 'AI 生成公司绩效'}
                 </button>
               </div>
             </div>
