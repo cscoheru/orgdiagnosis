@@ -240,7 +240,7 @@ export default function Step1Review() {
           </div>
           <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2 mb-3">
             <div
-              className="bg-primary-500 h-2 rounded-full transition-all duration-500"
+              className="bg-blue-600 h-2 rounded-full transition-all duration-500"
               style={{ width: `${progress.percentage}%` }}
             />
           </div>
@@ -311,7 +311,7 @@ export default function Step1Review() {
         <button
           onClick={handleAnalyze}
           disabled={isAnalyzing}
-          className="px-8 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed
+          className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed
                      text-white font-semibold rounded-lg flex items-center gap-2
                      transition-all duration-200"
         >
@@ -353,7 +353,7 @@ export default function Step1Review() {
           {/* 3力 */}
           <div className="mb-6">
             <h4 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-              <div className="w-2 h-2 bg-primary-500 rounded-full" />
+              <div className="w-2 h-2 bg-blue-600 rounded-full" />
               3力（业务层）
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -367,21 +367,21 @@ export default function Step1Review() {
                       onClick={() => handleSelectDimension(dimension)}
                       className={`p-4 rounded-lg border-2 transition-all duration-200 text-left ${
                         dimension.isHighlighted
-                          ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/20 hover:border-orange-500'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:border-blue-600'
                           : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-gray-300 dark:hover:border-slate-600'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <Icon className={`w-5 h-5 ${
-                          dimension.isHighlighted ? 'text-orange-600 dark:text-orange-400' : 'text-gray-600 dark:text-slate-400'
+                          dimension.isHighlighted ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-slate-400'
                         }`} />
                         <span className={`font-semibold ${
-                          dimension.isHighlighted ? 'text-orange-900 dark:text-orange-100' : 'text-gray-900 dark:text-gray-100'
+                          dimension.isHighlighted ? 'text-blue-900 dark:text-blue-100' : 'text-gray-900 dark:text-gray-100'
                         }`}>
                           {dimension.name}
                         </span>
                         {dimension.isHighlighted && (
-                          <span className="ml-auto px-2 py-0.5 bg-orange-200 dark:bg-orange-800 text-orange-800 dark:text-orange-200 text-xs rounded-full">
+                          <span className="ml-auto px-2 py-0.5 bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs rounded-full">
                             {dimension.score}%
                           </span>
                         )}
@@ -415,21 +415,21 @@ export default function Step1Review() {
                       onClick={() => handleSelectDimension(dimension)}
                       className={`p-4 rounded-lg border-2 transition-all duration-200 text-left ${
                         dimension.isHighlighted
-                          ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/20 hover:border-orange-500'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:border-blue-600'
                           : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-gray-300 dark:hover:border-slate-600'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <Icon className={`w-5 h-5 ${
-                          dimension.isHighlighted ? 'text-orange-600 dark:text-orange-400' : 'text-gray-600 dark:text-slate-400'
+                          dimension.isHighlighted ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-slate-400'
                         }`} />
                         <span className={`font-semibold ${
-                          dimension.isHighlighted ? 'text-orange-900 dark:text-orange-100' : 'text-gray-900 dark:text-gray-100'
+                          dimension.isHighlighted ? 'text-blue-900 dark:text-blue-100' : 'text-gray-900 dark:text-gray-100'
                         }`}>
                           {dimension.name}
                         </span>
                         {dimension.isHighlighted && (
-                          <span className="ml-auto px-2 py-0.5 bg-orange-200 dark:bg-orange-800 text-orange-800 dark:text-orange-200 text-xs rounded-full">
+                          <span className="ml-auto px-2 py-0.5 bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs rounded-full">
                             {dimension.score}%
                           </span>
                         )}
@@ -477,7 +477,7 @@ export default function Step1Review() {
         <button
           onClick={handleNext}
           disabled={!goals.trim() || !actuals.trim() || isAnalyzing}
-          className="px-8 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed
+          className="px-8 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed
                      text-white font-medium rounded-lg flex items-center gap-2 transition-all duration-200"
         >
           {isAnalyzing ? (
