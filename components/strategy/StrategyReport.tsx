@@ -171,7 +171,7 @@ function generateMarkdownReport(data: any): string {
       const actionsList = data.step4.quarterlyActions;
       report += '**季度行动计划:**\n';
       ['Q1', 'Q2', 'Q3', 'Q4'].forEach(quarter => {
-        const actions = actionsList.filter(a => a.quarter === quarter);
+        const actions = actionsList.filter((a: any) => a.quarter === quarter);
         if (actions.length > 0) {
           report += `\n**${quarter}:**\n`;
           actions.forEach((action: any) => {
@@ -658,7 +658,7 @@ export default function ReportPage() {
                       <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">季度行动计划</h5>
                       <div className="space-y-4">
                         {['Q1', 'Q2', 'Q3', 'Q4'].map(quarter => {
-                          const actions = actionsList.filter(a => a.quarter === quarter);
+                          const actions = actionsList.filter((a: any) => a.quarter === quarter);
                           if (actions.length === 0) return null;
                           return (
                             <div key={quarter}>
