@@ -177,12 +177,18 @@ export default function Step1Review() {
     alert('数据已保存');
   };
 
-  // 下一步
-  const handleNext = () => {
+  // 下一步：如果还没生成归因地图，先生成；否则进入 Step 2
+  const handleNext = async () => {
     if (!goals.trim() || !actuals.trim()) {
       alert('请输入去年目标和实际完成数据');
       return;
     }
+    // 还没生成归因地图 → 先生成
+    if (dimensions.length === 0) {
+      await handleAnalyze();
+      return;
+    }
+    // 已有归因地图 → 保存并进入 Step 2
     handleSave();
     setStep(2);
   };
@@ -470,13 +476,26 @@ export default function Step1Review() {
         </button>
         <button
           onClick={handleNext}
-          disabled={!goals.trim() || !actuals.trim()}
+          disabled={!goals.trim() || !actuals.trim() || isAnalyzing}
           className="px-8 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400 disabled:cursor-not-allowed
                      text-white font-medium rounded-lg flex items-center gap-2 transition-all duration-200"
         >
-          下一步
-          <ChevronRight className="w-4 h-4" />
-        </button>
+          {isAnalyzing ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              生成中...
+            </>
+          ) : dimensions.length === 0 ? (
+            <>
+              <Sparkles className="w-4 h-4" />
+              生成归因地图
+            </>
+          ) : (
+            <>
+              下一步
+              <ChevronRight className="w-4 h-4" />
+            </>
+          )}
       </div>
 
       {/* 诊断聊天对话框 */}

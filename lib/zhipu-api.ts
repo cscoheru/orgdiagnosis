@@ -28,6 +28,7 @@ export async function callZhipuAPI(
 ): Promise<string> {
   try {
     // 如果没有前端 API Key，使用后端 API
+    // 相对 URL /api/ai/chat 在生产环境由 nginx 路由到后端，本地开发由 Next.js API route 代理
     if (!apiKey) {
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
