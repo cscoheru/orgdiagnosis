@@ -129,7 +129,7 @@ function generateMarkdownReport(data: any): string {
 
     if (data.step3.targets && data.step3.targets.length > 0) {
       report += '**目标明细:**\n';
-      data.step3.targets.forEach((target, idx) => {
+      data.step3.targets.forEach((target: any, idx: number) => {
         const typeLabel = target.type === 'revenue' ? '营收' : target.type === 'market' ? '市场' : '其他';
         report += `${idx + 1}. **${target.name}** (${typeLabel}) — ${target.description}\n`;
       });
@@ -161,7 +161,7 @@ function generateMarkdownReport(data: any): string {
 
     if (data.step4?.keyBattles && data.step4.keyBattles.length > 0) {
       report += '**关键战役:**\n';
-      data.step4.keyBattles.forEach((battle, idx) => {
+      data.step4.keyBattles.forEach((battle: any, idx: number) => {
         report += `${idx + 1}. **${battle.name}** — ${battle.owner}\n`;
         report += `   ${battle.description}\n\n`;
       });
