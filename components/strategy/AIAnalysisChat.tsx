@@ -161,11 +161,6 @@ export default function AIAnalysisChat({
 
   // 分析粘贴的文本
   const handleAnalyzePastedText = async () => {
-    if (!apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
-
     if (!pastedText.trim()) {
       alert('请先粘贴文本内容');
       return;
@@ -216,7 +211,7 @@ export default function AIAnalysisChat({
 
   // 发送消息
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !apiKey) return;
+    if (!inputText.trim()) return;
 
     const userMessage: ChatMessage = {
       role: 'user',
@@ -504,7 +499,7 @@ export default function AIAnalysisChat({
             />
             <button
               onClick={handleSendMessage}
-              disabled={isLoading || !inputText.trim() || !apiKey}
+              disabled={isLoading || !inputText.trim()}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400
                          text-white rounded-lg flex items-center gap-2 transition-colors"
             >
