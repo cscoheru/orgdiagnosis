@@ -49,7 +49,7 @@ function generateMarkdownReport(data: any): string {
 
     if (data.step2.ksfDimensions?.length > 0) {
       report += '### 关键成功要素 (KSF)\n';
-      data.step2.ksfDimensions.forEach(ksf => {
+      data.step2.ksfDimensions.forEach((ksf: any) => {
         report += `- **${ksf.name}**: ${ksf.reasoning}\n`;
       });
       report += '\n';
@@ -57,7 +57,7 @@ function generateMarkdownReport(data: any): string {
 
     if (data.step2.benchmarkScores?.length > 0) {
       report += '### 竞争力对标\n';
-      data.step2.benchmarkScores.forEach(bs => {
+      data.step2.benchmarkScores.forEach((bs: any) => {
         const gap = bs.myScore - bs.competitorScore;
         const indicator = gap > 0 ? '▲' : gap < 0 ? '▼' : '●';
         report += `- ${bs.dimensionName}: 我方${bs.myScore} vs 竞对${bs.competitorScore} (${indicator}${Math.abs(gap)})\n`;
@@ -145,7 +145,7 @@ function generateMarkdownReport(data: any): string {
       report += '### 3力3平台行动计划表\n\n';
       report += '| # | 客户群 | 产品 | 营收目标 | 销售力 | 产品力 | 交付力 | 人力 | 财务&资产 | 数字化&流程 |\n';
       report += '|---|--------|------|---------|--------|--------|--------|------|----------|------------|\n';
-      data.step4.actionPlanTable.forEach(row => {
+      data.step4.actionPlanTable.forEach((row: any) => {
         report += `| ${row.seqNumber} | ${row.customerGroup} | ${row.product} | ${row.revenueTarget} | ${row.salesForce} | ${row.productForce} | ${row.deliveryForce} | ${row.hr} | ${row.financeAssets} | ${row.digitalProcess} |\n`;
       });
       report += '\n';
@@ -174,7 +174,7 @@ function generateMarkdownReport(data: any): string {
         const actions = actionsList.filter(a => a.quarter === quarter);
         if (actions.length > 0) {
           report += `\n**${quarter}:**\n`;
-          actions.forEach(action => {
+          actions.forEach((action: any) => {
             report += `- ${action.action} (${action.deadline})\n`;
           });
         }
