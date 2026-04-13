@@ -259,10 +259,6 @@ export default function Step2Insight() {
 
   // 验证 KBF
   const handleValidateKBF = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
     if (customerKbf.length === 0) {
       alert('请先至少添加一个 KBF');
       return;
@@ -293,10 +289,6 @@ export default function Step2Insight() {
 
   // AI 深度侦察
   const handleDeepReconnaissance = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
     if (!competitors.trim() && !competitorSearchResults.trim()) {
       alert('请先填写竞对信息或粘贴搜索结果');
       return;
@@ -353,10 +345,6 @@ export default function Step2Insight() {
   // ========== KSF 提炼功能 ==========
 
   const handleExtractKSF = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
     if (!kbfLocked) {
       alert('请先完成客户需求洞察并确认 KBF');
       return;
@@ -390,10 +378,6 @@ export default function Step2Insight() {
   // ========== 竞争力对标功能 ==========
 
   const handleBenchmark = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
     if (ksfDimensions.length === 0) {
       alert('请先提炼 KSF 维度');
       return;
@@ -418,10 +402,6 @@ export default function Step2Insight() {
   // ========== SWOT 生成功能 ==========
 
   const handleGenerateSWOT = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
 
     if (benchmarkScores.length === 0) {
       alert('请先完成竞争力对标');
@@ -501,10 +481,6 @@ export default function Step2Insight() {
   // ========== 洞察小结功能 ==========
 
   const handleGenerateInsightSummary = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
 
     // 检查是否有足够的数据
     const hasData = trends || competitors || companyInfo || customerProfile || competitorAdvantages.length > 0;
@@ -538,10 +514,6 @@ export default function Step2Insight() {
   // ========== TOWS 交叉策略推演功能 ==========
 
   const handleGenerateTOWS = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
 
     // 检查 SWOT 是否有内容
     const hasSWOTContent =
@@ -587,10 +559,6 @@ export default function Step2Insight() {
   // ========== 产品-客户矩阵生成功能 ==========
 
   const handleGenerateMatrix = async () => {
-    if (!modelConfig.apiKey) {
-      alert('请先配置 AI API Key');
-      return;
-    }
 
     if (!towsGenerated) {
       alert('请先生成 TOWS 交叉策略');
