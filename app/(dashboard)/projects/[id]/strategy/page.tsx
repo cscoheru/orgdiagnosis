@@ -44,12 +44,24 @@ export default function StrategyPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await startWorkflow(projectId, 'strategy');
+        // 恢复已有的 session_id（localStorage 持久化）
+        const storageKey = `strategy_session_${projectId}`;
+        const savedSessionId = typeof window !== 'undefined'
+          ? localStorage.getItem(storageKey)
+          : null;
+
+        const res = await startWorkflow(projectId, 'strategy', undefined, savedSessionId || undefined);
         if (res.success && res.data) {
-          setSessionId(res.data.session_id);
+          const sid = res.data.session_id;
+          setSessionId(sid);
+
+          // 持久化 session_id 到 localStorage
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(storageKey, sid);
+          }
 
           // Restore state
-          const state = await getWorkflowState(res.data.session_id);
+          const state = await getWorkflowState(sid);
           if (state.success && state.data) {
             const allData = state.data.all_step_data || {};
             if (allData.strategy_data) {
