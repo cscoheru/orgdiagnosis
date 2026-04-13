@@ -3,8 +3,9 @@
 /**
  * StrategyStoreAdapter — 替代 strategydecoding 的 Zustand store。
  *
- * 将数据持久化到 org-diagnosis 的 workflow engine，而非 localStorage/Supabase。
- * setData / setStep 自动触发后端保存，确保刷新页面不丢失数据。
+ * 持久化策略：
+ * 1. localStorage (主要) — 每次数据变更自动写入，刷新页面可靠恢复
+ * 2. 后端 workflow session (辅助) — 保持 API 兼容，供其他模块查询
  */
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
@@ -39,18 +40,43 @@ export function useStrategyStore(): StrategyStore {
 
 interface StrategyStoreProviderProps {
   sessionId: string;
+  projectId: string;
   initialData?: StrategicData;
   initialStep?: number;
   onStepChange?: (step: number) => void;
   children: ReactNode;
 }
 
-export function StrategyStoreProvider({ sessionId, initialData, initialStep = 0, onStepChange, children }: StrategyStoreProviderProps) {
-  const [data, setDataState] = useState<StrategicData>(initialData || {
+// localStorage 读写工具
+const LS_KEY = (projectId: string) => `strategy_data_${projectId}`;
+
+function loadFromLS(projectId: string): StrategicData | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(LS_KEY(projectId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveToLS(projectId: string, data: StrategicData): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LS_KEY(projectId), JSON.stringify(data));
+  } catch {
+    console.error('localStorage write failed');
+  }
+}
+
+export function StrategyStoreProvider({ sessionId, projectId, initialData, initialStep = 0, onStepChange, children }: StrategyStoreProviderProps) {
+  // 优先 localStorage，其次 initialData（后端恢复），最后空初始值
+  const lsData = loadFromLS(projectId);
+  const [data, setDataState] = useState<StrategicData>(lsData || initialData || {
     step1: {} as Step1Data,
     step2: {} as Step2Data,
   });
-  const [companyInfo, setCompanyInfoState] = useState<CompanyInfo>(initialData ? { name: '', industry: '' } : { name: '', industry: '' });
+  const [companyInfo, setCompanyInfoState] = useState<CompanyInfo>({ name: '', industry: '' });
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [modelConfig] = useState({ apiKey: '', model: 'glm-4-flash' });
   const [isSaving, setIsSaving] = useState(false);
@@ -61,10 +87,9 @@ export function StrategyStoreProvider({ sessionId, initialData, initialStep = 0,
   const companyInfoRef = useRef(companyInfo);
   companyInfoRef.current = companyInfo;
 
-  // 后端持久化
-  const saveAll = useCallback(async () => {
+  // 后端持久化（辅助，保持 API 兼容）
+  const saveToBackend = useCallback(async () => {
     try {
-      setIsSaving(true);
       await fetch(`${API_BASE}/api/v2/workflow/${sessionId}/advance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,11 +99,21 @@ export function StrategyStoreProvider({ sessionId, initialData, initialStep = 0,
         }),
       });
     } catch (e) {
-      console.error('Failed to save strategy data:', e);
+      console.error('Failed to save to backend:', e);
+    }
+  }, [sessionId]);
+
+  const saveAll = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      // 主要：写入 localStorage（同步，可靠）
+      saveToLS(projectId, dataRef.current);
+      // 辅助：写入后端（异步，可能失败）
+      await saveToBackend();
     } finally {
       setIsSaving(false);
     }
-  }, [sessionId]);
+  }, [projectId, saveToBackend]);
 
   // debounce 保存：1秒内多次 setData 只触发一次
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,13 +122,13 @@ export function StrategyStoreProvider({ sessionId, initialData, initialStep = 0,
     saveTimerRef.current = setTimeout(() => saveAll(), 1000);
   }, [saveAll]);
 
-  // 组件卸载时立即保存（防止丢失最后的数据）
+  // 组件卸载时立即保存
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveAll();
+      saveToLS(projectId, dataRef.current);
     };
-  }, [saveAll]);
+  }, [projectId]);
 
   const setData = useCallback(async (step: keyof StrategicData, value: any) => {
     setDataState(prev => ({ ...prev, [step]: value }));
@@ -107,12 +142,9 @@ export function StrategyStoreProvider({ sessionId, initialData, initialStep = 0,
   }, [debouncedSave]);
 
   const setStep = useCallback((step: number | string) => {
-    // 切换步骤前立即保存当前数据（不等 debounce）
-    saveAll();
+    // 切换步骤前立即保存（不等 debounce）
+    saveToLS(projectId, dataRef.current);
 
-    // Step 组件用 1-based 编号 (setStep(1)=Step1, setStep(2)=Step2, ...)
-    // strategy page 用 0-based 索引 (activeStep 0=Step1, 1=Step2, ...)
-    // report 固定映射到 index 4
     if (step === 'report') {
       setCurrentStep(4);
       onStepChange?.(4);
@@ -122,7 +154,7 @@ export function StrategyStoreProvider({ sessionId, initialData, initialStep = 0,
       setCurrentStep(index);
       onStepChange?.(index);
     }
-  }, [onStepChange, saveAll]);
+  }, [projectId, onStepChange]);
 
   return (
     <StrategyStoreContext.Provider value={{ data, companyInfo, modelConfig, currentStep, isSaving, setData, setCompanyInfo, setStep, saveAll }}>

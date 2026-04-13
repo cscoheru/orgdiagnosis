@@ -114,6 +114,7 @@ export default function StrategyPage() {
   return (
     <StrategyStoreProvider
       sessionId={sessionId}
+      projectId={projectId}
       initialData={initialData}
       initialStep={initialStep}
       onStepChange={handleStepChange}
