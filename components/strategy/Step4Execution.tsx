@@ -2,15 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, LayoutGrid, TableProperties } from 'lucide-react';
 import type { Step3Data } from '@/types/strategy';
 import { BSCBoard, type CapsuleData } from './bsc/BSCBoard';
 import { SimpleAIAssistant } from './bsc/SimpleAIAssistant';
+import ActionPlanTable from './ActionPlanTable';
+
+type ViewMode = 'bscBoard' | 'actionPlan';
+
+const VIEW_TABS: { id: ViewMode; label: string; icon: React.ElementType }[] = [
+  { id: 'bscBoard', label: 'BSC 平衡计分卡', icon: LayoutGrid },
+  { id: 'actionPlan', label: '3力3平台行动计划表', icon: TableProperties },
+];
 
 export default function Step4Execution() {
   const { data, setData, setStep } = useStore();
   const [isReady, setIsReady] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('bscBoard');
 
   useEffect(() => {
     // Initialize step 4 data if needed
@@ -160,17 +169,39 @@ export default function Step4Execution() {
             上一步
           </button>
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Step 4: BSC 平衡计分卡
+            Step 4: 战略执行
           </h2>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Tab 切换 */}
+          <div className="flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg p-0.5">
+            {VIEW_TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = viewMode === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setViewMode(tab.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all ${
+                    isActive
+                      ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
           <button
             onClick={handleSave}
             className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
               saved
                 ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-primary-500 hover:bg-primary-600 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
           >
             <Save className="w-4 h-4" />
@@ -179,40 +210,45 @@ export default function Step4Execution() {
 
           <button
             onClick={handleNext}
-            className="px-6 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg flex items-center gap-2"
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2"
           >
-            下一步
+            生成报告
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* BSC Board - Takes full screen */}
+      {/* Content Area */}
       <div className="h-screen pt-20">
-        <BSCBoard
-          initialCapsules={getInitialLanesFromStep3()}
-          step3Data={data.step3 as Step3Data}
-          onSave={async (lanes, connections) => {
-            // Save BSC data to step4
-            await setData('step4', {
-              bscCards: lanes.flatMap(lane => lane.capsules),
-              bscConfirmed: true,
-              actionPlanTable: [],
-              strategyMap: { lanes, connections }
-            });
-            setSaved(true);
-          }}
-        />
+        {viewMode === 'bscBoard' ? (
+          <>
+            <BSCBoard
+              initialCapsules={getInitialLanesFromStep3()}
+              step3Data={data.step3 as Step3Data}
+              onSave={async (lanes, connections) => {
+                // Save BSC data to step4
+                await setData('step4', {
+                  ...(data.step4 || {}),
+                  bscCards: lanes.flatMap(lane => lane.capsules),
+                  bscConfirmed: true,
+                  strategyMap: { lanes, connections }
+                });
+                setSaved(true);
+              }}
+            />
+            {/* AI Assistant — only shown in BSC Board view */}
+            <SimpleAIAssistant
+              financial={bscData.financial}
+              customer={bscData.customer}
+              process={bscData.process}
+              learning={bscData.learning}
+              connections={bscData.connections}
+            />
+          </>
+        ) : (
+          <ActionPlanTable />
+        )}
       </div>
-
-      {/* AI Assistant */}
-      <SimpleAIAssistant
-        financial={bscData.financial}
-        customer={bscData.customer}
-        process={bscData.process}
-        learning={bscData.learning}
-        connections={bscData.connections}
-      />
     </div>
   );
 }

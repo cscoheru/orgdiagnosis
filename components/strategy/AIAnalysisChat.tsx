@@ -10,9 +10,12 @@ import {
   Sparkles,
   AlertCircle,
   Check,
-  ClipboardPaste
+  ClipboardPaste,
+  Upload,
+  X,
 } from 'lucide-react';
 import { analyzeUploadedFile, chatAnalysisAssistant } from '@/lib/zhipu-api';
+import { parseFile, getAcceptString, type ParseResult } from '@/lib/file-parser';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -48,6 +51,8 @@ export default function AIAnalysisChat({
   const [isLoading, setIsLoading] = useState(false);
   const [pastedText, setPastedText] = useState('');
   const [isAnalyzingText, setIsAnalyzingText] = useState(false);
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const [parseProgress, setParseProgress] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,10 +102,10 @@ export default function AIAnalysisChat({
   useEffect(() => {
     if (isExpanded && messages.length === 0) {
       const welcomeMessages = {
-        trends: '你好！我是行业趋势分析专家。我会帮助你深入理解行业发展趋势、政策变化和技术革新。\n\n你可以直接输入信息，或者将行业报告、研究分析等文本内容粘贴到下方的文本框中，我会帮你提炼关键要点。',
-        competitors: '你好！我是竞争情报分析专家。我会帮助你全面分析竞争对手的优劣势、市场地位和核心能力。\n\n请告诉我你关注哪些竞争对手，或者将竞争对手的资料文本粘贴到下方文本框中。',
-        customer: '你好！我是客户洞察专家。我会帮助你深入了解目标客户的画像、需求和购买决策因素。\n\n请描述你的客户群体，或者将客户调研报告粘贴到下方文本框中。',
-        company: '你好！我是企业诊断专家。我会帮助你客观分析公司的现状、优势、短板和资源。\n\n请告诉我关于公司的情况，或者将相关资料粘贴到下方文本框中。'
+        trends: '你好！我是行业趋势分析专家。我会帮助你深入理解行业发展趋势、政策变化和技术革新。\n\n你可以直接输入信息，或者上传行业报告、研究分析等文档，我会帮你提炼关键要点。',
+        competitors: '你好！我是竞争情报分析专家。我会帮助你全面分析竞争对手的优劣势、市场地位和核心能力。\n\n请告诉我你关注哪些竞争对手，或者上传相关资料文档。',
+        customer: '你好！我是客户洞察专家。我会帮助你深入了解目标客户的画像、需求和购买决策因素。\n\n请描述你的客户群体，或者上传客户调研报告。',
+        company: '你好！我是企业诊断专家。我会帮助你客观分析公司的现状、优势、短板和资源。\n\n请告诉我关于公司的情况，或者上传相关资料。'
       };
 
       setMessages([{
@@ -110,6 +115,49 @@ export default function AIAnalysisChat({
       }]);
     }
   }, [isExpanded, module, messages.length]);
+
+  // 处理文件上传
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingFile(true);
+    setParseProgress('正在解析文件...');
+
+    try {
+      const result: ParseResult = await parseFile(file, (progress, status) => {
+        setParseProgress(`${status} ${progress}%`);
+      });
+
+      if (!result.success) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `文件解析失败：${result.error || '未知错误'}\n\n建议：1) 确认文件格式正确 2) 如果是扫描版 PDF，可以截图后以图片格式上传 3) 或直接将文字复制粘贴到下方文本框`,
+          timestamp: Date.now()
+        }]);
+        return;
+      }
+
+      // 将解析出的文本填入粘贴区域
+      setPastedText(result.text);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `📎 文件解析成功！\n\n文件：${result.metadata?.fileName || '未知'}\n文本长度：${result.text.length} 字${result.metadata?.pageCount ? ` (${result.metadata.pageCount} 页)` : result.metadata?.isOCR ? ' (OCR 识别)' : ''}\n\n已将内容填入下方文本框，你可以点击"开始分析"让 AI 提炼关键要点。`,
+        timestamp: Date.now()
+      }]);
+    } catch (error: any) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `文件处理失败：${error.message || '请检查网络连接后重试'}`,
+        timestamp: Date.now()
+      }]);
+    } finally {
+      setIsParsingFile(false);
+      setParseProgress('');
+      // 重置 file input 以允许重复上传同一文件
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // 分析粘贴的文本
   const handleAnalyzePastedText = async () => {
@@ -129,7 +177,7 @@ export default function AIAnalysisChat({
       // 使用真实文本内容进行 AI 分析
       const analysis = await analyzeUploadedFile(
         apiKey,
-        `${config.title}（用户粘贴）`,
+        `${config.title}（用户上传/粘贴）`,
         pastedText,
         module
       );
@@ -239,7 +287,7 @@ export default function AIAnalysisChat({
   return (
     <div className={`border-2 rounded-lg transition-all duration-200 ${
       isExpanded
-        ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-900/10'
+        ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10'
         : 'border-gray-200 dark:border-slate-700'
     }`}>
       {/* 折叠/展开 按钮 */}
@@ -248,7 +296,7 @@ export default function AIAnalysisChat({
         className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-primary-500" />
+          <Sparkles className="w-4 h-4 text-blue-500" />
           <span className="font-medium text-gray-900 dark:text-gray-100">
             AI 助手：{title}
           </span>
@@ -268,6 +316,48 @@ export default function AIAnalysisChat({
       {/* 展开内容 */}
       {isExpanded && (
         <div className="p-4 border-t border-gray-200 dark:border-slate-700">
+          {/* 文件上传区 */}
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Upload className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                上传{config.title}
+              </span>
+              <span className="text-xs text-gray-500 dark:text-slate-400">
+                · 支持 PDF / Word / Excel / 图片
+              </span>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={getAcceptString()}
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isParsingFile}
+              className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-slate-600
+                         hover:border-blue-400 dark:hover:border-blue-500 rounded-lg text-sm
+                         text-gray-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400
+                         transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isParsingFile ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {parseProgress || '解析中...'}
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  点击上传文件
+                </>
+              )}
+            </button>
+          </div>
+
           {/* 文本粘贴区 */}
           <div className="mb-4">
             <div className="flex items-center gap-2 mb-2">
@@ -275,9 +365,15 @@ export default function AIAnalysisChat({
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 粘贴{config.title}
               </span>
-              <span className="text-xs text-gray-500 dark:text-slate-400">
-                · 将 PDF/Word 中的文字复制后粘贴到下方
-              </span>
+              {pastedText && (
+                <button
+                  onClick={() => setPastedText('')}
+                  className="ml-auto text-xs text-gray-400 hover:text-red-500 flex items-center gap-1"
+                >
+                  <X className="w-3 h-3" />
+                  清空
+                </button>
+              )}
             </div>
 
             {/* 大型多行文本输入框 */}
@@ -287,7 +383,7 @@ export default function AIAnalysisChat({
               placeholder={config.pastePlaceholder}
               className="w-full h-40 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg
                          bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100
-                         focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm
                          resize-y"
               disabled={isAnalyzingText}
             />
@@ -298,7 +394,7 @@ export default function AIAnalysisChat({
                 <button
                   onClick={handleAnalyzePastedText}
                   disabled={isAnalyzingText}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700
                              disabled:bg-gray-400 text-white rounded-lg text-sm transition-colors"
                 >
                   {isAnalyzingText ? (
@@ -312,13 +408,6 @@ export default function AIAnalysisChat({
                       开始分析
                     </>
                   )}
-                </button>
-                <button
-                  onClick={() => setPastedText('')}
-                  className="px-4 py-2 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300
-                             dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm transition-colors"
-                >
-                  清空
                 </button>
               </div>
             )}
@@ -334,7 +423,7 @@ export default function AIAnalysisChat({
                 <div
                   className={`max-w-[80%] p-3 rounded-lg ${
                     msg.role === 'user'
-                      ? 'bg-primary-500 text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-gray-100'
                   }`}
                 >
@@ -353,12 +442,12 @@ export default function AIAnalysisChat({
                     <div className="mb-2 p-2 bg-blue-100 dark:bg-blue-900/30
                                     border-l-2 border-blue-500 rounded">
                       <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
-                        💡 提炼的关键信息：
+                        提炼的关键信息：
                       </p>
                       <ul className="text-xs space-y-1">
                         {msg.extractedData.map((data, i) => (
                           <li key={i} className="text-blue-600 dark:text-blue-400">
-                            • {data}
+                            {i + 1}. {data}
                           </li>
                         ))}
                       </ul>
@@ -410,13 +499,13 @@ export default function AIAnalysisChat({
               placeholder={config.placeholder}
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg
                          bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100
-                         focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               disabled={isLoading}
             />
             <button
               onClick={handleSendMessage}
               disabled={isLoading || !inputText.trim() || !apiKey}
-              className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-400
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400
                          text-white rounded-lg flex items-center gap-2 transition-colors"
             >
               {isLoading ? (
@@ -448,18 +537,6 @@ export default function AIAnalysisChat({
               >
                 重新开始
               </button>
-            </div>
-          )}
-
-          {/* API Key 提示 */}
-          {!apiKey && (
-            <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-yellow-700 dark:text-yellow-300">
-                  请先在设置中配置 AI API Key
-                </p>
-              </div>
             </div>
           )}
         </div>

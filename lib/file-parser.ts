@@ -98,7 +98,7 @@ async function parseViaAPI(file: File, metadata: any): Promise<ParseResult> {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch('/api/parse-file', {
+    const response = await fetch('/api/upload', {
       method: 'POST',
       body: formData,
     });
