@@ -21,7 +21,7 @@ function generateMarkdownReport(data: any): string {
     }
     if (data.step1.dimensions && data.step1.dimensions.length > 0) {
       report += '**3力3平台归因:**\n';
-      data.step1.dimensions.forEach(d => {
+      data.step1.dimensions.forEach((d: any) => {
         if (d.isHighlighted) {
           report += `- **${d.name}** (${d.score}%): ${d.reason}\n`;
         }
@@ -41,7 +41,7 @@ function generateMarkdownReport(data: any): string {
 
     if (data.step2.competitorAnalysis?.advantages?.length > 0) {
       report += '### 竞对优势分析\n';
-      data.step2.competitorAnalysis.advantages.forEach(a => {
+      data.step2.competitorAnalysis.advantages.forEach((a: any) => {
         report += `- ${a.competitorName}: ${a.advantage}\n`;
       });
       report += '\n';
