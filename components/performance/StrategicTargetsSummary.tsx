@@ -94,7 +94,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
       color: 'text-amber-700',
       bg: 'bg-amber-50',
       border: 'border-amber-200',
-      sub: `${matrix.newClients?.join('、') || '—'}`,
+      sub: `${matrix?.newClients?.join('、') || '—'}`,
     },
     {
       label: '老产品汇总',
@@ -103,7 +103,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
       color: 'text-purple-700',
       bg: 'bg-purple-50',
       border: 'border-purple-200',
-      sub: `${matrix.oldProducts?.join('、') || '—'}`,
+      sub: `${matrix?.oldProducts?.join('、') || '—'}`,
     },
     {
       label: '新产品汇总',
@@ -112,7 +112,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
       color: 'text-rose-700',
       bg: 'bg-rose-50',
       border: 'border-rose-200',
-      sub: `${matrix.newProducts?.join('、') || '—'}`,
+      sub: `${matrix?.newProducts?.join('、') || '—'}`,
     },
   ];
 
