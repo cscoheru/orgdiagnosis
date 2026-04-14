@@ -295,9 +295,11 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
 
       {/* ── Context Enrichment Panel (Phase 2) ── */}
       {activePlan && (
-        <ContextEnrichmentPanel plan={activePlan} onUpdated={onRefresh} />
+        <>
+          <ContextEnrichmentPanel plan={activePlan} onUpdated={onRefresh} />
 
-        <TaskAggregationPanel plan={activePlan} />
+          <TaskAggregationPanel plan={activePlan} />
+        </>
       )}
 
       {/* ── Strategic Goals Section ── */}
