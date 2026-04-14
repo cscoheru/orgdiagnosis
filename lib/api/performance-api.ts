@@ -382,6 +382,15 @@ export async function generateCompanyPerformance(
   });
 }
 
+export async function consolidateTasks(
+  planId: string,
+): Promise<ApiResponse<any>> {
+  return perfRequest('/tasks/consolidate', {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId }),
+  });
+}
+
 // ──────────────────────────────────────────────
 // 战略目标 CRUD (Phase 3)
 // ──────────────────────────────────────────────

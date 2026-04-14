@@ -313,6 +313,115 @@ async def generate_company_performance(
     return company_perf
 
 
+# ── 三力三平台任务 AI 整合 ─────────────────────────────────
+
+class ConsolidateTasksRequest(BaseModel):
+    """AI 整合任务请求"""
+    plan_id: str
+
+
+@router.post("/tasks/consolidate", summary="AI 整合三力三平台任务")
+async def consolidate_tasks(
+    req: ConsolidateTasksRequest,
+    db: Any = Depends(get_db),
+):
+    """AI 将 3力3平台行动计划中的 18 个任务整合为每维度 3-5 个关键任务。
+
+    读取 plan 的 action_plans JSON，按维度聚合原始任务，
+    调用 AI 做去重、合并、提炼，返回每维度 3-5 个关键任务。
+    """
+    svc = ObjectService(db)
+
+    plan = svc.get_object(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="绩效方案不存在")
+
+    props = plan.get("properties", {})
+    ctx = props.get("business_context", {}) or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except (json.JSONDecodeError, TypeError):
+            ctx = {}
+
+    action_plans_raw = ctx.get("action_plans", "")
+    if not action_plans_raw:
+        raise HTTPException(status_code=400, detail="尚未导入行动计划，请先从战略解码导入")
+
+    try:
+        action_plans = json.loads(action_plans_raw) if isinstance(action_plans_raw, str) else action_plans_raw
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=400, detail="行动计划数据格式错误")
+
+    if not isinstance(action_plans, list) or len(action_plans) == 0:
+        raise HTTPException(status_code=400, detail="行动计划为空")
+
+    # 按维度收集原始任务
+    dimension_keys = {
+        "salesForce": "销售力",
+        "productForce": "产品力",
+        "deliveryForce": "交付力",
+        "hr": "人力资源",
+        "financeAssets": "财务&资产",
+        "digitalProcess": "数字化&流程",
+    }
+
+    dimension_tasks = {}
+    for key, label in dimension_keys.items():
+        tasks = []
+        for row in action_plans:
+            content = str(row.get(key, "")).strip()
+            if content:
+                tasks.append(f"[{row.get('customerGroup', '')}/{row.get('product', '')}] {content}")
+        if tasks:
+            dimension_tasks[label] = tasks
+
+    if not dimension_tasks:
+        raise HTTPException(status_code=400, detail="行动计划中无有效任务内容")
+
+    # 构建 AI prompt
+    dim_sections = []
+    for label, tasks in dimension_tasks.items():
+        dim_sections.append(f"### {label}\n" + "\n".join(f"- {t}" for t in tasks))
+
+    prompt = f"""你是一位资深的战略管理顾问。以下是从多个客户群/产品线收集的"三力三平台"行动计划任务，存在大量重复和冗余。
+
+请对每个维度进行整合：去重、合并相似任务、提炼核心要点，每个维度保留 3-5 个关键任务。
+
+{chr(10).join(dim_sections)}
+
+请以 JSON 格式返回，格式如下（纯 JSON，不要 markdown 代码块）：
+{{
+  "销售力": ["关键任务1", "关键任务2", "关键任务3"],
+  "产品力": ["关键任务1", "关键任务2", "关键任务3"],
+  "交付力": ["关键任务1", "关键任务2", "关键任务3"],
+  "人力资源": ["关键任务1", "关键任务2", "关键任务3"],
+  "财务&资产": ["关键任务1", "关键任务2", "关键任务3"],
+  "数字化&流程": ["关键任务1", "关键任务2", "关键任务3"]
+}}
+
+要求：
+- 每个维度的关键任务不超过 5 个
+- 去掉客户名和产品名前缀，合并为通用的战略任务描述
+- 任务描述简洁有力，便于直接用于组织绩效设计"""
+
+    try:
+        from app.services.ai_client import AIClient
+        ai = AIClient()
+        result = await ai.chat_json(
+            system_prompt="你是一位战略管理专家，擅长从杂乱的任务列表中提炼关键战略任务。请严格返回JSON格式。",
+            user_prompt=prompt,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 整合失败: {str(e)}")
+
+    return {
+        "success": True,
+        "consolidated": result,
+        "source_count": len(action_plans),
+    }
+
+
 # ── 组织绩效（部门级）─────────────────────────────────────
 
 @router.post("/org-perf/generate", summary="AI 生成部门绩效")
