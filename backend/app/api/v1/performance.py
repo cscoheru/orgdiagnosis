@@ -291,24 +291,70 @@ async def generate_company_performance(
         raise HTTPException(status_code=500, detail=f"AI 生成失败: {str(e)}")
 
     # 5. 创建 Org_Performance 对象
-    from app.models.kernel.meta_model import ObjectUpdate
+    from app.models.kernel.meta_model import ObjectCreate
 
-    company_perf = svc.create_object("Org_Performance", {
-        "org_unit_ref": "__company__",
-        "org_unit_name": "公司绩效",
-        "plan_ref": req.plan_id,
-        "project_id": props.get("project_id", ""),
-        "strategic_kpis": result.get("strategic_kpis", []),
-        "management_indicators": result.get("management_indicators", []),
-        "team_development": [],
-        "engagement_compliance": [],
-        "dimension_weights": {"strategic": 50, "management": 50, "team_development": 0, "engagement": 0},
-        "status": "待确认",
-        "perf_type": "company",
-    })
+    company_perf = svc.create_object(ObjectCreate(
+        model_key="Org_Performance",
+        properties={
+            "org_unit_ref": "__company__",
+            "org_unit_name": "公司绩效",
+            "plan_ref": req.plan_id,
+            "project_id": props.get("project_id", ""),
+            "strategic_kpis": result.get("strategic_kpis", []),
+            "management_indicators": result.get("management_indicators", []),
+            "team_development": [],
+            "engagement_compliance": [],
+            "dimension_weights": {"strategic": 50, "management": 50, "team_development": 0, "engagement": 0},
+            "status": "待确认",
+            "perf_type": "company",
+        },
+    ))
 
     if not company_perf:
         raise HTTPException(status_code=500, detail="创建公司绩效失败")
+
+    # 6. 自动创建三力三平台对应的 6 个部门
+    dept_defs = [
+        ("销售部", "销售力"),
+        ("产品部", "产品力"),
+        ("运营部", "交付力"),
+        ("人力资源部", "人力资源"),
+        ("财务部", "财务&资产"),
+        ("IT部", "数字化&流程"),
+    ]
+    # 读取 AI 整合的任务（如果有）
+    consolidated_tasks = {}
+    consolidated_raw = ctx.get("consolidated_tasks", "")
+    if consolidated_raw:
+        try:
+            consolidated_tasks = json.loads(consolidated_raw) if isinstance(consolidated_raw, str) else consolidated_raw
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    for dept_name, dim_label in dept_defs:
+        # 检查是否已存在
+        existing = svc.list_objects("Org_Unit", limit=100)
+        already_exists = any(
+            existing_unit.get("properties", {}).get("unit_name") == dept_name
+            and existing_unit.get("properties", {}).get("plan_ref") == req.plan_id
+            for existing_unit in existing
+        )
+        if already_exists:
+            continue
+
+        dim_tasks = consolidated_tasks.get(dim_label, [])
+        svc.create_object(ObjectCreate(
+            model_key="Org_Unit",
+            properties={
+                "unit_name": dept_name,
+                "unit_type": "department",
+                "dimension": dim_label,
+                "plan_ref": req.plan_id,
+                "project_id": props.get("project_id", ""),
+                "key_tasks": dim_tasks,
+                "status": "待确认",
+            },
+        ))
 
     return company_perf
 
@@ -414,6 +460,12 @@ async def consolidate_tasks(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 整合失败: {str(e)}")
+
+    # 保存整合结果到 plan 的 business_context
+    if isinstance(ctx, dict):
+        ctx["consolidated_tasks"] = json.dumps(result, ensure_ascii=False)
+        from app.models.kernel.meta_model import ObjectUpdate
+        svc.update_object(req.plan_id, ObjectUpdate(properties={"business_context": ctx}))
 
     return {
         "success": True,
