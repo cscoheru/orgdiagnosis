@@ -52,10 +52,14 @@ export default function StrategicTargetsSummary({ plan }: Props) {
 
   const data = useMemo(() => {
     if (!matrix) return null;
-    const oldClientsSet = new Set(matrix.oldClients || []);
-    const newClientsSet = new Set(matrix.newClients || []);
-    const oldProductsSet = new Set(matrix.oldProducts || []);
-    const newProductsSet = new Set(matrix.newProducts || []);
+    const oldClients = matrix.oldClients || [];
+    const newClients = matrix.newClients || [];
+    const oldProducts = matrix.oldProducts || [];
+    const newProducts = matrix.newProducts || [];
+    const oldClientsSet = new Set(oldClients);
+    const newClientsSet = new Set(newClients);
+    const oldProductsSet = new Set(oldProducts);
+    const newProductsSet = new Set(newProducts);
 
     const total = Object.values(matrix.values).reduce((a, b) => a + (b || 0), 0);
     const oldClientSum = calcSum(matrix.values, oldClientsSet, 'client');
@@ -63,7 +67,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
     const oldProductSum = calcSum(matrix.values, oldProductsSet, 'product');
     const newProductSum = calcSum(matrix.values, newProductsSet, 'product');
 
-    return { total, oldClientSum, newClientSum, oldProductSum, newProductSum };
+    return { total, oldClientSum, newClientSum, oldProductSum, newProductSum, oldClients, newClients, oldProducts, newProducts };
   }, [matrix]);
 
   if (!data) return null;
@@ -85,7 +89,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
       color: 'text-emerald-700',
       bg: 'bg-emerald-50',
       border: 'border-emerald-200',
-      sub: `${matrix.oldClients?.join('、') || '—'}`,
+      sub: `${data.oldClients.join('、') || '—'}`,
     },
     {
       label: '新客户汇总',
@@ -94,7 +98,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
       color: 'text-amber-700',
       bg: 'bg-amber-50',
       border: 'border-amber-200',
-      sub: `${matrix?.newClients?.join('、') || '—'}`,
+      sub: `${data.newClients.join('、') || '—'}`,
     },
     {
       label: '老产品汇总',
@@ -103,7 +107,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
       color: 'text-purple-700',
       bg: 'bg-purple-50',
       border: 'border-purple-200',
-      sub: `${matrix?.oldProducts?.join('、') || '—'}`,
+      sub: `${data.oldProducts.join('、') || '—'}`,
     },
     {
       label: '新产品汇总',
@@ -112,7 +116,7 @@ export default function StrategicTargetsSummary({ plan }: Props) {
       color: 'text-rose-700',
       bg: 'bg-rose-50',
       border: 'border-rose-200',
-      sub: `${matrix?.newProducts?.join('、') || '—'}`,
+      sub: `${data.newProducts.join('、') || '—'}`,
     },
   ];
 

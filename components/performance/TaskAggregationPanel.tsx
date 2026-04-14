@@ -169,7 +169,7 @@ export default function TaskAggregationPanel({ plan }: Props) {
       const defaultDepts = new Set<string>();
       for (const dim of DIMENSIONS) {
         // 从该维度的所有非空任务中提取部门关键词
-        const allTasks = rows.map((r) => r[dim.key]).filter(Boolean);
+        const allTasks = rows.map((r) => String(r[dim.key] || '')).filter(Boolean);
         if (allTasks.length > 0) {
           defaultDepts.add(dim.defaultDept);
         }
@@ -184,7 +184,7 @@ export default function TaskAggregationPanel({ plan }: Props) {
       const initial: Record<string, Record<string, string>> = {};
       for (const dim of DIMENSIONS) {
         initial[dim.key] = {};
-        initial[dim.key][dim.defaultDept] = smartAggregate(rows.map((r) => r[dim.key])).join('\n');
+        initial[dim.key][dim.defaultDept] = smartAggregate(rows.map((r) => String(r[dim.key] || ''))).join('\n');
       }
       setTaskMap(initial);
     }
@@ -323,7 +323,7 @@ export default function TaskAggregationPanel({ plan }: Props) {
           </thead>
           <tbody>
             {DIMENSIONS.map((dim) => {
-              const dimTasks = smartAggregate(rows.map((r) => r[dim.key]));
+              const dimTasks = smartAggregate(rows.map((r) => String(r[dim.key] || '')));
               const dimTaskMap = taskMap[dim.key] || {};
               const hasContent = departments.some((d) => dimTaskMap[d]?.trim());
 
