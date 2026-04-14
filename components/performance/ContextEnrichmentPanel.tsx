@@ -205,6 +205,11 @@ export default function ContextEnrichmentPanel({ plan, onUpdated }: Props) {
           await enrichPlanContext(plan._key, 'action_plans', JSON.stringify(data.step4.actionPlanTable));
         }
 
+        // 保存 matrixData JSON 到 business_context.matrix_data
+        if (data.step3?.matrixData) {
+          await enrichPlanContext(plan._key, 'matrix_data', JSON.stringify(data.step3.matrixData));
+        }
+
         // 创建 Strategic_Goal 对象（避免重复导入）
         const existingGoals = await getObjectsByModel('Strategic_Goal', 100);
         const existingNames = new Set(

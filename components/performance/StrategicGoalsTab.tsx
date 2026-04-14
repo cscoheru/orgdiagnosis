@@ -382,6 +382,9 @@ export default function StrategicGoalsTab({ projectId, activePlan, onRefresh }: 
             </div>
           )}
 
+          {/* ── Strategic Targets Summary Table ── */}
+          <StrategicTargetsSummary plan={activePlan} />
+
           {/* ── Task Aggregation Panel ── */}
           <TaskAggregationPanel plan={activePlan} />
 
