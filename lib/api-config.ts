@@ -4,8 +4,7 @@
  */
 
 // API 基础地址
-// 优先用 NEXT_PUBLIC_API_URL；线上（Vercel）通过 Next.js rewrite 代理，使用空字符串即同源
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? '' : 'http://localhost:8000');
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 /**
  * 文件上传
