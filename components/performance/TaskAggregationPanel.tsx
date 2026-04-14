@@ -1,28 +1,30 @@
 'use client';
 
 /**
- * 部门任务归集面板
+ * 三力三平台任务汇总面板
  *
- * 纵轴：6 个维度（三力三平台）
- * 横轴：部门（可自由添加）
- * 每个单元格：从 actionPlanTable 智能聚合的任务 + 承接部门标签
+ * 纵轴：6 个维度（三力 + 三平台）
+ * 每个维度下按客户群分组展示原始任务内容
+ * 支持编辑汇总后的内容
  *
  * 放置在战略目标 tab 中。
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import type { PerformancePlan } from '@/types/performance';
 import {
-  LayoutGrid,
   TrendingUp,
   Target,
   BarChart,
   Users,
   DollarSign,
   Settings,
-  Plus,
+  ChevronDown,
+  ChevronRight,
+  Edit3,
+  Save,
   X,
-  GripVertical,
+  Layers,
 } from 'lucide-react';
 
 interface Props {
@@ -49,12 +51,10 @@ interface DimensionDef {
   label: string;
   icon: React.ElementType;
   color: string;
+  accentColor: string;
   headerBg: string;
   itemBg: string;
-  /** 默认承接部门 */
-  defaultDept: string;
-  /** 聚合提示词（用于指导 AI 或用户理解） */
-  aggregationHint: string;
+  summaryHint: string;
 }
 
 const DIMENSIONS: DimensionDef[] = [
@@ -63,82 +63,62 @@ const DIMENSIONS: DimensionDef[] = [
     label: '销售力',
     icon: TrendingUp,
     color: 'text-blue-700',
-    headerBg: 'bg-blue-600',
-    itemBg: 'bg-blue-50/50',
-    defaultDept: '销售部',
-    aggregationHint: '合并相似销售策略，按客户/渠道/区域归类',
+    accentColor: 'border-blue-300',
+    headerBg: 'bg-blue-50',
+    itemBg: 'bg-blue-25',
+    summaryHint: '按客户/渠道/区域归类销售策略与打法',
   },
   {
     key: 'productForce',
     label: '产品力',
     icon: Target,
     color: 'text-amber-700',
-    headerBg: 'bg-amber-600',
-    itemBg: 'bg-amber-50/50',
-    defaultDept: '产品部',
-    aggregationHint: '按项目、品类、新老产品、技术方向整合',
+    accentColor: 'border-amber-300',
+    headerBg: 'bg-amber-50',
+    itemBg: 'bg-amber-25',
+    summaryHint: '按项目、品类、新老产品、技术方向整合',
   },
   {
     key: 'deliveryForce',
     label: '交付力',
     icon: BarChart,
     color: 'text-emerald-700',
-    headerBg: 'bg-emerald-600',
-    itemBg: 'bg-emerald-50/50',
-    defaultDept: '运营部',
-    aggregationHint: '从供应链→生产→前端交付的产线、工艺、团队任务',
+    accentColor: 'border-emerald-300',
+    headerBg: 'bg-emerald-50',
+    itemBg: 'bg-emerald-25',
+    summaryHint: '从供应链→生产→前端交付的任务汇总',
   },
   {
     key: 'hr',
-    label: '人力资源',
+    label: '人力资源（人才平台）',
     icon: Users,
     color: 'text-purple-700',
-    headerBg: 'bg-purple-600',
-    itemBg: 'bg-purple-50/50',
-    defaultDept: '人力资源部',
-    aggregationHint: '三力所产生的人才需求：招聘、选拔、培养、晋升、淘汰',
+    accentColor: 'border-purple-300',
+    headerBg: 'bg-purple-50',
+    itemBg: 'bg-purple-25',
+    summaryHint: '三力产生的人才需求：招聘、培养、晋升、淘汰',
   },
   {
     key: 'financeAssets',
-    label: '财务&资产',
+    label: '财务&资产（财务平台）',
     icon: DollarSign,
     color: 'text-rose-700',
-    headerBg: 'bg-rose-600',
-    itemBg: 'bg-rose-50/50',
-    defaultDept: '财务部',
-    aggregationHint: '三力及人资的财务开支：四费（销售、管理、研发、财务费用）',
+    accentColor: 'border-rose-300',
+    headerBg: 'bg-rose-50',
+    itemBg: 'bg-rose-25',
+    summaryHint: '三力及人资的财务开支：四费（销售、管理、研发、财务费用）',
   },
   {
     key: 'digitalProcess',
-    label: '数字化&流程',
+    label: '数字化&流程（数字化平台）',
     icon: Settings,
     color: 'text-cyan-700',
-    headerBg: 'bg-cyan-600',
-    itemBg: 'bg-cyan-50/50',
-    defaultDept: 'IT部',
-    aggregationHint: '流程优化带来的数字化系统新建、升级、实施、运维项目',
+    accentColor: 'border-cyan-300',
+    headerBg: 'bg-cyan-50',
+    itemBg: 'bg-cyan-25',
+    summaryHint: '流程优化带来的数字化系统新建、升级、运维项目',
   },
 ];
-
-/* ── 智能聚合：合并相同/相似任务 ── */
-
-function smartAggregate(items: string[]): string[] {
-  // 过滤空值
-  const valid = items.filter((s) => s && s.trim());
-  if (valid.length === 0) return [];
-
-  // 去除完全相同的条目
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const item of valid) {
-    const normalized = item.trim().replace(/\s+/g, '');
-    if (!seen.has(normalized)) {
-      seen.add(normalized);
-      unique.push(item.trim());
-    }
-  }
-  return unique;
-}
 
 /* ── 组件 ── */
 
@@ -155,216 +135,191 @@ export default function TaskAggregationPanel({ plan }: Props) {
     }
   }, [plan.properties.business_context]);
 
-  // 部门列表（可自由添加）
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [newDept, setNewDept] = useState('');
-  const [addingDept, setAddingDept] = useState(false);
+  // 按维度展开状态
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // 编辑中的维度
+  const [editingDim, setEditingDim] = useState<string | null>(null);
+  // 编辑内容
+  const [editContent, setEditContent] = useState('');
+  // 已保存的汇总覆盖内容
+  const [savedSummaries, setSavedSummaries] = useState<Record<string, string>>({});
 
-  // 每个 维度 × 部门 的任务分配
-  const [taskMap, setTaskMap] = useState<Record<string, Record<string, string>>>({});
-
-  // 初始化：为每个维度自动分配默认部门
+  // 自动展开有内容的维度
   useMemo(() => {
-    if (departments.length === 0 && rows.length > 0) {
-      const defaultDepts = new Set<string>();
-      for (const dim of DIMENSIONS) {
-        // 从该维度的所有非空任务中提取部门关键词
-        const allTasks = rows.map((r) => String(r[dim.key] || '')).filter(Boolean);
-        if (allTasks.length > 0) {
-          defaultDepts.add(dim.defaultDept);
-        }
+    if (expanded.size === 0 && rows.length > 0) {
+      const withContent = DIMENSIONS
+        .filter(dim => rows.some(r => String(r[dim.key] || '').trim()))
+        .map(dim => dim.key);
+      if (withContent.length > 0) {
+        setExpanded(new Set(withContent));
       }
-      setDepartments(Array.from(defaultDepts));
     }
   }, [rows]);
 
-  // 初始化 taskMap：每个维度用默认部门
-  useMemo(() => {
-    if (Object.keys(taskMap).length === 0 && departments.length > 0) {
-      const initial: Record<string, Record<string, string>> = {};
-      for (const dim of DIMENSIONS) {
-        initial[dim.key] = {};
-        initial[dim.key][dim.defaultDept] = smartAggregate(rows.map((r) => String(r[dim.key] || ''))).join('\n');
-      }
-      setTaskMap(initial);
-    }
-  }, [departments, rows]);
-
-  const addDepartment = useCallback(() => {
-    if (!newDept.trim()) return;
-    setDepartments((prev) => [...prev, newDept.trim()]);
-    // 初始化新部门的所有维度为空
-    setTaskMap((prev) => {
-      const updated = { ...prev };
-      for (const dim of DIMENSIONS) {
-        if (!updated[dim.key]) updated[dim.key] = {};
-        if (!updated[dim.key][newDept.trim()]) {
-          updated[dim.key][newDept.trim()] = '';
-        }
-      }
-      return updated;
+  const toggleExpand = (dimKey: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(dimKey)) next.delete(dimKey);
+      else next.add(dimKey);
+      return next;
     });
-    setNewDept('');
-    setAddingDept(false);
-  }, [newDept]);
+  };
 
-  const removeDepartment = useCallback((dept: string) => {
-    setDepartments((prev) => prev.filter((d) => d !== dept));
-    setTaskMap((prev) => {
-      const updated = { ...prev };
-      for (const dim of DIMENSIONS) {
-        if (updated[dim.key]) {
-          const dimMap = { ...updated[dim.key] };
-          delete dimMap[dept];
-          updated[dim.key] = dimMap;
-        }
-      }
-      return updated;
-    });
-  }, []);
+  const startEdit = (dimKey: string) => {
+    // 合并所有客户群的该维度内容作为初始编辑值
+    const allItems = rows
+      .map(r => ({ group: r.customerGroup, product: r.product, content: String(r[dimKey as keyof ActionRow] || '').trim() }))
+      .filter(item => item.content);
+    const text = allItems
+      .map(item => `[${item.group} / ${item.product}]\n${item.content}`)
+      .join('\n\n');
+    setEditContent(savedSummaries[dimKey] || text);
+    setEditingDim(dimKey);
+  };
 
-  const updateTask = useCallback((dimKey: string, dept: string, value: string) => {
-    setTaskMap((prev) => ({
-      ...prev,
-      [dimKey]: { ...prev[dimKey], [dept]: value },
-    }));
-  }, []);
+  const saveEdit = (dimKey: string) => {
+    setSavedSummaries(prev => ({ ...prev, [dimKey]: editContent }));
+    setEditingDim(null);
+    setEditContent('');
+  };
+
+  const cancelEdit = () => {
+    setEditingDim(null);
+    setEditContent('');
+  };
 
   if (rows.length === 0) return null;
-
-  const Icon = LayoutGrid;
 
   return (
     <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50/50">
-        <div className="flex items-center gap-2">
-          <Icon size={14} className="text-indigo-500" />
-          <span className="text-sm font-semibold text-gray-900">部门任务归集</span>
-          <span className="text-xs text-gray-400">{rows.length} 个业务单元 · {departments.length} 个部门</span>
-        </div>
-        <button
-          onClick={() => setAddingDept(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
-        >
-          <Plus size={12} /> 添加部门
-        </button>
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+        <Layers size={14} className="text-indigo-500" />
+        <span className="text-sm font-semibold text-gray-900">三力三平台任务汇总</span>
+        <span className="text-xs text-gray-400">{rows.length} 个业务单元</span>
       </div>
 
-      {/* Add Department Input */}
-      {addingDept && (
-        <div className="flex items-center gap-2 px-5 py-2 border-b border-gray-100 bg-indigo-50/30">
-          <input
-            value={newDept}
-            onChange={(e) => setNewDept(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addDepartment()}
-            placeholder="输入部门名称，如：品牌部、企管部..."
-            className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            autoFocus
-          />
-          <button
-            onClick={addDepartment}
-            disabled={!newDept.trim()}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-          >
-            确认
-          </button>
-          <button
-            onClick={() => { setAddingDept(false); setNewDept(''); }}
-            className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700"
-          >
-            <X size={12} />
-          </button>
-        </div>
-      )}
+      {/* Dimensions */}
+      <div className="divide-y divide-gray-100">
+        {DIMENSIONS.map((dim) => {
+          const isExpanded = expanded.has(dim.key);
+          const isEditing = editingDim === dim.key;
 
-      {/* Department Tags */}
-      {departments.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-5 py-2 border-b border-gray-100">
-          {departments.map((dept) => (
-            <span
-              key={dept}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-gray-100 text-gray-700 rounded-full"
-            >
-              {dept}
-              <button
-                onClick={() => removeDepartment(dept)}
-                className="text-gray-400 hover:text-red-500 transition-colors"
+          // 按客户群分组收集该维度的内容
+          const groupedItems = rows
+            .map(r => ({
+              group: r.customerGroup,
+              product: r.product,
+              revenue: r.revenueTarget,
+              content: String(r[dim.key] || '').trim(),
+            }))
+            .filter(item => item.content);
+
+          const hasContent = groupedItems.length > 0;
+
+          // 如果有保存的汇总，显示保存内容
+          const savedSummary = savedSummaries[dim.key];
+
+          return (
+            <div key={dim.key} className={isExpanded ? dim.headerBg : ''}>
+              {/* Dimension Header Row */}
+              <div
+                className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50/50 transition-colors"
+                onClick={() => toggleExpand(dim.key)}
               >
-                <X size={10} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+                {isExpanded ? (
+                  <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
+                ) : (
+                  <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
+                )}
+                <dim.icon size={15} className={dim.color} />
+                <span className={`text-xs font-semibold ${dim.color}`}>{dim.label}</span>
+                {hasContent ? (
+                  <span className="text-[10px] text-gray-500 bg-white/80 px-1.5 py-0.5 rounded">
+                    {groupedItems.length} 条任务
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-400 italic">暂无任务</span>
+                )}
+                {!isExpanded && savedSummary && (
+                  <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">已汇总</span>
+                )}
+              </div>
 
-      {/* Main Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse min-w-[800px]">
-          <thead>
-            <tr>
-              {/* Dimension column */}
-              <th className="sticky left-0 z-10 px-3 py-2.5 bg-white text-left text-xs font-semibold text-gray-700 border-b border-gray-200 min-w-[120px] w-[140px]">
-                <div className="flex items-center gap-1.5">
-                  <GripVertical size={12} className="text-gray-300" />
-                  维度
-                </div>
-              </th>
-              {/* Department columns */}
-              {departments.map((dept) => (
-                <th
-                  key={dept}
-                  className="px-3 py-2.5 bg-gray-50 text-center text-xs font-medium text-gray-600 border-b border-gray-200 min-w-[220px]"
-                >
-                  {dept}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {DIMENSIONS.map((dim) => {
-              const dimTasks = smartAggregate(rows.map((r) => String(r[dim.key] || '')));
-              const dimTaskMap = taskMap[dim.key] || {};
-              const hasContent = departments.some((d) => dimTaskMap[d]?.trim());
+              {/* Expanded Content */}
+              {isExpanded && (
+                <div className={`px-5 pb-4 border-l-4 ${dim.accentColor} ml-7`}>
+                  {/* Summary hint */}
+                  <p className="text-[10px] text-gray-400 mb-3">{dim.summaryHint}</p>
 
-              return (
-                <tr key={dim.key} className="border-b border-gray-100 hover:bg-gray-50/30 transition-colors">
-                  {/* Dimension Label */}
-                  <td className="sticky left-0 z-10 bg-white px-3 py-2 border-r border-gray-100 align-top">
-                    <div className={`flex items-center gap-1.5 ${dim.color}`}>
-                      <dim.icon size={13} />
-                      <span className="font-semibold text-xs">{dim.label}</span>
+                  {isEditing ? (
+                    /* Edit Mode */
+                    <div className="space-y-2">
+                      <textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        rows={8}
+                        className="w-full px-3 py-2 text-xs leading-relaxed bg-white border border-gray-200 rounded-lg resize-y focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder={`在此汇总${dim.label}的关键任务...`}
+                      />
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={cancelEdit}
+                          className="flex items-center gap-1 px-3 py-1.5 text-[10px] text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+                        >
+                          <X size={10} /> 取消
+                        </button>
+                        <button
+                          onClick={() => saveEdit(dim.key)}
+                          className="flex items-center gap-1 px-3 py-1.5 text-[10px] text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                        >
+                          <Save size={10} /> 保存汇总
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5 ml-5 leading-tight">{dim.aggregationHint}</p>
-                  </td>
+                  ) : (
+                    /* Display Mode */
+                    <div className="space-y-3">
+                      {savedSummary ? (
+                        /* Show saved summary */
+                        <div className="bg-white/80 rounded-lg border border-gray-200 p-3">
+                          <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{savedSummary}</p>
+                        </div>
+                      ) : (
+                        /* Show per-group items */
+                        <div className="space-y-2">
+                          {groupedItems.map((item, i) => (
+                            <div key={i} className="bg-white/80 rounded-lg border border-gray-100 px-3 py-2">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                  {item.group}
+                                </span>
+                                <span className="text-[10px] text-gray-500">{item.product}</span>
+                                <span className="text-[10px] text-gray-400 ml-auto">{item.revenue}万</span>
+                              </div>
+                              <p className="text-[11px] text-gray-700 leading-relaxed">{item.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-                  {/* Department Cells */}
-                  {departments.map((dept) => {
-                    const cellValue = dimTaskMap[dept] || '';
-
-                    return (
-                      <td key={dept} className={`px-2 py-2 border-r border-gray-100 align-top ${dim.itemBg}`}>
-                        <textarea
-                          value={cellValue}
-                          onChange={(e) => updateTask(dim.key, dept, e.target.value)}
-                          placeholder={
-                            dim.key === 'salesForce' ? '合并同类销售策略...' :
-                            dim.key === 'productForce' ? '按项目/品类整合...' :
-                            dim.key === 'deliveryForce' ? '供应链→生产→交付...' :
-                            dim.key === 'hr' ? '招聘/培养/晋升...' :
-                            dim.key === 'financeAssets' ? '四费/预算...' :
-                            '数字化项目/流程优化...'
-                          }
-                          className="w-full h-20 px-2 py-1.5 text-[11px] leading-relaxed bg-white/80 border border-gray-200 rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-indigo-400 placeholder:text-gray-300"
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                      {/* Edit button */}
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => startEdit(dim.key)}
+                          className="flex items-center gap-1 px-3 py-1.5 text-[10px] text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                        >
+                          <Edit3 size={10} />
+                          {savedSummary ? '编辑汇总' : '汇总编辑'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
