@@ -1,10 +1,17 @@
 import type { NextConfig } from "next";
 
+const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+
 const nextConfig: NextConfig = {
   transpilePackages: ['@xyflow/react'],
-  // Use webpack instead of turbopack to handle docx-preview/xlsx SSR issues
-  experimental: {
-    // This helps with packages that have issues with SSR
+  experimental: {},
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
+      },
+    ];
   },
 };
 
