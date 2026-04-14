@@ -19,7 +19,6 @@ import type { Methodology, CycleType, PlanStatus } from '@/types/performance';
 import { METHODOLOGY_LABELS, CYCLE_TYPE_LABELS, PLAN_STATUS_LABELS, PLAN_STATUS_COLORS } from '@/types/performance';
 import { Plus, Settings2, Target, Trash2, Edit3 } from 'lucide-react';
 import ContextEnrichmentPanel from './ContextEnrichmentPanel';
-import TaskAggregationPanel from './TaskAggregationPanel';
 import InlineCreateModal from './InlineCreateModal';
 
 interface Props {
@@ -297,8 +296,6 @@ export default function PlanOverviewTab({ projectId, plans, activePlan, onSelect
       {activePlan && (
         <>
           <ContextEnrichmentPanel plan={activePlan} onUpdated={onRefresh} />
-
-          <TaskAggregationPanel plan={activePlan} />
         </>
       )}
 

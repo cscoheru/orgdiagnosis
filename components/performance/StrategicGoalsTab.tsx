@@ -20,6 +20,7 @@ import {
   Sparkles, Plus, Pencil, Save, X, Trash2, ChevronDown, ChevronRight,
   Target, Lightbulb, TrendingUp, DollarSign, BarChart3, GraduationCap,
 } from 'lucide-react';
+import TaskAggregationPanel from './TaskAggregationPanel';
 
 interface Props {
   projectId: string;
@@ -380,6 +381,9 @@ export default function StrategicGoalsTab({ projectId, activePlan, onRefresh }: 
               </div>
             </div>
           )}
+
+          {/* ── Task Aggregation Panel ── */}
+          <TaskAggregationPanel plan={activePlan} />
 
           {/* Empty state */}
           {goals.length === 0 && initiatives.length === 0 && (
