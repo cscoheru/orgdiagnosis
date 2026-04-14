@@ -21,6 +21,7 @@ import {
   Target, Lightbulb, TrendingUp, DollarSign, BarChart3, GraduationCap,
 } from 'lucide-react';
 import TaskAggregationPanel from './TaskAggregationPanel';
+import StrategicTargetsSummary from './StrategicTargetsSummary';
 
 interface Props {
   projectId: string;
