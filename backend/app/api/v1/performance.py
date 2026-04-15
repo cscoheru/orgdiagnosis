@@ -290,15 +290,39 @@ async def generate_company_performance(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 生成失败: {str(e)}")
 
-    # 5. 创建 Org_Performance 对象
+    # 5. 创建公司级 Org_Unit（如果不存在）
     from app.models.kernel.meta_model import ObjectCreate
 
+    existing_units = svc.list_objects("Org_Unit", limit=200)
+    company_unit = None
+    for u in existing_units:
+        up = u.get("properties", {})
+        if up.get("unit_type") == "职能中心" and up.get("unit_name") == "公司" and up.get("plan_ref") == req.plan_id:
+            company_unit = u
+            break
+
+    if not company_unit:
+        company_unit = svc.create_object(ObjectCreate(
+            model_key="Org_Unit",
+            properties={
+                "unit_name": "公司",
+                "unit_type": "职能中心",
+                "plan_ref": req.plan_id,
+                "project_id": props.get("project_id", ""),
+                "status": "待确认",
+            },
+        ))
+
+    company_unit_key = company_unit.get("_key")
+    org_unit_ref = f"sys_objects/{company_unit_key}"
+    plan_ref = f"sys_objects/{req.plan_id}"
+
+    # 6. 创建 Org_Performance 对象
     company_perf = svc.create_object(ObjectCreate(
         model_key="Org_Performance",
         properties={
-            "org_unit_ref": "__company__",
-            "org_unit_name": "公司绩效",
-            "plan_ref": req.plan_id,
+            "org_unit_ref": org_unit_ref,
+            "plan_ref": plan_ref,
             "project_id": props.get("project_id", ""),
             "strategic_kpis": result.get("strategic_kpis", []),
             "management_indicators": result.get("management_indicators", []),
@@ -313,7 +337,7 @@ async def generate_company_performance(
     if not company_perf:
         raise HTTPException(status_code=500, detail="创建公司绩效失败")
 
-    # 6. 自动创建三力三平台对应的 6 个部门
+    # 7. 自动创建三力三平台对应的 6 个部门
     dept_defs = [
         ("销售部", "销售力"),
         ("产品部", "产品力"),
@@ -332,27 +356,25 @@ async def generate_company_performance(
             pass
 
     for dept_name, dim_label in dept_defs:
-        # 检查是否已存在
-        existing = svc.list_objects("Org_Unit", limit=100)
         already_exists = any(
-            existing_unit.get("properties", {}).get("unit_name") == dept_name
-            and existing_unit.get("properties", {}).get("plan_ref") == req.plan_id
-            for existing_unit in existing
+            u.get("properties", {}).get("unit_name") == dept_name
+            and u.get("properties", {}).get("plan_ref") == req.plan_id
+            for u in existing_units
         )
         if already_exists:
             continue
 
         dim_tasks = consolidated_tasks.get(dim_label, [])
+        dim_tasks_text = "；".join(dim_tasks) if dim_tasks else ""
         svc.create_object(ObjectCreate(
             model_key="Org_Unit",
             properties={
                 "unit_name": dept_name,
-                "unit_type": "department",
-                "dimension": dim_label,
+                "unit_type": "职能中心",
+                "parent_org_ref": org_unit_ref,
                 "plan_ref": req.plan_id,
                 "project_id": props.get("project_id", ""),
-                "key_tasks": dim_tasks,
-                "status": "待确认",
+                "description": f"维度: {dim_label}。关键任务: {dim_tasks_text}",
             },
         ))
 
