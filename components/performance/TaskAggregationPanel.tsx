@@ -11,7 +11,7 @@
 
 import { useState, useMemo } from 'react';
 import type { PerformancePlan } from '@/types/performance';
-import { consolidateTasks } from '@/lib/api/performance-api';
+import { consolidateTasks, enrichPlanContext } from '@/lib/api/performance-api';
 import {
   TrendingUp,
   Target,
@@ -84,7 +84,17 @@ export default function TaskAggregationPanel({ plan }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   // AI 整合结果: { "销售力": ["task1", "task2"], ... }
-  const [consolidated, setConsolidated] = useState<Record<string, string[]> | null>(null);
+  // 从 plan.business_context.consolidated_tasks 持久化加载
+  const [consolidated, setConsolidated] = useState<Record<string, string[]> | null>(() => {
+    const ctx = (plan.properties.business_context as Record<string, string>) || {};
+    const raw = ctx.consolidated_tasks;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch { /* ignore */ }
+    return null;
+  });
 
   // 自动展开有内容的维度
   useMemo(() => {
@@ -114,9 +124,12 @@ export default function TaskAggregationPanel({ plan }: Props) {
     try {
       const res = await consolidateTasks(plan._key);
       if (res.success && res.data?.consolidated) {
-        setConsolidated(res.data.consolidated);
+        const result = res.data.consolidated;
+        setConsolidated(result);
         // 展开所有维度
         setExpanded(new Set(DIMENSIONS.map(d => d.key)));
+        // 持久化到 plan.business_context
+        await enrichPlanContext(plan._key, 'consolidated_tasks', JSON.stringify(result));
       } else {
         setError(res.error || 'AI 整合失败');
       }
@@ -127,9 +140,13 @@ export default function TaskAggregationPanel({ plan }: Props) {
     }
   };
 
-  const resetConsolidated = () => {
+  const resetConsolidated = async () => {
     setConsolidated(null);
     setError(null);
+    // 清除持久化
+    if (plan._key) {
+      await enrichPlanContext(plan._key, 'consolidated_tasks', '');
+    }
   };
 
   if (rows.length === 0) return null;

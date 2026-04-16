@@ -7,7 +7,7 @@
  * Step 2 — AI 生成部门四维度绩效 + 表格展示 + 内联编辑
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   generateOrgPerformance,
   generateCompanyPerformance,
@@ -16,7 +16,7 @@ import {
 } from '@/lib/api/performance-api';
 import type { PerformancePlan, OrgPerformance, MetricTemplate } from '@/types/performance';
 import { ORG_PERF_STATUS_LABELS } from '@/types/performance';
-import { Sparkles, Plus, Target, Pencil, Save, X, Trash2, Search } from 'lucide-react';
+import { Sparkles, Plus, Target, Pencil, Save, X, Trash2, Search, Layers, TrendingUp, BarChart, Users, DollarSign, Settings } from 'lucide-react';
 import { getObjectsByModel, type KernelObject } from '@/lib/api/kernel-client';
 import InlineCreateModal from './InlineCreateModal';
 import MetricPicker from './MetricPicker';
@@ -160,6 +160,19 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
   // Separate company vs department
   const companyPerfs = orgPerformances.filter(op => op.properties.perf_type === 'company');
   const deptPerfs = orgPerformances.filter(op => op.properties.perf_type !== 'company');
+
+  // Load consolidated tasks from plan business_context
+  const consolidatedTasks = useMemo<Record<string, string[]> | null>(() => {
+    if (!activePlan) return null;
+    const ctx = (activePlan.properties.business_context as Record<string, string>) || {};
+    const raw = ctx.consolidated_tasks;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch { /* ignore */ }
+    return null;
+  }, [activePlan]);
 
   // Inline editing
   const [editKey, setEditKey] = useState<string | null>(null);
@@ -318,6 +331,46 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
 
   return (
     <div className="space-y-5">
+      {/* ═══ 战略任务输入 ═══ */}
+      {consolidatedTasks && (
+        <div className="border border-indigo-200 rounded-xl bg-white overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-indigo-100 bg-indigo-50/50">
+            <Layers size={14} className="text-indigo-500" />
+            <span className="text-sm font-semibold text-gray-900">战略任务输入</span>
+            <span className="text-xs text-indigo-400">三力三平台 AI 整合后的关键任务，作为绩效设计的输入</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 p-4">
+            {[
+              { label: '销售力', icon: TrendingUp, color: 'text-blue-700', bg: 'bg-blue-50' },
+              { label: '产品力', icon: Target, color: 'text-amber-700', bg: 'bg-amber-50' },
+              { label: '交付力', icon: BarChart, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+              { label: '人力资源', icon: Users, color: 'text-purple-700', bg: 'bg-purple-50' },
+              { label: '财务&资产', icon: DollarSign, color: 'text-rose-700', bg: 'bg-rose-50' },
+              { label: '数字化&流程', icon: Settings, color: 'text-cyan-700', bg: 'bg-cyan-50' },
+            ].map(dim => {
+              const tasks = consolidatedTasks[dim.label] || [];
+              if (tasks.length === 0) return null;
+              return (
+                <div key={dim.label} className={`rounded-lg border border-gray-100 p-3 ${dim.bg}`}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <dim.icon size={12} className={dim.color} />
+                    <span className={`text-xs font-semibold ${dim.color}`}>{dim.label}</span>
+                  </div>
+                  <ul className="space-y-0.5">
+                    {tasks.map((t, i) => (
+                      <li key={i} className="text-[11px] text-gray-700 leading-relaxed flex gap-1.5">
+                        <span className="text-gray-300 flex-shrink-0">•</span>
+                        <span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ═══ Step 1: Data Preparation ═══ */}
       <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
