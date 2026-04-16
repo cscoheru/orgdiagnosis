@@ -104,16 +104,30 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
   const [jobRoles, setJobRoles] = useState<KernelObject[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [orgUnits, setOrgUnits] = useState<KernelObject[]>([]);
 
   const selectedOrgPerfData = orgPerformances.find(op => op._key === selectedOrgPerf);
   const orgUnitRef = selectedOrgPerfData?.properties.org_unit_ref as string | undefined;
+
+  // Resolve org_unit_ref to unit name
+  const getUnitName = (ref: string | undefined | null): string => {
+    if (!ref) return '未知';
+    const key = ref.replace('sys_objects/', '');
+    const unit = orgUnits.find(u => u._key === key);
+    if (unit?.properties?.unit_name) return String(unit.properties.unit_name);
+    return key;
+  };
 
   /* ── Fetch ── */
 
   const fetchOrgPerfs = useCallback(async () => {
     if (!activePlan) return;
-    const res = await listOrgPerformances(activePlan._key);
-    if (res.success && res.data) setOrgPerformances(Array.isArray(res.data) ? res.data : []);
+    const [perfRes, unitRes] = await Promise.all([
+      listOrgPerformances(activePlan._key),
+      getObjectsByModel('Org_Unit', 200),
+    ]);
+    if (perfRes.success && perfRes.data) setOrgPerformances(Array.isArray(perfRes.data) ? perfRes.data : []);
+    if (unitRes.success && unitRes.data) setOrgUnits(Array.isArray(unitRes.data) ? unitRes.data : []);
   }, [activePlan]);
 
   const fetchJobRoles = useCallback(async () => {
@@ -296,7 +310,7 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
             <option value="">选择部门绩效...</option>
             {orgPerformances.map((op) => (
               <option key={op._key} value={op._key}>
-                {op.properties.org_unit_name || op.properties.org_unit_ref} — {op.properties.strategic_kpis?.length || 0} 个战略KPI
+                {getUnitName(op.properties.org_unit_ref as string)} — {op.properties.strategic_kpis?.length || 0} 个战略KPI
               </option>
             ))}
           </select>
@@ -315,7 +329,7 @@ export default function PositionPerformanceTab({ projectId, activePlan, onRefres
           <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
             <span className="text-xs font-medium text-gray-500">STEP 1</span>
             <span className="text-xs text-gray-400 ml-2">岗位配置</span>
-            <span className="text-xs text-gray-400 ml-2">— 部门: {orgUnitRef || '未知'}</span>
+            <span className="text-xs text-gray-400 ml-2">— 部门: {getUnitName(orgUnitRef)}</span>
           </div>
 
           <div className="p-5">

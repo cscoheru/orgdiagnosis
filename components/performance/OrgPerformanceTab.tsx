@@ -606,12 +606,17 @@ export default function OrgPerformanceTab({ projectId, activePlan, onRefresh }: 
               const dw = p.dimension_weights || {};
               const totalWeight = (dw.strategic || 0) + (dw.management || 0) + (dw.team_development || 0) + (dw.engagement || 0);
 
+              // Resolve org_unit_ref to unit name
+              const unitRef = String(p.org_unit_ref || '');
+              const unitKey = unitRef.replace('sys_objects/', '');
+              const unitName = String(orgUnits.find(u => u._key === unitKey)?.properties?.unit_name || p.org_unit_name || unitKey);
+
               return (
                 <div key={op._key} className="border border-gray-200 rounded-xl bg-white overflow-hidden">
                   {/* Header */}
                   <div className="flex items-center justify-between px-4 py-3 bg-gray-50/80 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                      <h4 className="font-medium text-gray-900 text-sm">{p.org_unit_name || p.org_unit_ref}</h4>
+                      <h4 className="font-medium text-gray-900 text-sm">{unitName}</h4>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                         (p.status as string) === 'draft' ? 'bg-gray-100 text-gray-500' :
                         (p.status as string) === 'active' ? 'bg-green-100 text-green-700' :
