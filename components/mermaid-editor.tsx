@@ -136,9 +136,12 @@ export default function MermaidEditor({
           <div
             ref={previewRef}
             className={`flex-1 overflow-auto p-4 ${error ? '' : 'flex items-center justify-center'}`}
-            {...(!error && renderedSvg ? { dangerouslySetInnerHTML: { __html: renderedSvg } } : {})}
           >
-            {error && <pre className="text-xs text-red-600 bg-red-50 p-3 rounded max-w-md whitespace-pre-wrap">{error}</pre>}
+            {error ? (
+              <pre className="text-xs text-red-600 bg-red-50 p-3 rounded max-w-md whitespace-pre-wrap">{error}</pre>
+            ) : renderedSvg ? (
+              <div dangerouslySetInnerHTML={{ __html: renderedSvg }} />
+            ) : null}
           </div>
         </div>
       </div>
