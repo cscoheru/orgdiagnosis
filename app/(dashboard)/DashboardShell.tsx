@@ -19,6 +19,7 @@ import {
   Brain,
   Target,
   FileOutput,
+  GitGraph,
 } from 'lucide-react';
 
 interface DashboardShellProps {
@@ -75,6 +76,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         { name: '系统设置', href: '/settings', icon: <Settings size={18} /> },
         { name: 'PPT 模板', href: '/templates', icon: <FileText size={18} /> },
         { name: '版式管理', href: '/layouts', icon: <Layers size={18} /> },
+        { name: '可视化工具', href: '/test-visual', icon: <GitGraph size={18} /> },
       ],
     },
   ];
