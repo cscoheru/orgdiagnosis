@@ -1,0 +1,69 @@
+.topology-editor .te-link {
+  fill: none;
+  stroke-opacity: 0.5;
+  cursor: pointer;
+  transition: stroke-opacity 0.15s;
+}
+.topology-editor .te-link:hover { stroke-opacity: 0.85; }
+.topology-editor .te-link.selected { stroke-opacity: 1; stroke-width: 3px !important; }
+.topology-editor .te-link-bidirectional { stroke-dasharray: 6 3; }
+.topology-editor .te-link-feedback { stroke-dasharray: 3 3; }
+.topology-editor .te-link-strategy { stroke-dasharray: 8 4 2 4; }
+
+.topology-editor .te-edge-label { font-size: 9px; fill: #555; pointer-events: none; }
+.topology-editor .te-edge-bg { fill: #fff; fill-opacity: 0.88; }
+
+.topology-editor .te-node { cursor: grab; }
+.topology-editor .te-node:active { cursor: grabbing; }
+.topology-editor .te-node-bg {
+  stroke-width: 2;
+  filter: drop-shadow(1px 2px 5px rgba(0,0,0,0.12));
+  transition: filter 0.15s, stroke-width 0.15s;
+}
+.topology-editor .te-node:hover .te-node-bg {
+  filter: drop-shadow(2px 4px 10px rgba(0,0,0,0.2));
+}
+.topology-editor .te-node.selected .te-node-bg {
+  stroke: #facc15 !important;
+  stroke-width: 3px !important;
+}
+.topology-editor .te-node text { pointer-events: none; font-size: 11px; font-weight: 600; }
+.topology-editor .te-node .te-subtitle { font-size: 9px; font-weight: 400; }
+
+/* Modal overlay */
+.topology-editor .te-modal-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 50;
+}
+.topology-editor .te-modal {
+  background: #fff; border-radius: 10px; padding: 20px;
+  width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.topology-editor .te-modal h4 { font-size: 15px; margin-bottom: 12px; color: #1f2937; }
+.topology-editor .te-modal label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 2px; margin-top: 8px; }
+.topology-editor .te-modal input,
+.topology-editor .te-modal select,
+.topology-editor .te-modal textarea {
+  width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;
+  font-size: 12px; font-family: inherit;
+}
+.topology-editor .te-modal textarea { min-height: 50px; resize: vertical; }
+.topology-editor .te-modal .te-btn-row {
+  display: flex; gap: 6px; margin-top: 14px; justify-content: flex-end;
+}
+.topology-editor .te-modal .te-btn {
+  padding: 5px 14px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px;
+}
+.topology-editor .te-btn-primary { background: #3b82f6; color: #fff; }
+.topology-editor .te-btn-primary:hover { background: #2563eb; }
+.topology-editor .te-btn-cancel { background: #f3f4f6; color: #374151; }
+.topology-editor .te-btn-delete { background: #ef4444; color: #fff; margin-right: auto; }
+.topology-editor .te-btn-delete:hover { background: #dc2626; }
+
+/* Status bar */
+.topology-editor .te-status {
+  font-size: 11px; color: #6b7280; background: #f9fafb;
+  padding: 4px 10px; border-top: 1px solid #e5e7eb;
+}
